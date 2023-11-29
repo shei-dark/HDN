@@ -63,7 +63,7 @@ def _make_datamanager(train_images, val_images, test_images, batch_size, test_ba
     test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
     test_set = TensorDataset(test_images, test_labels)
     
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=test_batch_size, shuffle=True)
     

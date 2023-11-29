@@ -196,7 +196,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                       "Min validation loss:", np.min(loss_val_history))
 
                 seconds=time.time()
-                secondsElapsed=np.float(seconds-seconds_last)
+                secondsElapsed=np.float64(seconds-seconds_last)
                 seconds_last=seconds
                 remainingEps=(max_epochs+1)-(epoch+1)
                 estRemainSeconds=(secondsElapsed)*(remainingEps)
