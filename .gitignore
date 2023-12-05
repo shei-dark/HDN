@@ -1,0 +1,15 @@
+*.png
+*.log
+models/__pycache__
+boilerplate/__pycache__
+resources
+__pycache__
+*.json
+*.wandb
+*.yaml
+*.patch
+*.txt
+examples/Pixel_Noise/Convallaria/data
+examples/Pixel_Noise/Convallaria/Trained_model
+examples/Pixel_Noise/Convallaria/wandb
+hdn.sbatch

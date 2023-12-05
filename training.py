@@ -21,12 +21,14 @@ from tqdm import tqdm
 from boilerplate import boilerplate
 from models.lvae import LadderVAE
 import lib.utils as utils
+import wandb
+import random
 
 
 def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader, test_loader, 
                   virtual_batch, gaussian_noise_std, model_name, 
                   test_log_every=1000, directory_path="./",
-                  val_loss_patience=100, nrows=4, max_grad_norm=None):
+                  val_loss_patience=100, nrows=4, max_grad_norm=None, debug=False, project_name="", save_output=True, batch_size=8):
     
     """Train Hierarchical DivNoising network. 
     Parameters
@@ -58,7 +60,22 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
     max_grad_norm: float
         Value to limit/clamp the gradients at.
     """
-    
+    if debug == False:
+        use_wandb = True
+    else:
+        use_wandb = False
+
+    experiment = wandb.init(project = project_name,
+                                resume = 'allow',
+                                anonymous = 'must',
+                                mode = 'online',
+                                reinit = True,
+                                save_code = True)
+
+    experiment.config.update(dict(epochs=max_epochs,batch_size=batch_size,))
+
+    wandb.run.log_code(("."), include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"))
+
     model_folder = directory_path+"model/"
     img_folder = directory_path+"imgs/"
     device = model.device
@@ -98,19 +115,19 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
             step_counter=batch_idx
             x = x.unsqueeze(1) # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
-            step = model.global_step
+            # step = model.global_step
             
-            if(test_log_every > 0):
-                if step % test_log_every == 0:
+            # if(test_log_every > 0):
+            #     if step % test_log_every == 0:
                 
-                    print("Testing the model at " "step {}". format(step))
+            #         print("Testing the model at " "step {}". format(step))
 
-                    with torch.no_grad():
-                        boilerplate._test(epoch, img_folder, device, model,
-                                          test_loader, gaussian_noise_std,
-                                          model.data_std, nrows)
-                        model.train()
-             
+            #         with torch.no_grad():
+            #             boilerplate._test(epoch, img_folder, device, model,
+            #                               test_loader, gaussian_noise_std,
+            #                               model.data_std, nrows)
+            #             model.train()
+            model.train()
             optimizer.zero_grad()
         
         
@@ -136,19 +153,25 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
             
             optimizer.step()
             
-            model.increment_global_step()
+            # model.increment_global_step()
             
-            first_step = False
-            if step_counter % steps_per_epoch == steps_per_epoch-1:
-              
-                ### Print training losses
+            # first_step = False
+            # if step_counter % steps_per_epoch == steps_per_epoch-1:
+            if True:  
+                ## Print training losses
                 to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f}"
                 to_print = to_print.format(epoch,
                                           max_epochs, 
                                           np.mean(running_training_loss),
                                           np.mean(running_reconstruction_loss),
                                           np.mean(running_kl_loss))
-
+                experiment.log({
+                            'epoch': epoch,
+                            'max_epochs': max_epochs,
+                            'recons_loss': np.mean(running_reconstruction_loss),
+                            'kl_loss': np.mean(running_kl_loss),
+                            'loss': np.mean(running_training_loss)
+                        })
                 print(to_print)
                 print('saving',model_folder+model_name+"_last_vae.net")
                 torch.save(model, model_folder+model_name+"_last_vae.net")
