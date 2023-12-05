@@ -108,7 +108,9 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
                 'recons_loss': recons_loss,
                 'kl_loss': kl_loss,
                 'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample']
+                'out_sample': model_out['out_sample'],
+                'mu': model_out['mu'],
+                'logvar': model_out['logvar']
             }
 
     else:
@@ -116,7 +118,9 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
                 'recons_loss': None,
                 'kl_loss': None,
                 'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample']
+                'out_sample': model_out['out_sample'],
+                # 'mu': model_out['mu'],
+                # 'logvar': model_out['logvar']
             }
         
     if 'kl_avg_layerwise' in model_out:

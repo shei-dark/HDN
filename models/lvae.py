@@ -34,7 +34,7 @@ class LadderVAE(nn.Module):
                  no_initial_downscaling=True,
                  analytical_kl=True,
                  mode_pred=False,
-                 use_uncond_mode_at=[]):
+                 use_uncond_mode_at=[]): # unconditional sampling
         super().__init__()
         self.color_ch = color_ch
         self.z_dims = z_dims
@@ -234,7 +234,9 @@ class LadderVAE(nn.Module):
             'out_mean': likelihood_info['mean'],
             'out_mode': likelihood_info['mode'],
             'out_sample': likelihood_info['sample'],
-            'likelihood_params': likelihood_info['params']
+            'likelihood_params': likelihood_info['params'],
+            'mu':td_data['mu'],
+            'logvar':td_data['logvar'],
         }
         return output
 
@@ -288,6 +290,9 @@ class LadderVAE(nn.Module):
         # Spatial map of KL divergence for each layer
         kl_spatial = [None] * self.n_layers
 
+        mu = [None] * self.n_layers
+        logvar = [None] * self.n_layers
+
         if forced_latent is None:
             forced_latent = [None] * self.n_layers
 
@@ -328,6 +333,8 @@ class LadderVAE(nn.Module):
             z[i] = aux['z']  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux['kl_samplewise']  # (batch, )
             kl_spatial[i] = aux['kl_spatial']  # (batch, h, w)
+            mu[i] = aux['mu']
+            logvar[i] = aux['logvar']
             if self.mode_pred is False:
                 logprob_p += aux['logprob_p'].mean()  # mean over batch
             else:
@@ -340,7 +347,9 @@ class LadderVAE(nn.Module):
             'kl': kl,  # list of tensors with shape (batch, )
             'kl_spatial':
                 kl_spatial,  # list of tensors w shape (batch, h[i], w[i])
-            'logprob_p': logprob_p,  # scalar, mean over batch
+            'logprob_p': logprob_p,  # scalar, mean over batch,
+            'mu': mu,
+            'logvar': logvar,
         }
         return out, data
 

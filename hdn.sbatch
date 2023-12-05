@@ -6,12 +6,12 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=4GB
+#SBATCH --mem=8GB
 #SBATCH --ntasks=1
 #SBATCH --job-name=hdn
 #SBATCH --time=24:00:00
 
+source $HOME/.bashrc
 conda activate maester
 cd examples/Pixel_Noise/Convallaria
-python training.py
-
+python Training.py

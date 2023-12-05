@@ -46,7 +46,7 @@ class NormalStochasticBlock2d(nn.Module):
         # Define p(z)
         p_mu, p_lv = p_params.chunk(2, dim=1)
         p = Normal(p_mu, (p_lv / 2).exp())
-
+        q_mu, q_lv = None, None
         if q_params is not None:
             # Define q(z)
             q_params = self.conv_in_q(q_params)
@@ -125,7 +125,9 @@ class NormalStochasticBlock2d(nn.Module):
             'logprob_q': logprob_q,  # (batch, )
             'kl_elementwise': kl_elementwise,  # (batch, ch, h, w)
             'kl_samplewise': kl_samplewise,  # (batch, )
-            'kl_spatial': kl_spatial_analytical,  # (batch, h, w)
+            'kl_spatial': kl_spatial_analytical,  # (batch, h, w),
+            'mu':q_mu,
+            'logvar':q_lv,
         }
         return out, data
 
