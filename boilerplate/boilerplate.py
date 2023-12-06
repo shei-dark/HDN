@@ -119,8 +119,8 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
                 'kl_loss': None,
                 'out_mean': model_out['out_mean'],
                 'out_sample': model_out['out_sample'],
-                # 'mu': model_out['mu'],
-                # 'logvar': model_out['logvar']
+                'mu': model_out['mu'],
+                'logvar': model_out['logvar']
             }
         
     if 'kl_avg_layerwise' in model_out:
