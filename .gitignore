@@ -13,3 +13,4 @@ examples/Pixel_Noise/Convallaria/data
 examples/Pixel_Noise/Convallaria/Trained_model
 examples/Pixel_Noise/Convallaria/wandb
 hdn.sbatch
+.DS_Store
