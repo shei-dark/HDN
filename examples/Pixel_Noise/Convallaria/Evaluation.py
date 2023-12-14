@@ -18,7 +18,7 @@ model.mode_pred=True
 model.eval()
 model.to(device)
 
-files = sorted(glob(path+"data/test/*.tif"))
+files = glob(path+"data/test/*.tif")
 
 img_height,img_width = 699, 760
 for i in files:
@@ -31,7 +31,6 @@ for i in files:
         for idx in range(len(sample['mu'])):
             mu = sample['mu'][idx][0].cpu().numpy()
             output = clustering(idx, mu)
-            print(i)
             imsave(path+"label/"+str(idx+1)+"/"+i[i.rfind("/"):i.rfind(".")]+".tif", output.reshape(22*(2**(4-idx)), 24*(2**(4-idx))))
 
 def get_normalized_tensor(img,model,device):
