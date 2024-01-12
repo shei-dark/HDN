@@ -103,10 +103,13 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
         else:
             recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
 
+        # TODO: add c_loss
+        c_loss = ...
         
         output = {
                 'recons_loss': recons_loss,
                 'kl_loss': kl_loss,
+                'c_loss': c_loss,
                 'out_mean': model_out['out_mean'],
                 'out_sample': model_out['out_sample'],
                 'mu': model_out['mu'],
@@ -117,6 +120,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
         output = {
                 'recons_loss': None,
                 'kl_loss': None,
+                'c_loss': None,
                 'out_mean': model_out['out_mean'],
                 'out_sample': model_out['out_sample'],
                 'mu': model_out['mu'],
