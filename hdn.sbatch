@@ -13,5 +13,7 @@
 
 source $HOME/.bashrc
 conda activate maester
-cd examples/Pixel_Noise/Convallaria
-python Training.py
+jupyter notebook --no-browser --port=8800 --ip 0.0.0.0 
+
+# cd examples/Pixel_Noise/Convallaria
+# python Training.py

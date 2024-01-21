@@ -27,6 +27,7 @@ class LadderVAE(nn.Module):
                  n_filters=64,
                  dropout=0.2,
                  free_bits=0.0,
+                 mask_size=5,
                  learn_top_prior=True,
                  img_shape=None,
                  res_block_type='bacdbacd',
@@ -34,9 +35,12 @@ class LadderVAE(nn.Module):
                  no_initial_downscaling=True,
                  analytical_kl=True,
                  mode_pred=False,
+                 contrastive_learning=False,
                  use_uncond_mode_at=[]): # unconditional sampling
         super().__init__()
+        self.mask_size = mask_size
         self.color_ch = color_ch
+        self.contrastive_learning = contrastive_learning
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
         self.n_layers = len(self.z_dims)
@@ -205,6 +209,21 @@ class LadderVAE(nn.Module):
         # Log likelihood and other info (per data point)
         ll, likelihood_info = self.likelihood(out, x)
 
+        if self.contrastive_learning:
+            # TODO: add contrastive learning loss
+            # td_data['mu'] has shape (layers=5, batch=128, ch[i]=32, h[i], w[i])
+            # h and w are 1/2, 1/4, 1/8, 1/16, 1/32 of original image size
+            # 4*4 is masked out and with the kernel size of 3 we need to crop 8*8 from mu in first and second layers
+            first_layer = td_data['mu'][0][:, :, 12:20, 12:20]
+            second_layer = td_data['mu'][1][:, :, 4:12, 4:12]
+            third_layer = td_data['mu'][2]
+            forth_layer = td_data['mu'][3]
+            fifth_layer = td_data['mu'][4]
+            print(first_layer.shape, second_layer.shape, third_layer.shape, forth_layer.shape, fifth_layer.shape)
+            cl_loss = torch.Tensor([0]).to(self.device)
+        else:            
+            cl_loss = torch.Tensor([0]).to(self.device)
+
         if self.mode_pred is False:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
@@ -230,6 +249,7 @@ class LadderVAE(nn.Module):
             'kl_avg_layerwise': kl_avg_layerwise,
             'kl_spatial': td_data['kl_spatial'],
             'kl_loss': kl_loss,
+            'cl_loss': cl_loss,
             'logp': td_data['logprob_p'],
             'out_mean': likelihood_info['mean'],
             'out_mode': likelihood_info['mode'],

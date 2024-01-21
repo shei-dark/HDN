@@ -89,11 +89,13 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     return optimizer, scheduler
         
 def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
+    patch_size = x.shape[2]
+    mask_size = int(model.mask_size)
+    masked_coord = int((patch_size-mask_size)/2)
     x = x.to(device, non_blocking=True)
     model_out = model(x)
     if model.mode_pred is False:
-        
-        recons_sep = -model_out['ll']
+        recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
         kl_sep = model_out['kl_sep']
         kl = model_out['kl']
         kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
@@ -102,14 +104,14 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
             recons_loss = recons_sep.mean()
         else:
             recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
-
-        # TODO: add c_loss
-        c_loss = ...
+ 
+        cl_loss = model_out['cl_loss']
+        # cl_loss = cl_loss.mean()
         
         output = {
                 'recons_loss': recons_loss,
                 'kl_loss': kl_loss,
-                'c_loss': c_loss,
+                'cl_loss': cl_loss,
                 'out_mean': model_out['out_mean'],
                 'out_sample': model_out['out_sample'],
                 'mu': model_out['mu'],
@@ -120,7 +122,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
         output = {
                 'recons_loss': None,
                 'kl_loss': None,
-                'c_loss': None,
+                'cl_loss': None,
                 'out_mean': model_out['out_mean'],
                 'out_sample': model_out['out_sample'],
                 'mu': model_out['mu'],

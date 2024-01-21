@@ -83,6 +83,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
     loss_train_history = []
     reconstruction_loss_train_history = []
     kl_loss_train_history = []
+    cl_loss_train_history = []
     loss_val_history = []
     running_loss = 0.0
     step_counter = 0
@@ -110,6 +111,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
         running_training_loss = []
         running_reconstruction_loss = []
         running_kl_loss = []
+        running_cl_loss = []
         
         for batch_idx, (x, y) in enumerate(train_loader):
             step_counter=batch_idx
@@ -140,7 +142,8 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
 
                 recons_loss = outputs['recons_loss']
                 kl_loss = outputs['kl_loss']
-                loss = recons_loss + kl_loss
+                cl_loss = outputs['cl_loss']
+                loss = recons_loss + kl_loss + cl_loss
                 loss.backward()
 
                 if max_grad_norm is not None:
@@ -150,6 +153,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                 running_training_loss.append(loss.item())
                 running_reconstruction_loss.append(recons_loss.item())
                 running_kl_loss.append(kl_loss.item())
+                running_cl_loss.append(cl_loss.item())
             
             optimizer.step()
             
@@ -164,7 +168,8 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                                           max_epochs, 
                                           np.mean(running_training_loss),
                                           np.mean(running_reconstruction_loss),
-                                          np.mean(running_kl_loss))
+                                          np.mean(running_kl_loss),
+                                          np.mean(running_cl_loss))
                 experiment.log({
                             'epoch': epoch,
                             'max_epochs': max_epochs,
@@ -180,9 +185,11 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                 loss_train_history.append(np.mean(running_training_loss))
                 reconstruction_loss_train_history.append(np.mean(running_reconstruction_loss))
                 kl_loss_train_history.append(np.mean(running_kl_loss))
+                cl_loss_train_history.append(np.mean(running_cl_loss))
                 np.save(model_folder+"train_loss.npy", np.array(loss_train_history))
                 np.save(model_folder+"train_reco_loss.npy", np.array(reconstruction_loss_train_history))
                 np.save(model_folder+"train_kl_loss.npy", np.array(kl_loss_train_history))
+                np.save(model_folder+"train_cl_loss.npy", np.array(cl_loss_train_history))
         
         
                 ### Validation step
@@ -196,7 +203,8 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
 
                         val_recons_loss = val_outputs['recons_loss']
                         val_kl_loss = val_outputs['kl_loss']
-                        val_loss = val_recons_loss + val_kl_loss
+                        val_cl_loss = val_outputs['cl_loss']
+                        val_loss = val_recons_loss + val_kl_loss + val_cl_loss
                         running_validation_loss.append(val_loss)
                 model.train()
 

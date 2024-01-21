@@ -1,72 +1,40 @@
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Sampler, Dataset, DataLoader
 
-class PositivePairSampler(Sampler):
-    def __init__(self, labels):
-        self.labels = labels
-        self.label_indices = {label: torch.nonzero(labels == label).squeeze() for label in torch.unique(labels)}
+def metric(z1, z2):
+    return F.cosine_similarity(z1, z2, dim=-1)
 
-    def __iter__(self):
-        indices = []
-        for label, indices_per_label in self.label_indices.items():
-            # Ensure there are at least two instances of the label for a positive pair
-            if len(indices_per_label) >= 2:
-                indices.append(torch.randperm(len(indices_per_label)))
+def nc2(n):
+    return n*(n-1)/2
 
-        return iter(indices)
 
-    def __len__(self):
-        return min(len(indices_per_label) // 2 for indices_per_label in self.label_indices.values())
+def contrastive_learning_loss(z, labels):
+    """
+    z: (batch_size, C, H, W)
+    labels: (batch_size)
+    """
+    unique_labels = torch.unique(labels)
+    for label in unique_labels:
+        positive_index_mask = labels == label
+        negative_index_mask = labels != label
 
-class CustomDataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
+        positive_z = z[positive_index_mask]
+        negative_z = z[negative_index_mask]
+        
+        positive_loss = 0
+        negative_loss = 0 
+        for i in range(len(positive_z)):
+            for j in range(len(positive_z)):
+                if i != j:
+                    positive_loss += metric(positive_z[i], positive_z[j])
+        
 
-    def __len__(self):
-        return len(self.data)
+        for i in range(len(positive_z)):
+            for j in range(len(negative_z)):
+                negative_loss += metric(positive_z[i], negative_z[j])
 
-    def __getitem__(self, index):
-        return self.data[index], self.labels[index]
+    # give a weight to balance it. 
+        positive_loss = positive_loss/ nc2(len(positive_z))
+        negative_loss = negative_loss/ (len(positive_z) * len(negative_z))
 
-def pixel_wise_contrastive_loss(z, sampler, temperature=1.0):
-    all_indices = list(sampler)
-    all_indices_flat = [idx.item() for indices_per_label in all_indices for idx in indices_per_label]
-
-    z_flat = z.view(len(z), -1)
-    z1 = z_flat[all_indices_flat]
-    z2 = z_flat[all_indices_flat]
-
-    # Compute cosine similarity between pixel representations
-    similarities = F.cosine_similarity(z1, z2, dim=-1)
-
-    # Apply temperature scaling
-    similarities_scaled = similarities / temperature
-
-    # Compute log probability for positive pairs
-    log_prob_pos = F.log_softmax(similarities_scaled, dim=-1)
-
-    # Extract log probability for positive pairs
-    log_prob_pos = torch.cat([log_prob_pos[i, i].unsqueeze(0) for i in range(len(all_indices))])
-
-    # Negative pairs (pixels from the same image but not in the positive pairs)
-    log_prob_neg = torch.log(torch.sum(torch.exp(similarities_scaled), dim=-1))
-
-    # Compute loss
-    loss = - (log_prob_pos - log_prob_neg)
-
-    return loss.mean()
-
-# Example usage
-labels = torch.randint(6, (100,))  # Assuming 6 different labels
-sampler = PositivePairSampler(labels)
-
-# Assuming you have a dataset with pixel representations (z) and corresponding labels
-dataset = CustomDataset(torch.randn((100, 256)), labels)
-dataloader = DataLoader(dataset, batch_size=1, sampler=sampler)
-
-for batch in dataloader:
-    z, labels_batch = batch
-    loss = pixel_wise_contrastive_loss(z, sampler)
-    print("Pixel-wise Contrastive Loss:", loss.item())
+    return positive_loss - negative_loss

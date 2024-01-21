@@ -6,6 +6,7 @@ from tqdm import tqdm
 from glob import glob
 from sklearn.feature_extraction import image
 from matplotlib import pyplot as plt
+from skimage.measure import regionprops
 
 class Interpolate(nn.Module):
     """Wrapper for torch.nn.functional.interpolate."""
@@ -125,7 +126,7 @@ def augment_data(X_train):
     print('Raw image size after augmentation', X_train_aug.shape)
     return X_train_aug
 
-def extract_patches(x,patch_size,num_patches):
+def extract_patches(x,y,patch_size,num_patches):
     """Deterministically extract patches from array of images. 
     Parameters
     ----------
@@ -137,11 +138,40 @@ def extract_patches(x,patch_size,num_patches):
         Number of patches to be extracted from each image.    
     """
     patches = np.zeros(shape=(x.shape[0]*num_patches,patch_size,patch_size))
-    
+    labels = np.zeros(shape=(x.shape[0]*num_patches,patch_size,patch_size))
+    # for i in tqdm(range(x.shape[0])):
+    #     patches[i*num_patches:(i+1)*num_patches] = image.extract_patches_2d(x[i],(patch_size,patch_size), max_patches=num_patches,
+    #                                                                        random_state=i)
+    #     labels[i*num_patches:(i+1)*num_patches] = image.extract_patches_2d(y[i],(patch_size,patch_size), max_patches=num_patches,random_state=i)    
+    # return patches, labels
+
+    # patches = []
+    # labels = []
+    count = 0
     for i in tqdm(range(x.shape[0])):
-        patches[i*num_patches:(i+1)*num_patches] = image.extract_patches_2d(x[i],(patch_size,patch_size), max_patches=num_patches,
-                                                                           random_state=i)    
-    return patches
+        while count < num_patches:
+            props = regionprops(y[i])
+            for prop in props:
+                random_number = np.random.randint(len(prop['coords']))
+                x_c = prop['coords'][random_number][0]
+                y_c = prop['coords'][random_number][1]
+                while x_c < 30 or y_c < 30 or x_c > (len(x[i]) - 34) or y_c > (len(x[i][0]) - 34):
+                    random_number = np.random.randint(len(prop['coords']))
+                    x_c = prop['coords'][random_number][0]
+                    y_c = prop['coords'][random_number][1]
+                negh = 0
+                for j in range(x_c,x_c+4):
+                    for k in range(y_c,y_c+4):
+                        if [j,k] in prop['coords']:
+                            negh += 1
+                if negh == 16:
+                    x_coord = x_c - 30
+                    y_coord = y_c - 30
+                    patches[i*num_patches:(i+1)*num_patches] = x[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
+                    labels[i*num_patches:(i+1)*num_patches] = y[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
+                    count += 1
+        count = 0
+    return patches, labels
 
 
 def crop_img_tensor(x, size) -> torch.Tensor:
