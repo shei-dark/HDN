@@ -167,8 +167,8 @@ def extract_patches(x,y,patch_size,num_patches):
                 if negh == 16:
                     x_coord = x_c - 30
                     y_coord = y_c - 30
-                    patches[i*num_patches:(i+1)*num_patches] = x[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
-                    labels[i*num_patches:(i+1)*num_patches] = y[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
+                    patches[i*(count+1):(i+1)*(count+1)] = x[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
+                    labels[i*(count+1):(i+1)*(count+1)] = y[i,x_coord:x_coord+patch_size, y_coord:y_coord+patch_size]
                     count += 1
         count = 0
     return patches, labels
