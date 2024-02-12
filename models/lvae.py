@@ -209,7 +209,7 @@ class LadderVAE(nn.Module):
         # Log likelihood and other info (per data point)
         ll, likelihood_info = self.likelihood(out, x)
 
-        if self.contrastive_learning:
+        if False:#self.contrastive_learning:
             # TODO: add contrastive learning loss
             # td_data['mu'] has shape (layers=5, batch=128, ch[i]=32, h[i], w[i])
             # h and w are 1/2, 1/4, 1/8, 1/16, 1/32 of original image size
@@ -219,7 +219,6 @@ class LadderVAE(nn.Module):
             third_layer = td_data['mu'][2]
             forth_layer = td_data['mu'][3]
             fifth_layer = td_data['mu'][4]
-            print(first_layer.shape, second_layer.shape, third_layer.shape, forth_layer.shape, fifth_layer.shape)
             cl_loss = torch.Tensor([0]).to(self.device)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
