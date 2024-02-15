@@ -4,7 +4,7 @@ from torch import nn
 
 from lib.likelihoods import (GaussianLikelihood,
                              NoiseModelLikelihood)
-from lib.utils import (crop_img_tensor, pad_img_tensor, Interpolate, free_bits_kl)
+from lib.utils import (crop_img_tensor, pad_img_tensor, Interpolate, free_bits_kl, compute_cl_loss)
 from .lvae_layers import (TopDownLayer, BottomUpLayer,
                           TopDownDeterministicResBlock,
                           BottomUpDeterministicResBlock)
@@ -191,7 +191,7 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x):
+    def forward(self, x, y):
         img_size = x.size()[2:]
 
         # Pad input to make everything easier with conv strides
@@ -202,24 +202,14 @@ class LadderVAE(nn.Module):
 
         # Top-down inference/generation
         out, td_data = self.topdown_pass(bu_values)
-
         # Restore original image size
         out = crop_img_tensor(out, img_size)
-        
+        # TODO: masking - put 0 in the centre
         # Log likelihood and other info (per data point)
         ll, likelihood_info = self.likelihood(out, x)
 
-        if False:#self.contrastive_learning:
-            # TODO: add contrastive learning loss
-            # td_data['mu'] has shape (layers=5, batch=128, ch[i]=32, h[i], w[i])
-            # h and w are 1/2, 1/4, 1/8, 1/16, 1/32 of original image size
-            # 4*4 is masked out and with the kernel size of 3 we need to crop 8*8 from mu in first and second layers
-            first_layer = td_data['mu'][0][:, :, 12:20, 12:20]
-            second_layer = td_data['mu'][1][:, :, 4:12, 4:12]
-            third_layer = td_data['mu'][2]
-            forth_layer = td_data['mu'][3]
-            fifth_layer = td_data['mu'][4]
-            cl_loss = torch.Tensor([0]).to(self.device)
+        if self.contrastive_learning and not self.mode_pred:
+            cl_loss = compute_cl_loss(td_data['mu'], y)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 

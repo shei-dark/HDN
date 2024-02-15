@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import sys
 sys.path.append('../../../')
+sys.path.append('/home/sheida.rahnamai/GIT/HDN/')
 from models.lvae import LadderVAE
 from boilerplate import boilerplate
 import lib.utils as utils
@@ -15,26 +16,21 @@ from tqdm import tqdm
 import wandb
 import random
 import tifffile as tiff
+import glob
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-path="/group/jug/Sheida/maester_data/download/high_c1/"
-train_data = tiff.imread(path+"data/train/*.tif")
-val_data = tiff.imread(path+"data/validation/*.tif")
-test_data = tiff.imread(path+"data/test/*.tif")
-print("Shape of training images:", train_data.shape, "Shape of validation images:", val_data.shape)
-
+path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
 patch_size = 64
-img_width = 699
-img_height = 760
-num_patches = int(float(img_width*img_height)/float(patch_size**2)*1)
-train_images = utils.extract_patches(train_data, patch_size, num_patches)
-val_images = utils.extract_patches(val_data, patch_size, num_patches)
-test_images = utils.extract_patches(test_data, patch_size, num_patches)
-img_shape = (train_images.shape[1], train_images.shape[2])
-print("Shape of training images:", train_images.shape, "Shape of validation images:", val_images.shape)
-model_name = "HDN Muller"
+train_images = tiff.imread(path+"train_data.tif")
+train_y = tiff.imread(path+"train_label.tif")
+val_images = tiff.imread(path+"val_data.tif")
+val_y = tiff.imread(path+"val_label.tif")
+test_images = tiff.imread(path+"test_data.tif")
+test_y = tiff.imread(path+"test_label.tif")
+
+model_name = "Contrastive_MAE"
 directory_path = "./Trained_model/" 
 
 # Data-specific
@@ -51,21 +47,23 @@ test_batch_size=100
 # Model-specific
 num_latents = 5
 z_dims = [32]*int(num_latents)
-# z_dims = [32, 64, 128, 256, 512]
 blocks_per_layer = 5
+mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
+contrastive_learning = True
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
-project           = 'HDN_Muller'
+project           = 'Contrastive_MAE'
+img_shape = (64,64)
 
-train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,val_images,
+train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
                                                                                            test_images,batch_size,
                                                                                            test_batch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,mask_size=mask_size).cuda()
 
 model.train() # Model set in training mode
 
@@ -74,28 +72,3 @@ training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=s
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
                        model_name=model_name,val_loss_patience=30, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size)
 
-trainHist=np.load(directory_path+"model/train_loss.npy")
-reconHist=np.load(directory_path+"model/train_reco_loss.npy")
-klHist=np.load(directory_path+"model/train_kl_loss.npy")
-valHist=np.load(directory_path+"model/val_loss.npy")
-
-plt.figure(figsize=(18, 3))
-plt.subplot(1,3,1)
-plt.plot(trainHist,label='training')
-plt.plot(valHist,label='validation')
-plt.xlabel("epochs")
-plt.ylabel("loss")
-plt.legend()
-
-plt.subplot(1,3,2)
-plt.plot(reconHist,label='training')
-plt.xlabel("epochs")
-plt.ylabel("reconstruction loss")
-plt.legend()
-
-plt.subplot(1,3,3)
-plt.plot(klHist,label='training')
-plt.xlabel("epochs")
-plt.ylabel("KL loss")
-plt.legend()
-plt.show()

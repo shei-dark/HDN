@@ -8,7 +8,7 @@ def nc2(n):
     return n*(n-1)/2
 
 
-def contrastive_learning_loss(z, labels):
+def compute_cl_loss(z, labels):
     """
     z: (batch_size, C, H, W)
     labels: (batch_size)

@@ -135,9 +135,12 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
         
             ### Make smaller batches
             virtual_batches = torch.split(x,virtual_batch,0)
-            for batch in virtual_batches:
-            
-                outputs = boilerplate.forward_pass(batch, batch, device, model, 
+            virtual_batches_y = torch.split(y,virtual_batch,0)
+            # for batch in virtual_batches:
+            for indx in range(len(virtual_batches)):
+                batch = virtual_batches[indx]
+                batch_label = virtual_batches_y[indx]
+                outputs = boilerplate.forward_pass(batch, batch_label, device, model, 
                                                                 gaussian_noise_std)
 
                 recons_loss = outputs['recons_loss']
@@ -163,7 +166,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
             # if step_counter % steps_per_epoch == steps_per_epoch-1:
             if True:  
                 ## Print training losses
-                to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f}"
+                to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f} CL Loss: {:.3f}"
                 to_print = to_print.format(epoch,
                                           max_epochs, 
                                           np.mean(running_training_loss),
@@ -175,6 +178,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                             'max_epochs': max_epochs,
                             'recons_loss': np.mean(running_reconstruction_loss),
                             'kl_loss': np.mean(running_kl_loss),
+                            'cl_loss': np.mean(running_cl_loss),
                             'loss': np.mean(running_training_loss)
                         })
                 print(to_print)

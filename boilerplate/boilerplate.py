@@ -18,8 +18,7 @@ from tqdm import tqdm
 
 from models.lvae import LadderVAE
 import lib.utils as utils
-
-def _make_datamanager(train_images, val_images, test_images, batch_size, test_batch_size):
+def _make_datamanager(train_images, train_labels, val_images, val_labels, test_images, batch_size, test_batch_size):
     
     """Create data loaders for training, validation and test sets during training.
     The test set will simply be used for plotting and comparing generated images 
@@ -49,12 +48,12 @@ def _make_datamanager(train_images, val_images, test_images, batch_size, test_ba
     data_std = np.std(combined_data)
     train_images = (train_images-data_mean)/data_std
     train_images = torch.from_numpy(train_images)
-    train_labels = torch.zeros(len(train_images),).fill_(float('nan'))
+    train_labels = torch.from_numpy(train_labels) #torch.zeros(len(train_images),).fill_(float('nan'))
     train_set = TensorDataset(train_images, train_labels)
     
     val_images = (val_images-data_mean)/data_std
     val_images = torch.from_numpy(val_images)
-    val_labels = torch.zeros(len(val_images),).fill_(float('nan'))
+    val_labels = torch.from_numpy(val_labels) #torch.zeros(len(val_images),).fill_(float('nan'))
     val_set = TensorDataset(val_images, val_labels)
     
     np.random.shuffle(test_images)
@@ -93,7 +92,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     mask_size = int(model.mask_size)
     masked_coord = int((patch_size-mask_size)/2)
     x = x.to(device, non_blocking=True)
-    model_out = model(x)
+    model_out = model(x,y)
     if model.mode_pred is False:
         recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
         kl_sep = model_out['kl_sep']

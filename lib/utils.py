@@ -7,6 +7,8 @@ from glob import glob
 from sklearn.feature_extraction import image
 from matplotlib import pyplot as plt
 from skimage.measure import regionprops
+import torch.nn.functional as F
+
 
 class Interpolate(nn.Module):
     """Wrapper for torch.nn.functional.interpolate."""
@@ -342,3 +344,54 @@ def get_normalized_tensor(img,model,device):
     data_std = model.data_std
     test_images = (test_images-data_mean)/data_std
     return test_images
+
+def metric(z1, z2):
+    z1 = torch.reshape(z1.T,(-1,32))
+    z2 = torch.reshape(z2.T,(-1,32))
+    return F.cosine_similarity(z1, z2, dim=-1)
+
+def compute_cl_loss(mus, labels):
+    """
+    mus: (hierarchy levels, batch_size, C, H, W) list
+    labels: (batch_size) -> 64/128, 64x64 tensor
+    """
+    labels_list = [0 for i in range(len(labels))]
+    for index, label in enumerate(labels):
+        # all pixels in 4x4 centre have same label
+        centre = label[30:34,30:34]
+        if 0 not in torch.unique(centre):
+            if len(torch.unique(centre))==1:
+                labels_list[index] = int(torch.unique(centre)[0])
+
+    unique_labels = list(set(labels_list) - set([0]))
+    positive_loss = 0
+    negative_loss = 0 
+    for label in unique_labels:
+        positive_index_mask = []
+        negative_index_mask = []
+        for index in range(len(labels_list)):
+            if labels_list[index] == label:
+                positive_index_mask.append(index)
+            elif labels_list[index] != 0:
+                negative_index_mask.append(index)
+        for hierarchy_level in range(len(mus)):
+            if hierarchy_level==0 or hierarchy_level==1:
+                from_index = 2**(5-hierarchy_level-1)-4
+                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_index_mask]
+                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_index_mask]
+            else:
+                positive_z = [mus[hierarchy_level][i] for i in positive_index_mask]
+                negative_z = [mus[hierarchy_level][i] for i in negative_index_mask]
+        
+            res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
+            for (a,b) in res:
+                sum = torch.sum(metric(a,b))
+                positive_loss += sum
+                
+
+            for i in range(len(positive_z)):
+                for j in range(len(negative_z)):
+                    sum = torch.sum(metric(positive_z[i], negative_z[j]))
+                    negative_loss += sum
+    
+    return (negative_loss - positive_loss)/30000
