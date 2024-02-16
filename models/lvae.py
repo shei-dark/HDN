@@ -191,12 +191,12 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x, y):
+    def forward(self, x, y, x_orig=None):
         img_size = x.size()[2:]
 
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x)
-
+        # x_pad[:,:,30:34,30:34] = 0
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
 
@@ -206,7 +206,10 @@ class LadderVAE(nn.Module):
         out = crop_img_tensor(out, img_size)
         # TODO: masking - put 0 in the centre
         # Log likelihood and other info (per data point)
-        ll, likelihood_info = self.likelihood(out, x)
+        if x_orig is not None:
+            ll, likelihood_info = self.likelihood(out, x_orig)
+        else:
+            ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
             cl_loss = compute_cl_loss(td_data['mu'], y)

@@ -1,3 +1,4 @@
+wandb
 *.png
 *.log
 models/__pycache__

@@ -92,7 +92,9 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     mask_size = int(model.mask_size)
     masked_coord = int((patch_size-mask_size)/2)
     x = x.to(device, non_blocking=True)
-    model_out = model(x,y)
+    x_mask = x
+    x_mask[:,:,30:34,30:34] = 0
+    model_out = model(x_mask,y,x)
     if model.mode_pred is False:
         recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
         kl_sep = model_out['kl_sep']
