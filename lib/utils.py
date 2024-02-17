@@ -345,10 +345,15 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
+# def metric(z1, z2):
+#     z1 = torch.reshape(z1.T,(-1,32))
+#     z2 = torch.reshape(z2.T,(-1,32))
+#     return F.cosine_similarity(z1, z2, dim=-1)
+
 def metric(z1, z2):
-    z1 = torch.reshape(z1.T,(-1,32))
-    z2 = torch.reshape(z2.T,(-1,32))
-    return F.cosine_similarity(z1, z2, dim=-1)
+    z1 = torch.exp(torch.reshape(z1.T,(-1,32)))
+    z2 = torch.exp(torch.reshape(z2.T,(-1,32)))
+    return (z1 * (z1 / z2).log()).sum()
 
 def compute_cl_loss(mus, labels):
     """
@@ -385,13 +390,16 @@ def compute_cl_loss(mus, labels):
         
             res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
             for (a,b) in res:
-                sum = torch.sum(metric(a,b))
-                positive_loss += sum
+                # sum = torch.sum(metric(a,b))
+                # positive_loss += sum
+                positive_loss += metric(a,b)
                 
 
             for i in range(len(positive_z)):
                 for j in range(len(negative_z)):
-                    sum = torch.sum(metric(positive_z[i], negative_z[j]))
-                    negative_loss += sum
+                    # sum = torch.sum(metric(positive_z[i], negative_z[j]))
+                    # negative_loss += sum
+                    negative_loss += metric(positive_z[i], negative_z[j])
     
-    return (negative_loss - positive_loss)/30000
+    # return (negative_loss - positive_loss)/30000
+    return (positive_loss - negative_loss)/30000

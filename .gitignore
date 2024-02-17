@@ -1,6 +1,7 @@
 wandb
 *.png
 *.log
+*.net
 models/__pycache__
 boilerplate/__pycache__
 resources
@@ -10,6 +11,7 @@ __pycache__
 *.yaml
 *.patch
 *.txt
+*.npy
 examples/Pixel_Noise/Convallaria/data
 examples/Pixel_Noise/Convallaria/Trained_model
 examples/Pixel_Noise/Convallaria/wandb
