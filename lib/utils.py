@@ -9,6 +9,8 @@ from matplotlib import pyplot as plt
 from skimage.measure import regionprops
 import torch.nn.functional as F
 from torch.distributions import kl_divergence
+from torch.distributions.normal import Normal
+
 
 
 class Interpolate(nn.Module):
@@ -357,6 +359,8 @@ def get_normalized_tensor(img,model,device):
 #     return (z1 * (z1 / z2).log()).sum()
 
 def metric(z1, z2):
+    z1 = Normal(z1, (0 / 2).exp())
+    z2 = Normal(z2, (0 / 2).exp())
     return kl_divergence(z1, z2)
 
 def compute_cl_loss(mus, labels):
