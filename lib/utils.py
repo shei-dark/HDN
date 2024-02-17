@@ -8,6 +8,7 @@ from sklearn.feature_extraction import image
 from matplotlib import pyplot as plt
 from skimage.measure import regionprops
 import torch.nn.functional as F
+from torch.distributions import kl_divergence
 
 
 class Interpolate(nn.Module):
@@ -350,10 +351,13 @@ def get_normalized_tensor(img,model,device):
 #     z2 = torch.reshape(z2.T,(-1,32))
 #     return F.cosine_similarity(z1, z2, dim=-1)
 
+# def metric(z1, z2):
+#     z1 = torch.exp(torch.reshape(z1.T,(-1,32)))
+#     z2 = torch.exp(torch.reshape(z2.T,(-1,32)))
+#     return (z1 * (z1 / z2).log()).sum()
+
 def metric(z1, z2):
-    z1 = torch.exp(torch.reshape(z1.T,(-1,32)))
-    z2 = torch.exp(torch.reshape(z2.T,(-1,32)))
-    return (z1 * (z1 / z2).log()).sum()
+    return kl_divergence(z1, z2)
 
 def compute_cl_loss(mus, labels):
     """
