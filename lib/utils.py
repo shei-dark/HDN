@@ -359,9 +359,11 @@ def get_normalized_tensor(img,model,device):
 #     return (z1 * (z1 / z2).log()).sum()
 
 def metric(z1, z2):
-    z1 = Normal(z1, (0 / 2).exp())
-    z2 = Normal(z2, (0 / 2).exp())
-    return kl_divergence(z1, z2)
+    z1 = Normal(z1, torch.tensor([1.0]).to(torch.device('cuda:0')))
+    z2 = Normal(z2, torch.tensor([1.0]).to(torch.device('cuda:0')))
+    temp = kl_divergence(z1, z2)
+    temp = torch.reshape(temp, (-1, 32))
+    return torch.sum(temp)
 
 def compute_cl_loss(mus, labels):
     """
@@ -410,4 +412,4 @@ def compute_cl_loss(mus, labels):
                     negative_loss += metric(positive_z[i], negative_z[j])
     
     # return (negative_loss - positive_loss)/30000
-    return (positive_loss - negative_loss)/30000
+    return (positive_loss - negative_loss)
