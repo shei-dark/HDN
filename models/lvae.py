@@ -212,7 +212,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss = compute_cl_loss(td_data['mu'], y)
+            cl_loss = compute_cl_loss(td_data['mu'], td_data['logvar'], y)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 

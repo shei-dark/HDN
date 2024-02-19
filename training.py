@@ -146,7 +146,10 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                 recons_loss = outputs['recons_loss']
                 kl_loss = outputs['kl_loss']
                 cl_loss = outputs['cl_loss']
-                loss = recons_loss + kl_loss + cl_loss
+                if model.contrastive_learning is True:
+                    loss = recons_loss + kl_loss + cl_loss
+                else:
+                    loss = recons_loss + kl_loss
                 loss.backward()
 
                 if max_grad_norm is not None:

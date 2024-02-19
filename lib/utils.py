@@ -358,14 +358,25 @@ def get_normalized_tensor(img,model,device):
 #     z2 = torch.exp(torch.reshape(z2.T,(-1,32)))
 #     return (z1 * (z1 / z2).log()).sum()
 
-def metric(z1, z2):
-    z1 = Normal(z1, torch.tensor([1.0]).to(torch.device('cuda:0')))
-    z2 = Normal(z2, torch.tensor([1.0]).to(torch.device('cuda:0')))
-    temp = kl_divergence(z1, z2)
+# def metric(z1, z2):
+#     z1 = Normal(z1, torch.tensor([1.0]).to(torch.device('cuda:0')))
+#     z2 = Normal(z2, torch.tensor([1.0]).to(torch.device('cuda:0')))
+#     temp = kl_divergence(z1, z2)
+#     temp = torch.reshape(temp, (-1, 32))
+#     return torch.sum(temp)
+
+def metric(dis1, dis2):
+    m1, logv1 = dis1
+    m2, logv2 = dis2
+    std1 = (logv1 / 2).exp()
+    std2 = (logv2 / 2).exp()
+    dis1 = Normal(m1, std1)
+    dis2 = Normal(m2, std2)
+    temp = kl_divergence(dis1, dis2)
     temp = torch.reshape(temp, (-1, 32))
     return torch.sum(temp)
 
-def compute_cl_loss(mus, labels):
+def compute_cl_loss(mus, logvars, labels):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size) -> 64/128, 64x64 tensor
@@ -387,16 +398,20 @@ def compute_cl_loss(mus, labels):
         for index in range(len(labels_list)):
             if labels_list[index] == label:
                 positive_index_mask.append(index)
-            elif labels_list[index] != 0:
+            # elif labels_list[index] != 0:
+            #     negative_index_mask.append(index)
+            else:
                 negative_index_mask.append(index)
         for hierarchy_level in range(len(mus)):
-            if hierarchy_level==0 or hierarchy_level==1:
-                from_index = 2**(5-hierarchy_level-1)-4
-                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_index_mask]
-                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_index_mask]
-            else:
-                positive_z = [mus[hierarchy_level][i] for i in positive_index_mask]
-                negative_z = [mus[hierarchy_level][i] for i in negative_index_mask]
+            positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
+            negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
+            # if hierarchy_level==0 or hierarchy_level==1:
+                # from_index = 2**(5-hierarchy_level-1)-4
+                # positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_index_mask]
+                # negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_index_mask]
+            # else:
+            #     positive_z = [mus[hierarchy_level][i] for i in positive_index_mask]
+            #     negative_z = [mus[hierarchy_level][i] for i in negative_index_mask]
         
             res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
             for (a,b) in res:
@@ -411,5 +426,5 @@ def compute_cl_loss(mus, labels):
                     # negative_loss += sum
                     negative_loss += metric(positive_z[i], negative_z[j])
     
-    # return (negative_loss - positive_loss)/30000
-    return (positive_loss - negative_loss)
+    return (negative_loss - positive_loss)/300000
+    # return (positive_loss - negative_loss)/30000
