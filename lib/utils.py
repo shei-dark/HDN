@@ -426,4 +426,4 @@ def compute_cl_loss(mus, logvars, labels):
                     # negative_loss += sum
                     negative_loss += metric(positive_z[i], negative_z[j])
     
-    return positive_loss - negative_loss
+    return positive_loss - torch.clip(negative_loss, max=1e+3)
