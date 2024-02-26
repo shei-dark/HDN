@@ -45,7 +45,10 @@ class NormalStochasticBlock2d(nn.Module):
 
         # Define p(z)
         p_mu, p_lv = p_params.chunk(2, dim=1)
-        p = Normal(p_mu, (p_lv / 2).exp())
+        try:
+            p = Normal(p_mu, (p_lv / 2).exp())
+        except ValueError:
+            print(p_mu.max(), (p_lv / 2).exp().max())
         q_mu, q_lv = None, None
         if q_params is not None:
             # Define q(z)

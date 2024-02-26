@@ -348,10 +348,10 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def metric(z1, z2):
-    z1 = torch.reshape(z1[0].T,(-1,32))
-    z2 = torch.reshape(z2[0].T,(-1,32))
-    return torch.sum(F.cosine_similarity(z1, z2, dim=-1))
+# def metric(z1, z2):
+#     z1 = torch.reshape(z1[0].T,(-1,32))
+#     z2 = torch.reshape(z2[0].T,(-1,32))
+#     return torch.mean(F.cosine_similarity(z1, z2, dim=-1))
 
 # def metric(z1, z2):
 #     z1 = torch.exp(torch.reshape(z1.T,(-1,32)))
@@ -365,16 +365,16 @@ def metric(z1, z2):
 #     temp = torch.reshape(temp, (-1, 32))
 #     return torch.sum(temp)
 
-# def metric(dis1, dis2):
-#     m1, logv1 = dis1
-#     m2, logv2 = dis2
-#     std1 = (logv1 / 2).exp()
-#     std2 = (logv2 / 2).exp()
-#     dis1 = Normal(m1, std1)
-#     dis2 = Normal(m2, std2)
-#     temp = kl_divergence(dis1, dis2)
-#     temp = torch.reshape(temp, (-1, 32))
-#     return torch.sum(temp)
+def metric(dis1, dis2):
+    m1, logv1 = dis1
+    m2, logv2 = dis2
+    std1 = (logv1 / 2).exp()
+    std2 = (logv2 / 2).exp()
+    dis1 = Normal(m1, std1)
+    dis2 = Normal(m2, std2)
+    temp = kl_divergence(dis1, dis2)
+    temp = torch.reshape(temp, (-1, 32))
+    return torch.mean(temp)
 
 def compute_cl_loss(mus, logvars, labels):
     """
@@ -427,3 +427,4 @@ def compute_cl_loss(mus, logvars, labels):
                     negative_loss += metric(positive_z[i], negative_z[j])
     
     return positive_loss - torch.clip(negative_loss, max=1e+3)
+    # return negative_loss - positive_loss
