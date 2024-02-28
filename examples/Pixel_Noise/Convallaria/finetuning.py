@@ -38,12 +38,12 @@ val_y = tiff.imread(path+"val_label.tif")
 test_images = tiff.imread(path+"test_data.tif")
 test_y = tiff.imread(path+"test_label.tif")
 
-model = torch.load("/group/jug/Sheida/HDN_models/22022024/Trained_model_3/model/Contrastive_MAE_best_vae.net")
+model = torch.load("/group/jug/Sheida/HDN_models/27022024/Contrastive_False/model/Contrastive_MAE_best_vae.net")
 model.contrastive_learning=True
 model.to(device)
 
 model_name = "Contrastive_MAE"
-directory_path = "./Finetuned/" 
+directory_path = "./Contrastive_false_finetuned_KL/" 
 
 # Data-specific
 gaussian_noise_std = None
@@ -63,7 +63,7 @@ blocks_per_layer = 5
 mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
-contrastive_learning = True
+# contrastive_learning = True
 
 debug             = False #[True, False]
 save_output       = True #[True, False]

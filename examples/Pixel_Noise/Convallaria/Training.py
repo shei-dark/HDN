@@ -31,7 +31,7 @@ test_images = tiff.imread(path+"test_data.tif")
 test_y = tiff.imread(path+"test_label.tif")
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive_KL/" 
+directory_path = "./Contrastive_cosine_opp/" 
 
 # Data-specific
 gaussian_noise_std = None
