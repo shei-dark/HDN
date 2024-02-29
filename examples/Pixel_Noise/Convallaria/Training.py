@@ -52,6 +52,7 @@ mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
+cl_mode = 'cosine similarity'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
@@ -63,7 +64,7 @@ train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_d
                                                                                            test_batch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,mask_size=mask_size).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size).cuda()
 
 model.train() # Model set in training mode
 

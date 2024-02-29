@@ -348,35 +348,23 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def metric(z1, z2):
+def metric_cs(z1, z2):
     z1 = torch.reshape(z1[0].T,(-1,32))
     z2 = torch.reshape(z2[0].T,(-1,32))
     return torch.mean(F.cosine_similarity(z1, z2, dim=-1))
 
-# def metric(z1, z2):
-#     z1 = torch.exp(torch.reshape(z1.T,(-1,32)))
-#     z2 = torch.exp(torch.reshape(z2.T,(-1,32)))
-#     return (z1 * (z1 / z2).log()).sum()
+def metric_kl(dis1, dis2):
+    m1, logv1 = dis1
+    m2, logv2 = dis2
+    std1 = (logv1 / 2).exp()
+    std2 = (logv2 / 2).exp()
+    dis1 = Normal(m1, std1)
+    dis2 = Normal(m2, std2)
+    temp = kl_divergence(dis1, dis2)
+    temp = torch.reshape(temp, (-1, 32))
+    return torch.mean(temp)
 
-# def metric(z1, z2):
-#     z1 = Normal(z1, torch.tensor([1.0]).to(torch.device('cuda:0')))
-#     z2 = Normal(z2, torch.tensor([1.0]).to(torch.device('cuda:0')))
-#     temp = kl_divergence(z1, z2)
-#     temp = torch.reshape(temp, (-1, 32))
-#     return torch.sum(temp)
-
-# def metric(dis1, dis2):
-#     m1, logv1 = dis1
-#     m2, logv2 = dis2
-#     std1 = (logv1 / 2).exp()
-#     std2 = (logv2 / 2).exp()
-#     dis1 = Normal(m1, std1)
-#     dis2 = Normal(m2, std2)
-#     temp = kl_divergence(dis1, dis2)
-#     temp = torch.reshape(temp, (-1, 32))
-#     return torch.mean(temp)
-
-def compute_cl_loss(mus, logvars, labels):
+def compute_cl_loss(mus, logvars, labels, cl_mode):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size) -> 64/128, 64x64 tensor
@@ -405,12 +393,12 @@ def compute_cl_loss(mus, logvars, labels):
             else:
                 negative_index_mask.append(index)
         for hierarchy_level in range(len(mus)):
-            # positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
-            # negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
             if hierarchy_level==0 or hierarchy_level==1:
                 from_index = 2**(5-hierarchy_level-1)-4
-                positive_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8], logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
-                negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8], logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
+                positive_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
+                               logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
+                negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
+                               logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
             else:
                 positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
                 negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
@@ -419,20 +407,24 @@ def compute_cl_loss(mus, logvars, labels):
             for (a,b) in res:
                 # sum = torch.sum(metric(a,b))
                 # positive_loss += sum
-                positive_loss += metric(a,b)
+                if cl_mode == 'kl divergence':
+                    poitive_loss += metric_kl(a,b)
+                elif cl_mode == 'cosine similarity':
+                    poitive_loss += metric_cs(a,b)
                 num_pos_pair += 1
 
             for i in range(len(positive_z)):
                 for j in range(len(negative_z)):
-                    # sum = torch.sum(metric(positive_z[i], negative_z[j]))
-                    # negative_loss += sum
-                    negative_loss += metric(positive_z[i], negative_z[j])
+                    if cl_mode == 'kl divergence':
+                        negative_loss += metric_kl(positive_z[i], negative_z[j])
+                    elif cl_mode == 'cosine similarity':
+                        negative_loss += metric_cs(positive_z[i], negative_z[j])
                     num_neg_pair += 1
     
-    # return positive_loss - torch.clip(negative_loss, max=1e+3)
-    # return negative_loss - positive_loss
-    if num_neg_pair!=0 and num_pos_pair!=0:
-        return negative_loss/num_neg_pair - positive_loss/num_pos_pair
-    else:
-        return negative_loss - positive_loss
-    # return positive_loss - negative_loss # opposite loss to check
+    if cl_mode == 'kl divergence':
+        return positive_loss - torch.clip(negative_loss, max=1e+3)
+    elif cl_mode == 'cosine similarity':
+        if num_neg_pair!=0 and num_pos_pair!=0:
+            return negative_loss/num_neg_pair - positive_loss/num_pos_pair
+        else:
+            return negative_loss - positive_loss

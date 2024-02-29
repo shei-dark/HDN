@@ -36,11 +36,13 @@ class LadderVAE(nn.Module):
                  analytical_kl=True,
                  mode_pred=False,
                  contrastive_learning=False,
+                 cl_mode = 'cosine similarity',
                  use_uncond_mode_at=[]): # unconditional sampling
         super().__init__()
         self.mask_size = mask_size
         self.color_ch = color_ch
         self.contrastive_learning = contrastive_learning
+        self.cl_mode = cl_mode
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
         self.n_layers = len(self.z_dims)
@@ -212,7 +214,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss = compute_cl_loss(td_data['mu'], td_data['logvar'], y)
+            cl_loss = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 
