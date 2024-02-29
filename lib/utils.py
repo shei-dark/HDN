@@ -348,6 +348,20 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
+def contrastive_loss(z1, z2, target, size_average=True):
+    """Contrastive loss
+    Takes embeddings of two samples and a target label == 1 if samples are from the same class
+      and label == 0 otherwise"""
+    margin = 1e-9
+    eps = 1e-9
+    z1 = torch.reshape(z1[0].T,(-1,32))
+    z2 = torch.reshape(z2[0].T,(-1,32))
+    distances = (z2 - z1).pow(2).sum(1)  # squared distances
+    losses = 0.5 * (target * distances +
+        (1 + -1 * target) * F.relu(margin - (distances + eps).sqrt()).pow(2))
+    return losses.mean() if size_average else losses.sum()
+
+
 def metric_cs(z1, z2):
     z1 = torch.reshape(z1[0].T,(-1,32))
     z2 = torch.reshape(z2[0].T,(-1,32))
@@ -405,12 +419,12 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
         
             res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
             for (a,b) in res:
-                # sum = torch.sum(metric(a,b))
-                # positive_loss += sum
                 if cl_mode == 'kl divergence':
-                    poitive_loss += metric_kl(a,b)
+                    positive_loss += metric_kl(a,b)
                 elif cl_mode == 'cosine similarity':
-                    poitive_loss += metric_cs(a,b)
+                    positive_loss += metric_cs(a,b)
+                elif cl_mode == 'euclidean distance':
+                    positive_loss += contrastive_loss(a,b,target=1)
                 num_pos_pair += 1
 
             for i in range(len(positive_z)):
@@ -419,6 +433,8 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
                         negative_loss += metric_kl(positive_z[i], negative_z[j])
                     elif cl_mode == 'cosine similarity':
                         negative_loss += metric_cs(positive_z[i], negative_z[j])
+                    elif cl_mode == 'euclidean distance':
+                        negative_loss += contrastive_loss(positive_z[i], negative_z[j], target=0)
                     num_neg_pair += 1
     
     if cl_mode == 'kl divergence':
@@ -428,3 +444,8 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
             return negative_loss/num_neg_pair - positive_loss/num_pos_pair
         else:
             return negative_loss - positive_loss
+    elif cl_mode == 'euclidean distance':
+        if num_neg_pair!=0 and num_pos_pair!=0:
+            return  positive_loss/num_pos_pair - negative_loss/num_neg_pair
+        else:
+            return positive_loss - negative_loss
