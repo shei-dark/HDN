@@ -392,6 +392,8 @@ def compute_cl_loss(mus, logvars, labels):
     unique_labels = list(set(labels_list) - set([0]))
     positive_loss = 0
     negative_loss = 0 
+    num_pos_pair = 0
+    num_neg_pair = 0
     for label in unique_labels:
         positive_index_mask = []
         negative_index_mask = []
@@ -418,14 +420,19 @@ def compute_cl_loss(mus, logvars, labels):
                 # sum = torch.sum(metric(a,b))
                 # positive_loss += sum
                 positive_loss += metric(a,b)
-                
+                num_pos_pair += 1
 
             for i in range(len(positive_z)):
                 for j in range(len(negative_z)):
                     # sum = torch.sum(metric(positive_z[i], negative_z[j]))
                     # negative_loss += sum
                     negative_loss += metric(positive_z[i], negative_z[j])
+                    num_neg_pair += 1
     
     # return positive_loss - torch.clip(negative_loss, max=1e+3)
     # return negative_loss - positive_loss
-    return positive_loss - negative_loss # opposite loss to check
+    if num_neg_pair!=0 and num_pos_pair!=0:
+        return negative_loss/num_neg_pair - positive_loss/num_pos_pair
+    else:
+        return negative_loss - positive_loss
+    # return positive_loss - negative_loss # opposite loss to check
