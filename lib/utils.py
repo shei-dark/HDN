@@ -446,6 +446,6 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
             return negative_loss - positive_loss
     elif cl_mode == 'euclidean distance':
         if num_neg_pair!=0 and num_pos_pair!=0:
-            return  positive_loss/num_pos_pair - negative_loss/num_neg_pair
+            return  positive_loss/num_pos_pair + negative_loss/num_neg_pair
         else:
-            return positive_loss - negative_loss
+            return positive_loss + negative_loss
