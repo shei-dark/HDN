@@ -31,7 +31,7 @@ test_images = tiff.imread(path+"test_data.tif")
 test_y = tiff.imread(path+"test_label.tif")
 
 model_name = "Contrastive_MAE"
-directory_path = "./Different_CL_higher_weight/" 
+directory_path = "./Triplet_and_cosine/" 
 
 # Data-specific
 gaussian_noise_std = None
@@ -52,7 +52,7 @@ mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
-cl_mode = 'euclidean distance'
+cl_mode = 'triplet and cosine'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
@@ -71,5 +71,5 @@ model.train() # Model set in training mode
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
                        train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=30, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-3)
+                       model_name=model_name,val_loss_patience=30, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-5)
 

@@ -378,6 +378,26 @@ def metric_kl(dis1, dis2):
     temp = torch.reshape(temp, (-1, 32))
     return torch.mean(temp)
 
+def triplet_loss(anchor, pos, neg):
+    margin = 1e-2
+    num_pos = 0
+    num_neg = 0
+    positive_distance = 0
+    negative_distance = 0
+    for pos_sample in pos:
+        positive_distance = (anchor - pos_sample[0]).pow(2).sum(-1)
+        num_pos +=1
+    if num_pos != 0:
+        positive_distance = positive_distance/num_pos
+        positive_distance = positive_distance.mean()
+    for neg_sample in neg:
+        negative_distance = (anchor - neg_sample[0]).pow(2).sum(-1)
+        num_neg += 1
+    if num_neg != 0:
+        negative_distance = negative_distance/num_neg
+        negative_distance = negative_distance.mean()
+    return(F.relu(positive_distance - negative_distance + margin))
+
 def compute_cl_loss(mus, logvars, labels, cl_mode):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
@@ -396,6 +416,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     negative_loss = 0 
     num_pos_pair = 0
     num_neg_pair = 0
+    tripletloss = 0
     for label in unique_labels:
         positive_index_mask = []
         negative_index_mask = []
@@ -417,25 +438,31 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
                 positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
                 negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
         
-            res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
-            for (a,b) in res:
-                if cl_mode == 'kl divergence':
-                    positive_loss += metric_kl(a,b)
-                elif cl_mode == 'cosine similarity':
-                    positive_loss += metric_cs(a,b)
-                elif cl_mode == 'euclidean distance':
-                    positive_loss += contrastive_loss(a,b,target=1)
-                num_pos_pair += 1
-
-            for i in range(len(positive_z)):
-                for j in range(len(negative_z)):
+            if cl_mode == 'triplet loss' or cl_mode == 'triplet and cosine':
+                for indx in range(len(positive_z)):
+                    anchor = positive_z[indx][0] #index in batch, mu, first sample in batch
+                    # positive_z shape number of samples in batch, 2, 8, 8, 32
+                    tripletloss += triplet_loss(anchor, positive_z, negative_z)
+            elif cl_mode == 'triplet and cosine':
+                res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
+                for (a,b) in res:
                     if cl_mode == 'kl divergence':
-                        negative_loss += metric_kl(positive_z[i], negative_z[j])
+                        positive_loss += metric_kl(a,b)
                     elif cl_mode == 'cosine similarity':
-                        negative_loss += metric_cs(positive_z[i], negative_z[j])
-                    elif cl_mode == 'euclidean distance':
-                        negative_loss += contrastive_loss(positive_z[i], negative_z[j], target=0)
-                    num_neg_pair += 1
+                        positive_loss += metric_cs(a,b)
+                    elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
+                        positive_loss += contrastive_loss(a,b,target=1)
+                    num_pos_pair += 1
+
+                for i in range(len(positive_z)):
+                    for j in range(len(negative_z)):
+                        if cl_mode == 'kl divergence':
+                            negative_loss += metric_kl(positive_z[i], negative_z[j])
+                        elif cl_mode == 'cosine similarity':
+                            negative_loss += metric_cs(positive_z[i], negative_z[j])
+                        elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
+                            negative_loss += contrastive_loss(positive_z[i], negative_z[j], target=0)
+                        num_neg_pair += 1
     
     if cl_mode == 'kl divergence':
         return positive_loss - torch.clip(negative_loss, max=1e+3)
@@ -449,3 +476,10 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
             return  positive_loss/num_pos_pair + negative_loss/num_neg_pair
         else:
             return positive_loss + negative_loss
+    elif cl_mode == 'triplet loss':
+        return tripletloss
+    elif cl_mode == 'triplet and cosine':
+        if num_neg_pair!=0 and num_pos_pair!=0:
+            return negative_loss/num_neg_pair - positive_loss/num_pos_pair + tripletloss
+        else:
+            return negative_loss - positive_loss + tripletloss
