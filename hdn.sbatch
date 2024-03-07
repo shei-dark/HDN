@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=Triplet_and_cosine.log
+#SBATCH --output=torhc_Triplet.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=16GB
+#SBATCH --mem=32GB
 #SBATCH --ntasks=1
 #SBATCH --job-name=hdn
 #SBATCH --time=30:00:00
