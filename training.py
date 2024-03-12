@@ -227,6 +227,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                     patience_ = 0
                     print('saving',model_folder+model_name+"_best_vae.net")
                     torch.save(model, model_folder+model_name+"_best_vae.net")
+                    torch.save(model.state_dict(), model_folder+str(epoch)+".net")
                 else:
                     patience_ +=1
 

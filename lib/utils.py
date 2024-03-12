@@ -361,6 +361,11 @@ def contrastive_loss(z1, z2, target, size_average=True):
         (1 + -1 * target) * F.relu(margin - (distances + eps).sqrt()).pow(2))
     return losses.mean() if size_average else losses.sum()
 
+def metric_ed(z1, z2):
+    z1 = torch.reshape(z1.T,(-1,32))
+    z2 = torch.reshape(z2.T,(-1,32))
+    distances = (z2 - z1).pow(2).mean(0)
+    return torch.norm(distances)
 
 def metric_cs(z1, z2):
     z1 = torch.reshape(z1[0].T,(-1,32))
@@ -408,6 +413,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     mus: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size) -> 64/128, 64x64 tensor
     """
+    margin = 1
     labels_list = [0 for i in range(len(labels))]
     for index, label in enumerate(labels):
         # all pixels in 4x4 centre have same label
@@ -417,77 +423,100 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
                 labels_list[index] = int(torch.unique(centre)[0])
 
     unique_labels = list(set(labels_list) - set([0]))
-    positive_loss = 0
-    negative_loss = 0 
+    # positive_loss = 0
+    # negative_loss = 0 
+    positive_loss = []
+    negative_loss = []
     num_pos_pair = 0
     num_neg_pair = 0
     tripletloss = 0
     for label in unique_labels:
         positive_index_mask = []
         negative_index_mask = []
-        torch_triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2, eps=1e-7, reduction='mean')
+        # torch_triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2, eps=1e-7, reduction='mean')
         for index in range(len(labels_list)):
             if labels_list[index] == label:
                 positive_index_mask.append(index)
-            # elif labels_list[index] != 0:
-            #     negative_index_mask.append(index)
-            else:
+            elif labels_list[index] != 0:
                 negative_index_mask.append(index)
+            # else:
+            #     negative_index_mask.append(index)
         for hierarchy_level in range(len(mus)):
             if hierarchy_level==0 or hierarchy_level==1:
                 from_index = 2**(5-hierarchy_level-1)-4
-                positive_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
-                               logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
-                negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
-                               logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
+                # positive_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
+                #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
+                # negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
+                #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
+                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_index_mask]
+                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_index_mask]
             else:
-                positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
-                negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
+                positive_z = [mus[hierarchy_level][i] for i in positive_index_mask]
+                negative_z = [mus[hierarchy_level][i] for i in negative_index_mask]
         
-            if cl_mode == 'triplet loss' or cl_mode == 'triplet and cosine':
-                for indx in range(len(positive_z)):
-                    anchor = positive_z[indx][0] #index in batch, mu, first sample in batch
-                    # positive_z shape number of samples in batch, 2, 8, 8, 32
-                    # tripletloss += triplet_loss(anchor, positive_z, negative_z)
-                    tripletloss += triplet_loss(anchor, positive_z, negative_z, torch_triplet_loss)
-
-            if cl_mode == 'triplet and cosine': #TODO fix this conditions
+            if cl_mode == 'min max':
                 res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
                 for (a,b) in res:
-                    if cl_mode == 'kl divergence':
-                        positive_loss += metric_kl(a,b)
-                    elif cl_mode == 'cosine similarity':
-                        positive_loss += metric_cs(a,b)
-                    elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
-                        positive_loss += contrastive_loss(a,b,target=1)
+                    positive_loss.append(metric_ed(a,b))
                     num_pos_pair += 1
-
                 for i in range(len(positive_z)):
                     for j in range(len(negative_z)):
-                        if cl_mode == 'kl divergence':
-                            negative_loss += metric_kl(positive_z[i], negative_z[j])
-                        elif cl_mode == 'cosine similarity':
-                            negative_loss += metric_cs(positive_z[i], negative_z[j])
-                        elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
-                            negative_loss += contrastive_loss(positive_z[i], negative_z[j], target=0)
+                        negative_loss.append(metric_ed(positive_z[i],negative_z[j]))
                         num_neg_pair += 1
+                max_pos = 0
+                min_neg = 0
+                positive_loss = [a.max() for a in positive_loss]
+                negative_loss = [b.min() for b in negative_loss]
+                if num_pos_pair > 0:
+                    max_pos = max(positive_loss)
+                if num_neg_pair > 0:
+                    min_neg = min(negative_loss)
+                tripletloss += max_pos - min_neg + margin
+    return tripletloss
+            # if cl_mode == 'triplet loss' or cl_mode == 'triplet and cosine':
+            #     for indx in range(len(positive_z)):
+            #         anchor = positive_z[indx][0] #index in batch, mu, first sample in batch
+            #         # positive_z shape number of samples in batch, 2, 8, 8, 32
+            #         # tripletloss += triplet_loss(anchor, positive_z, negative_z)
+            #         tripletloss += triplet_loss(anchor, positive_z, negative_z, torch_triplet_loss)
+
+            # if cl_mode == 'triplet and cosine': #TODO fix this conditions
+            #     res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
+            #     for (a,b) in res:
+            #         if cl_mode == 'kl divergence':
+            #             positive_loss += metric_kl(a,b)
+            #         elif cl_mode == 'cosine similarity':
+            #             positive_loss += metric_cs(a,b)
+            #         elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
+            #             positive_loss += contrastive_loss(a,b,target=1)
+            #         num_pos_pair += 1
+
+            #     for i in range(len(positive_z)):
+            #         for j in range(len(negative_z)):
+            #             if cl_mode == 'kl divergence':
+            #                 negative_loss += metric_kl(positive_z[i], negative_z[j])
+            #             elif cl_mode == 'cosine similarity':
+            #                 negative_loss += metric_cs(positive_z[i], negative_z[j])
+            #             elif cl_mode == 'euclidean distance' or cl_mode == 'triplet and cosine':
+            #                 negative_loss += contrastive_loss(positive_z[i], negative_z[j], target=0)
+            #             num_neg_pair += 1
     
-    if cl_mode == 'kl divergence':
-        return positive_loss - torch.clip(negative_loss, max=1e+3)
-    elif cl_mode == 'cosine similarity':
-        if num_neg_pair!=0 and num_pos_pair!=0:
-            return negative_loss/num_neg_pair - positive_loss/num_pos_pair
-        else:
-            return negative_loss - positive_loss
-    elif cl_mode == 'euclidean distance':
-        if num_neg_pair!=0 and num_pos_pair!=0:
-            return  positive_loss/num_pos_pair + negative_loss/num_neg_pair
-        else:
-            return positive_loss + negative_loss
-    elif cl_mode == 'triplet loss':
-        return tripletloss
-    elif cl_mode == 'triplet and cosine':
-        if num_neg_pair!=0 and num_pos_pair!=0:
-            return negative_loss/num_neg_pair - positive_loss/num_pos_pair + tripletloss
-        else:
-            return negative_loss - positive_loss + tripletloss
+    # if cl_mode == 'kl divergence':
+    #     return positive_loss - torch.clip(negative_loss, max=1e+3)
+    # elif cl_mode == 'cosine similarity':
+    #     if num_neg_pair!=0 and num_pos_pair!=0:
+    #         return negative_loss/num_neg_pair - positive_loss/num_pos_pair
+    #     else:
+    #         return negative_loss - positive_loss
+    # elif cl_mode == 'euclidean distance':
+    #     if num_neg_pair!=0 and num_pos_pair!=0:
+    #         return  positive_loss/num_pos_pair + negative_loss/num_neg_pair
+    #     else:
+    #         return positive_loss + negative_loss
+    # elif cl_mode == 'triplet loss':
+    #     return tripletloss
+    # elif cl_mode == 'triplet and cosine':
+    #     if num_neg_pair!=0 and num_pos_pair!=0:
+    #         return negative_loss/num_neg_pair - positive_loss/num_pos_pair + tripletloss
+    #     else:
+    #         return negative_loss - positive_loss + tripletloss

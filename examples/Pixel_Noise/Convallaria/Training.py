@@ -31,7 +31,7 @@ test_images = tiff.imread(path+"test_data.tif")
 test_y = tiff.imread(path+"test_label.tif")
 
 model_name = "Contrastive_MAE"
-directory_path = "./Triplet/" 
+directory_path = "./without_CL/" 
 
 # Data-specific
 gaussian_noise_std = None
@@ -51,8 +51,8 @@ blocks_per_layer = 5
 mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
-contrastive_learning = True
-cl_mode = 'triplet loss'
+contrastive_learning = False
+cl_mode = 'min max'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]

@@ -193,7 +193,7 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x, y, x_orig=None):
+    def forward(self, x, y, x_orig=None, model_layers=None):
         img_size = x.size()[2:]
 
         # Pad input to make everything easier with conv strides
@@ -203,7 +203,7 @@ class LadderVAE(nn.Module):
         bu_values = self.bottomup_pass(x_pad)
 
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(bu_values)
+        out, td_data = self.topdown_pass(bu_values, model_layers=model_layers)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # TODO: masking - put 0 in the centre
@@ -270,16 +270,16 @@ class LadderVAE(nn.Module):
     def topdown_pass(self,
                      bu_values=None,
                      n_img_prior=None,
-                     mode_layers=None,
+                     model_layers=None,
                      constant_layers=None,
                      forced_latent=None):
 
         # Default: no layer is sampled from the distribution's mode
-        if mode_layers is None:
-            mode_layers = []
+        if model_layers is None:
+            model_layers = []
         if constant_layers is None:
             constant_layers = []
-        prior_experiment = len(mode_layers) > 0 or len(constant_layers) > 0
+        prior_experiment = len(model_layers) > 0 or len(constant_layers) > 0
 
         # If the bottom-up inference values are not given, don't do
         # inference, sample from prior instead
@@ -290,10 +290,10 @@ class LadderVAE(nn.Module):
             msg = ("Number of images for top-down generation has to be given "
                    "if and only if we're not doing inference")
             raise RuntimeError(msg)
-        if inference_mode and prior_experiment:
-            msg = ("Prior experiments (e.g. sampling from mode) are not"
-                   " compatible with inference mode")
-            raise RuntimeError(msg)
+        # if inference_mode and prior_experiment:
+        #     msg = ("Prior experiments (e.g. sampling from mode) are not"
+        #            " compatible with inference mode")
+        #     raise RuntimeError(msg)
 
         # Sampled latent variables at each layer
         z = [None] * self.n_layers
@@ -324,7 +324,7 @@ class LadderVAE(nn.Module):
                 bu_value = None
 
             # Whether the current layer should be sampled from the mode
-            use_mode = i in mode_layers
+            use_mode = i in model_layers
             constant_out = i in constant_layers
             use_uncond_mode = i in self.use_uncond_mode_at
 
@@ -401,11 +401,11 @@ class LadderVAE(nn.Module):
 
         return padded_size
 
-    def sample_prior(self, n_imgs, mode_layers=None, constant_layers=None):
+    def sample_prior(self, n_imgs, model_layers, constant_layers=None):
 
         # Generate from prior
         out, _ = self.topdown_pass(n_img_prior=n_imgs,
-                                   mode_layers=mode_layers,
+                                   model_layers=model_layers,
                                    constant_layers=constant_layers)
         out = crop_img_tensor(out, self.img_shape)
 
