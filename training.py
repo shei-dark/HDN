@@ -28,7 +28,7 @@ import random
 def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader, test_loader, 
                   virtual_batch, gaussian_noise_std, model_name, 
                   test_log_every=1000, directory_path="./",
-                  val_loss_patience=100, nrows=4, max_grad_norm=None, debug=False, project_name="", save_output=True, batch_size=8, cl_w = 1e-7):
+                  val_loss_patience=100, nrows=4, max_grad_norm=None, debug=False, project_name="", save_output=True, batch_size=8, cl_w = 1e-7, kl_w = 1):
     
     """Train Hierarchical DivNoising network. 
     Parameters
@@ -89,6 +89,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
     step_counter = 0
     epoch = 0
     cl_w = cl_w
+    kl_w = kl_w
     
     patience_ = 0
     first_step = True
@@ -113,7 +114,9 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
         running_reconstruction_loss = []
         running_kl_loss = []
         running_cl_loss = []
-        
+        if epoch % 10 == 0 and epoch <=50:
+            cl_w *= 10
+            kl_w /= 10
         for batch_idx, (x, y) in enumerate(train_loader):
             step_counter=batch_idx
             x = x.unsqueeze(1) # Remove for RGB
@@ -148,7 +151,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                 kl_loss = outputs['kl_loss']
                 cl_loss = outputs['cl_loss']
                 if model.contrastive_learning is True:
-                    loss = recons_loss + kl_loss + cl_w * cl_loss
+                    loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
                 else:
                     loss = recons_loss + kl_loss 
                 loss.backward()
@@ -212,7 +215,7 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                         val_recons_loss = val_outputs['recons_loss']
                         val_kl_loss = val_outputs['kl_loss']
                         val_cl_loss = val_outputs['cl_loss']
-                        val_loss = val_recons_loss + val_kl_loss + cl_w * val_cl_loss
+                        val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
                 model.train()
 
@@ -227,9 +230,12 @@ def train_network(model, lr, max_epochs,steps_per_epoch,train_loader, val_loader
                     patience_ = 0
                     print('saving',model_folder+model_name+"_best_vae.net")
                     torch.save(model, model_folder+model_name+"_best_vae.net")
-                    torch.save(model.state_dict(), model_folder+str(epoch)+".net")
+                    
                 else:
                     patience_ +=1
+
+                if epoch % 10 == 0:
+                    torch.save(model.state_dict(), model_folder+"scheduled_weight_"+str(epoch)+".net")
 
                 print("Patience:", patience_,
                       "Validation Loss:", total_epoch_loss_val.item(),
