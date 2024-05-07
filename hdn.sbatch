@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=con_min_max.log
+#SBATCH --output=output.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
@@ -9,7 +9,7 @@
 #SBATCH --mem=16GB
 #SBATCH --ntasks=1
 #SBATCH --job-name=hdn
-#SBATCH --time=50:00:00
+#SBATCH --time=30:00:00
 
 source $HOME/.bashrc
 conda activate maester

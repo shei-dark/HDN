@@ -96,28 +96,49 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     x_mask[:,:,30:34,30:34] = 0
     model_out = model(x_mask,y,x)
     if model.mode_pred is False:
-        recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
-        kl_sep = model_out['kl_sep']
-        kl = model_out['kl']
-        kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
-        
-        if gaussian_noise_std is None:
-            recons_loss = recons_sep.mean()
+        if model.use_non_stochastic:
+            recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
+            
+            if gaussian_noise_std is None:
+                recons_loss = recons_sep.mean()
+            else:
+                recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
+    
+            cl_loss = model_out['cl_loss']
+            # cl_loss = cl_loss.mean()
+            
+            output = {
+                    'recons_loss': recons_loss,
+                    'kl_loss': None,
+                    'cl_loss': cl_loss,
+                    'out_mean': model_out['out_mean'],
+                    'out_sample': model_out['out_sample'],
+                    'mu': model_out['mu'],
+                    'logvar': model_out['logvar']
+                }
         else:
-            recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
- 
-        cl_loss = model_out['cl_loss']
-        # cl_loss = cl_loss.mean()
-        
-        output = {
-                'recons_loss': recons_loss,
-                'kl_loss': kl_loss,
-                'cl_loss': cl_loss,
-                'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample'],
-                'mu': model_out['mu'],
-                'logvar': model_out['logvar']
-            }
+            recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
+            kl_sep = model_out['kl_sep']
+            kl = model_out['kl']
+            kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
+            
+            if gaussian_noise_std is None:
+                recons_loss = recons_sep.mean()
+            else:
+                recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
+    
+            cl_loss = model_out['cl_loss']
+            # cl_loss = cl_loss.mean()
+            
+            output = {
+                    'recons_loss': recons_loss,
+                    'kl_loss': kl_loss,
+                    'cl_loss': cl_loss,
+                    'out_mean': model_out['out_mean'],
+                    'out_sample': model_out['out_sample'],
+                    'mu': model_out['mu'],
+                    'logvar': model_out['logvar']
+                }
 
     else:
         output = {

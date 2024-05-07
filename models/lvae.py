@@ -35,6 +35,7 @@ class LadderVAE(nn.Module):
                  no_initial_downscaling=True,
                  analytical_kl=True,
                  mode_pred=False,
+                 use_non_stochastic=False,
                  contrastive_learning=False,
                  cl_mode = 'cosine similarity',
                  use_uncond_mode_at=[]): # unconditional sampling
@@ -59,6 +60,7 @@ class LadderVAE(nn.Module):
         self.data_std = torch.Tensor([data_std]).to(self.device)
         self.noiseModel = noiseModel
         self.mode_pred=mode_pred
+        self.use_non_stochastic=use_non_stochastic
         self.use_uncond_mode_at=use_uncond_mode_at
         self._global_step = 0
         
@@ -155,6 +157,7 @@ class LadderVAE(nn.Module):
                     res_block_type=res_block_type,
                     gated=gated,
                     analytical_kl=analytical_kl,
+                    use_non_stochastic=use_non_stochastic,
                 ))
 
         # Final top-down layer
@@ -218,7 +221,7 @@ class LadderVAE(nn.Module):
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 
-        if self.mode_pred is False:
+        if self.mode_pred is False and self.use_non_stochastic is False:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data['kl']],
@@ -349,7 +352,7 @@ class LadderVAE(nn.Module):
             kl_spatial[i] = aux['kl_spatial']  # (batch, h, w)
             mu[i] = aux['mu']
             logvar[i] = aux['logvar']
-            if self.mode_pred is False:
+            if self.mode_pred is False and self.use_non_stochastic is False:
                 logprob_p += aux['logprob_p'].mean()  # mean over batch
             else:
                 logprob_p = None

@@ -31,7 +31,7 @@ test_images = tiff.imread(path+"test_data.tif")
 test_y = tiff.imread(path+"test_label.tif")
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive_min_max/" 
+directory_path = "./Contrastive/" 
 
 # Data-specific
 gaussian_noise_std = None
@@ -45,7 +45,7 @@ steps_per_epoch=400
 test_batch_size=100
 
 # Model-specific
-num_latents = 5
+num_latents = 1
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
 mask_size = 4
@@ -56,6 +56,7 @@ cl_mode = 'min max'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
+use_non_stochastic = True
 project           = 'Contrastive_MAE'
 img_shape = (64,64)
 
@@ -64,12 +65,12 @@ train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_d
                                                                                            test_batch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic).cuda()
 
 model.train() # Model set in training mode
 
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
                        train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=30, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-5, kl_w = 1)
+                       model_name=model_name,val_loss_patience=30, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-4, kl_w = 1)
 

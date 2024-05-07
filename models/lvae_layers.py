@@ -3,7 +3,7 @@ from torch import nn
 
 from lib.nn import ResidualBlock, ResidualGatedBlock
 from lib.stochastic import NormalStochasticBlock2d
-
+from lib.non_stochastic import NonStochasticBlock2d
 
 class TopDownLayer(nn.Module):
     """
@@ -41,6 +41,7 @@ class TopDownLayer(nn.Module):
                  gated=None,
                  learn_top_prior=False,
                  top_prior_param_shape=None,
+                 use_non_stochastic = False,
                  analytical_kl=False):
 
         super().__init__()
@@ -50,6 +51,7 @@ class TopDownLayer(nn.Module):
         self.stochastic_skip = stochastic_skip
         self.learn_top_prior = learn_top_prior
         self.analytical_kl = analytical_kl
+        self.use_non_stochastic = use_non_stochastic
 
         # Define top layer prior parameters, possibly learnable
         if is_top_layer:
@@ -82,12 +84,20 @@ class TopDownLayer(nn.Module):
         self.deterministic_block = nn.Sequential(*block_list)
 
         # Define stochastic block with 2d convolutions
-        self.stochastic = NormalStochasticBlock2d(
-            c_in=n_filters,
-            c_vars=z_dim,
-            c_out=n_filters,
-            transform_p_params=(not is_top_layer),
-        )
+        if self.use_non_stochastic:
+            self.stochastic = NonStochasticBlock2d(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                transform_p_params=(not is_top_layer),
+            )
+        else:
+            self.stochastic = NormalStochasticBlock2d(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                transform_p_params=(not is_top_layer),
+            )
 
         if not is_top_layer:
 

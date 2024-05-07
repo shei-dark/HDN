@@ -389,7 +389,7 @@ def triplet_loss(anchor, pos, neg):
     #     for neg_sample in neg:
     #         loss += torchtripletloss(anchor, pos_sample[0],neg_sample[0])
     # return loss
-    margin = 1
+    margin = 0
     num_pos = 0
     num_neg = 0
     positive_distance = 0
