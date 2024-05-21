@@ -411,16 +411,18 @@ def triplet_loss(anchor, pos, neg):
 def compute_cl_loss(mus, logvars, labels, cl_mode):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
-    labels: (batch_size) -> 64/128, 64x64 tensor
+    logvars: (hierarchy levels, batch_size, C, H, W) list
+    labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
     margin = 1
-    labels_list = [0 for i in range(len(labels))]
-    for index, label in enumerate(labels):
+    labels_list = [0 for _ in range(len(labels))]
+    for index, batch_label in enumerate(labels):
         # all pixels in 4x4 centre have same label
-        centre = label[30:34,30:34]
-        if 0 not in torch.unique(centre):
-            if len(torch.unique(centre))==1:
-                labels_list[index] = int(torch.unique(centre)[0])
+        centre = batch_label[30:34,30:34]
+
+        unique_center = torch.unique(centre)
+        if 0 not in unique_center and len(unique_center)==1:
+                labels_list[index] = int(unique_center[0])
 
     unique_labels = list(set(labels_list) - set([0]))
     # positive_loss = 0
@@ -430,15 +432,15 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     num_pos_pair = 0
     num_neg_pair = 0
     tripletloss = 0
-    for label in unique_labels:
-        positive_index_mask = []
-        negative_index_mask = []
+    for batch_label in unique_labels:
+        positive_mask_indices = []
+        negative_mask_indices = []
         # torch_triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2, eps=1e-7, reduction='mean')
         for index in range(len(labels_list)):
-            if labels_list[index] == label:
-                positive_index_mask.append(index)
+            if labels_list[index] == batch_label:
+                positive_mask_indices.append(index)
             elif labels_list[index] != 0:
-                negative_index_mask.append(index)
+                negative_mask_indices.append(index)
             # else:
             #     negative_index_mask.append(index)
         for hierarchy_level in range(len(mus)):
@@ -448,23 +450,27 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
                 #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
                 # negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
                 #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
-                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_index_mask]
-                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_index_mask]
+                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_mask_indices]
+                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_mask_indices]
             else:
                 # positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
                 # negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
-                positive_z = [mus[hierarchy_level][i] for i in positive_index_mask]
-                negative_z = [mus[hierarchy_level][i] for i in negative_index_mask]
+                positive_z = [mus[hierarchy_level][i] for i in positive_mask_indices]
+                negative_z = [mus[hierarchy_level][i] for i in negative_mask_indices]
         
             if cl_mode == 'min max':
                 res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]
+                # for (a,b) in itertools.combinations(collection, 2): TODO try out on a toy example, it might be faster and easier to read
+                
                 for (a,b) in res:
                     positive_loss.append(metric_ed(a,b))
                     num_pos_pair += 1
+                
                 for i in range(len(positive_z)):
                     for j in range(len(negative_z)):
                         negative_loss.append(metric_ed(positive_z[i],negative_z[j]))
                         num_neg_pair += 1
+                        
                 max_pos = 0
                 min_neg = 0
                 positive_loss = [a.max() for a in positive_loss]

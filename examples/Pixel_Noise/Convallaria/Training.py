@@ -21,17 +21,25 @@ import glob
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+# path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+path = "/localscratch/"
 patch_size = 64
-train_images = tiff.imread(path+"train_data.tif")
-train_y = tiff.imread(path+"train_label.tif")
-val_images = tiff.imread(path+"val_data.tif")
-val_y = tiff.imread(path+"val_label.tif")
-test_images = tiff.imread(path+"test_data.tif")
-test_y = tiff.imread(path+"test_label.tif")
+
+paths = sorted(glob.glob(path+"training/img/*.tif"))
+train_images = tiff.imread(paths)
+paths = sorted(glob.glob(path+"training/mask/*.tif"))
+train_y = np.array(tiff.imread(paths), dtype=np.int32)
+paths = sorted(glob.glob(path+"validation/img/*.tif"))
+val_images = tiff.imread(paths)
+paths = sorted(glob.glob(path+"validation/mask/*.tif"))
+val_y = np.array(tiff.imread(paths), dtype=np.int32)
+paths = sorted(glob.glob(path+"testing/img/*.tif"))
+test_images = tiff.imread(paths)
+paths = sorted(glob.glob(path+"testing/mask/*.tif"))
+test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive/" 
+directory_path = "./Contrastive_new_dataloader/" 
 
 # Data-specific
 gaussian_noise_std = None
@@ -45,7 +53,7 @@ steps_per_epoch=400
 test_batch_size=100
 
 # Model-specific
-num_latents = 1
+num_latents = 3
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
 mask_size = 4
@@ -56,7 +64,7 @@ cl_mode = 'min max'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
-use_non_stochastic = True
+use_non_stochastic = False
 project           = 'Contrastive_MAE'
 img_shape = (64,64)
 

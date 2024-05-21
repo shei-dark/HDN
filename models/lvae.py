@@ -27,7 +27,7 @@ class LadderVAE(nn.Module):
                  n_filters=64,
                  dropout=0.2,
                  free_bits=0.0,
-                 mask_size=5,
+                 mask_size=4,
                  learn_top_prior=True,
                  img_shape=None,
                  res_block_type='bacdbacd',

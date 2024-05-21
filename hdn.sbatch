@@ -12,7 +12,7 @@
 #SBATCH --time=30:00:00
 
 source $HOME/.bashrc
-conda activate maester
+conda activate /home/sheida.rahnamai/miniconda3/envs/maester
 # jupyter notebook --no-browser --port=8800 --ip 0.0.0.0 
 
 cd examples/Pixel_Noise/Convallaria
