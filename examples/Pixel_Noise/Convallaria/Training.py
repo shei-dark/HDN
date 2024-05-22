@@ -21,8 +21,8 @@ import glob
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
-path = "/localscratch/"
+path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+# path = "/localscratch/"
 patch_size = 64
 
 paths = sorted(glob.glob(path+"training/img/*.tif"))

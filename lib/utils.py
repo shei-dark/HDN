@@ -450,13 +450,13 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
                 #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in positive_index_mask]
                 # negative_z = [[mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8],
                 #                logvars[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8]] for i in negative_index_mask]
-                positive_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in positive_mask_indices]
-                negative_z = [mus[hierarchy_level][i][from_index:from_index+8, from_index:from_index+8] for i in negative_mask_indices]
+                positive_z = [mus[hierarchy_level][i][:,from_index:from_index+8, from_index:from_index+8] for i in positive_mask_indices]
+                negative_z = [mus[hierarchy_level][i][:,from_index:from_index+8, from_index:from_index+8] for i in negative_mask_indices]
             else:
                 # positive_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in positive_index_mask]
                 # negative_z = [[mus[hierarchy_level][i], logvars[hierarchy_level][i]] for i in negative_index_mask]
-                positive_z = [mus[hierarchy_level][i] for i in positive_mask_indices]
-                negative_z = [mus[hierarchy_level][i] for i in negative_mask_indices]
+                positive_z = [mus[hierarchy_level][i][:] for i in positive_mask_indices]
+                negative_z = [mus[hierarchy_level][i][:] for i in negative_mask_indices]
         
             if cl_mode == 'min max':
                 res = [(a, b) for idx, a in enumerate(positive_z) for b in positive_z[idx + 1:]]

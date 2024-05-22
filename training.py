@@ -78,21 +78,27 @@ def train_network(
     max_grad_norm: float
         Value to limit/clamp the gradients at.
     """
-    # if debug == False:
-    #     use_wandb = True
-    # else:
-    #     use_wandb = False
+    wandb.login()
+    if debug == False:
+        use_wandb = True
+    else:
+        use_wandb = False
 
-    # experiment = wandb.init(project = project_name,
-    #                             resume = 'allow',
-    #                             anonymous = 'must',
-    #                             mode = 'online',
-    #                             reinit = True,
-    #                             save_code = True)
+    if use_wandb:
+        run = wandb.init(
+        # Set the project where this run will be logged
+        project=project_name,
+        # Track hyperparameters and run metadata
+        config={
+            "learning_rate": lr,
+            "epochs": max_epochs,
+            "batch_size": batch_size,
+            "contrastive_learning_weight": cl_w,
+            "KLD weight": kl_w,
+        },
+        )
 
-    # experiment.config.update(dict(epochs=max_epochs,batch_size=batch_size,))
-
-    # wandb.run.log_code(("."), include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"))
+        # run.config.update(dict(epochs=max_epochs))
 
     model_folder = directory_path + "model/"
     img_folder = directory_path + "imgs/"
@@ -209,17 +215,16 @@ def train_network(
                     np.mean(running_kl_loss),
                     np.mean(running_cl_loss),
                 )
-                # if debug == False:
-                # experiment.log(
-                #         {
-                #             "epoch": epoch,
-                #             "max_epochs": max_epochs,
-                #             "recons_loss": np.mean(running_reconstruction_loss),
-                #             "kl_loss": np.mean(running_kl_loss),
-                #             "cl_loss": np.mean(running_cl_loss),
-                #             "loss": np.mean(running_training_loss),
-                #         }
-                # )
+                if use_wandb:
+                    run.log(
+                            {
+                                "epoch": epoch,
+                                "recons_loss": np.mean(running_reconstruction_loss),
+                                "kl_loss": np.mean(running_kl_loss),
+                                "cl_loss": np.mean(running_cl_loss),
+                                "loss": np.mean(running_training_loss),
+                            }
+                    )
                 print(to_print)
                 print("saving", model_folder + model_name + "_last_vae.net")
                 torch.save(model, model_folder + model_name + "_last_vae.net")
@@ -262,33 +267,33 @@ def train_network(
                         running_validation_loss.append(val_loss)
 
                     ######################################################################################################################
-                    n_features = model.z_dims[0] * len(model.z_dims)
-                    data = np.zeros((n_features,))
-                    for index, (x, y) in enumerate(test_loader):
-                        x = x.unsqueeze(1)
-                        x = x.to(device=device, dtype=torch.float)
-                        test_outputs = boilerplate.forward_pass(
-                            x, y, device, model, gaussian_noise_std
-                        )
-                        mus = test_outputs["mus"]
-                        logvars = test_outputs["logvar"]
-                        for i in range(model.n_layers):
-                            lower_bound = 2 ** (model.n_layers - 1 - i) - int(
-                                model.mask_size / 2
-                            )
-                            upper_bound = 2 ** (model.n_layers - 1 - i) + int(
-                                model.mask_size / 2
-                            )
-                            data[i * model.z_dims[i] : (i + 1) * model.z_dims[i]] = (
-                                x[i][0]
-                                .cpu()
-                                .numpy()[
-                                    :, lower_bound:upper_bound, lower_bound:upper_bound
-                                ]
-                                .reshape(model.n_layers, -1)
-                                .mean(-1)
-                            )
-                            data = data.T.reshape(-1, model.z_dims[i])
+                    # n_features = model.z_dims[0] * len(model.z_dims)
+                    # data = np.zeros((n_features,))
+                    # for index, (x, y) in enumerate(test_loader):
+                    #     x = x.unsqueeze(1)
+                    #     x = x.to(device=device, dtype=torch.float)
+                    #     test_outputs = boilerplate.forward_pass(
+                    #         x, y, device, model, gaussian_noise_std
+                    #     )
+                    #     mus = test_outputs["mus"]
+                    #     logvars = test_outputs["logvar"]
+                    #     for i in range(model.n_layers):
+                    #         lower_bound = 2 ** (model.n_layers - 1 - i) - int(
+                    #             model.mask_size / 2
+                    #         )
+                    #         upper_bound = 2 ** (model.n_layers - 1 - i) + int(
+                    #             model.mask_size / 2
+                    #         )
+                    #         data[i * model.z_dims[i] : (i + 1) * model.z_dims[i]] = (
+                    #             x[i][0]
+                    #             .cpu()
+                    #             .numpy()[
+                    #                 :, lower_bound:upper_bound, lower_bound:upper_bound
+                    #             ]
+                    #             .reshape(model.n_layers, -1)
+                    #             .mean(-1)
+                    #         )
+                    #         data = data.T.reshape(-1, model.z_dims[i])
 
                 ######################################################################################################################
                 model.train()
