@@ -23,7 +23,14 @@ from models.lvae import LadderVAE
 import lib.utils as utils
 import wandb
 import random
+from sklearn.manifold import TSNE
 
+patch_size = 64
+centre_size = 4
+n_channel = 32
+hierarchy_level = 3
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
 
 def train_network(
     model,
@@ -32,7 +39,7 @@ def train_network(
     steps_per_epoch,
     train_loader,
     val_loader,
-    test_loader,
+    # test_loader,
     virtual_batch,
     gaussian_noise_std,
     model_name,
@@ -48,6 +55,7 @@ def train_network(
     cl_w=1e-7,
     kl_w=1,
 ):
+
     """Train Hierarchical DivNoising network.
     Parameters
     ----------
@@ -117,6 +125,12 @@ def train_network(
 
     patience_ = 0
     first_step = True
+    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    data_dir = "/localscratch/testing/img/"
+    golgi = get_normalized_tensor(load_data(data_dir+'class1/*.tif'), model, device)
+    mitochondria = get_normalized_tensor(load_data(data_dir+'class2/*.tif'), model, device)
+    granule = get_normalized_tensor(load_data(data_dir+'class3/*.tif'), model, device)
+    class_type = [golgi, mitochondria, granule]
 
     try:
         os.makedirs(model_folder)
@@ -141,7 +155,7 @@ def train_network(
         # if epoch % 10 == 0 and epoch <=50:
         #     cl_w *= 10
         #     kl_w /= 10
-        for batch_idx, (x, y) in enumerate(train_loader):
+        for batch_idx, (x, y) in tqdm(enumerate(train_loader)):
             step_counter = batch_idx
             x = x.unsqueeze(1)  # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
@@ -161,44 +175,71 @@ def train_network(
             optimizer.zero_grad()
 
             ### Make smaller batches
-            virtual_batches = torch.split(x, virtual_batch, 0)
-            virtual_batches_y = torch.split(y, virtual_batch, 0)
+            # virtual_batches = torch.split(x, virtual_batch, 0)
+            # virtual_batches_y = torch.split(y, virtual_batch, 0)
             # for batch in virtual_batches:
-            for indx in range(len(virtual_batches)):
-                batch = virtual_batches[indx]
-                batch_label = virtual_batches_y[indx]
-                outputs = boilerplate.forward_pass(
-                    batch, batch_label, device, model, gaussian_noise_std
+            # for indx in range(len(virtual_batches)):
+            #     batch = virtual_batches[indx]
+            #     batch_label = virtual_batches_y[indx]
+            #     outputs = boilerplate.forward_pass(
+            #         batch, batch_label, device, model, gaussian_noise_std
+            #     )
+
+            #     recons_loss = outputs["recons_loss"]
+            #     kl_loss = outputs["kl_loss"]
+            #     cl_loss = outputs["cl_loss"]
+            #     if model.contrastive_learning and not model.use_non_stochastic:
+            #         loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
+            #     elif model.use_non_stochastic:
+            #         loss = recons_loss + cl_w * cl_loss
+            #     else:
+            #         loss = recons_loss + kl_w * kl_loss
+            #     loss.backward()
+
+            #     if max_grad_norm is not None:
+            #         torch.nn.utils.clip_grad_norm_(
+            #             model.parameters(), max_norm=max_grad_norm
+            #         )
+            #     # Optimization step
+
+            #     running_training_loss.append(loss.item())
+            #     running_reconstruction_loss.append(recons_loss.item())
+            #     running_kl_loss.append(kl_loss.item())
+            #     running_cl_loss.append(cl_loss.item())
+            
+            outputs = boilerplate.forward_pass(
+                    x, y, device, model, gaussian_noise_std
                 )
 
-                recons_loss = outputs["recons_loss"]
-                kl_loss = outputs["kl_loss"]
-                cl_loss = outputs["cl_loss"]
-                if model.contrastive_learning and not model.use_non_stochastic:
-                    loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
-                elif model.use_non_stochastic:
-                    loss = recons_loss + cl_w * cl_loss
-                else:
-                    loss = recons_loss + kl_w * kl_loss
-                loss.backward()
+            recons_loss = outputs["recons_loss"]
+            kl_loss = outputs["kl_loss"]
+            cl_loss = outputs["cl_loss"]
+            if model.contrastive_learning and not model.use_non_stochastic:
+                loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
+            elif model.use_non_stochastic:
+                loss = recons_loss + cl_w * cl_loss
+            else:
+                loss = recons_loss + kl_w * kl_loss
+            # loss = recons_loss + kl_w * kl_loss
+            loss.backward()
 
-                if max_grad_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), max_norm=max_grad_norm
-                    )
-                # Optimization step
+            if max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_norm=max_grad_norm
+                )
+            # Optimization step
 
-                running_training_loss.append(loss.item())
-                running_reconstruction_loss.append(recons_loss.item())
-                running_kl_loss.append(kl_loss.item())
-                running_cl_loss.append(cl_loss.item())
-
+            running_training_loss.append(loss.item())
+            running_reconstruction_loss.append(recons_loss.item())
+            running_kl_loss.append(kl_loss.item())
+            running_cl_loss.append(cl_loss.item())
+#
             optimizer.step()
 
             # model.increment_global_step()
 
             # first_step = False
-            # if step_counter % steps_per_epoch == steps_per_epoch-1:
+        if step_counter % steps_per_epoch == steps_per_epoch-1:
             if True:
                 # print(f"Epoch[{epoch}/{max_epochs}]")
                 # print(f"Training loss: {np.mean(running_training_loss)}")
@@ -260,42 +301,36 @@ def train_network(
                         )
 
                         val_recons_loss = val_outputs["recons_loss"]
-                        # val_kl_loss = val_outputs['kl_loss']
+                        val_kl_loss = val_outputs['kl_loss']
                         val_cl_loss = val_outputs["cl_loss"]
-                        # val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
-                        val_loss = val_recons_loss + cl_w * val_cl_loss
+                        val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
+                        # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
 
-                    ######################################################################################################################
-                    # n_features = model.z_dims[0] * len(model.z_dims)
-                    # data = np.zeros((n_features,))
-                    # for index, (x, y) in enumerate(test_loader):
-                    #     x = x.unsqueeze(1)
-                    #     x = x.to(device=device, dtype=torch.float)
-                    #     test_outputs = boilerplate.forward_pass(
-                    #         x, y, device, model, gaussian_noise_std
-                    #     )
-                    #     mus = test_outputs["mus"]
-                    #     logvars = test_outputs["logvar"]
-                    #     for i in range(model.n_layers):
-                    #         lower_bound = 2 ** (model.n_layers - 1 - i) - int(
-                    #             model.mask_size / 2
-                    #         )
-                    #         upper_bound = 2 ** (model.n_layers - 1 - i) + int(
-                    #             model.mask_size / 2
-                    #         )
-                    #         data[i * model.z_dims[i] : (i + 1) * model.z_dims[i]] = (
-                    #             x[i][0]
-                    #             .cpu()
-                    #             .numpy()[
-                    #                 :, lower_bound:upper_bound, lower_bound:upper_bound
-                    #             ]
-                    #             .reshape(model.n_layers, -1)
-                    #             .mean(-1)
-                    #         )
-                    #         data = data.T.reshape(-1, model.z_dims[i])
+######################################################################################################################
+                    mu = []
+                    mus = np.array([])   
+                    for class_t in range(len(class_type)):
+                        for i in tqdm(range(len(class_type[class_t]))):
+                            mu.extend(get_mus(model,class_type[class_t][i]))
+                        mus = np.append(mus, mu).reshape(-1, 96)
+                        mu = []
+                    for i in range(len(mus)):
+                        mus[i] = np.asarray(mus[i])
 
-                ######################################################################################################################
+                    X_embedded = []
+                    X_embedded = TSNE(n_components=2, random_state= 42, method="exact", learning_rate='auto', init='pca', metric='cosine', n_iter= 10000, n_iter_without_progress=500).fit_transform(mus)
+                    
+                    fig, ax = plt.subplots()
+                    fig.set_figheight(10)
+                    fig.set_figwidth(10)
+
+                    ax.scatter(X_embedded[:19].T[0], X_embedded[:19].T[1], c='orange', s=10, label='Golgi', alpha=1, edgecolors='none')
+                    ax.scatter(X_embedded[19:180].T[0], X_embedded[19:180].T[1], c='blue', s=10, label='Mitochondria', alpha=1, edgecolors='none')
+                    ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
+
+                    wandb.log({"t-SNE": wandb.Image(plt)})
+######################################################################################################################
                 model.train()
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
@@ -351,3 +386,40 @@ def train_network(
                     return
 
                 break
+
+def get_normalized_tensor(img,model,device):
+    test_images = torch.from_numpy(img.copy()).to(device)
+    data_mean = model.data_mean
+    data_std = model.data_std
+    test_images = (test_images-data_mean)/data_std
+    return test_images
+
+def load_data(dir):
+    return imread(dir)
+
+def get_mus(model, z):
+    n_features = n_channel * hierarchy_level
+    data = np.zeros((n_features,))
+    model.mode_pred=True
+    model.eval()
+    model.to(device)
+    z = z.to(device=device, dtype=torch.float)
+    z = z.reshape(1,1,patch_size,patch_size)
+    with torch.no_grad():
+            # sample = model(z, z)#, model_layers=[0,1,2,3,4,5])
+            sample = model(z, z, model_layers=[0,1,2,3,4,5])
+            mu = sample['mu']
+            for i in range(hierarchy_level):
+                data[i*n_channel:(i+1)*n_channel] = get_mean_centre(mu, i)
+            data = data.T.reshape(-1,n_features)
+    return data
+
+def get_mean_centre(x, i):
+    if i == 3:
+        return x[i][0].cpu().numpy().reshape(n_channel,-1).mean(-1)
+    elif i == 4:
+        return x[i][0].cpu().numpy().reshape(n_channel,-1).mean(-1)
+    else:
+        lower_bound = 2**(5-1-i)-int(centre_size/2)
+        upper_bound = 2**(5-1-i)+int(centre_size/2)
+        return x[i][0].cpu().numpy()[:,lower_bound:upper_bound,lower_bound:upper_bound].reshape(n_channel,-1).mean(-1)

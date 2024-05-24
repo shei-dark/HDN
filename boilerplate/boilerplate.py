@@ -38,10 +38,10 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
         data_std: std of train data and validation data combined
     """
     
-    np.random.shuffle(train_images)
-    train_images = train_images
-    np.random.shuffle(val_images)
-    val_images = val_images
+    # np.random.shuffle(train_images)
+    # train_images = train_images
+    # np.random.shuffle(val_images)
+    # val_images = val_images
     
     combined_data = np.concatenate((train_images, val_images), axis=0)
     data_mean = np.mean(combined_data)
@@ -56,17 +56,19 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
     val_labels = torch.from_numpy(val_labels) #torch.zeros(len(val_images),).fill_(float('nan'))
     val_set = TensorDataset(val_images, val_labels)
     
-    np.random.shuffle(test_images)
-    test_images = torch.from_numpy(test_images)
-    test_images = (test_images-data_mean)/data_std
-    test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
-    test_set = TensorDataset(test_images, test_labels)
+    # np.random.shuffle(test_images)
+    # test_images = torch.from_numpy(test_images)
+    # test_images = (test_images-data_mean)/data_std
+    # test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
+    # test_set = TensorDataset(test_images, test_labels)
     
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=test_batch_size, shuffle=True)
+    # test_loader = DataLoader(test_set, batch_size=test_batch_size, shuffle=True)
     
-    return train_loader, val_loader, test_loader, data_mean, data_std
+    # return train_loader, val_loader, test_loader, data_mean, data_std
+    return train_loader, val_loader, data_mean, data_std
+
     
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     """
