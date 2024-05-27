@@ -21,8 +21,8 @@ import glob
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
-path = "/localscratch/"
+path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+# path = "/localscratch/"
 patch_size = 64
 
 paths = sorted(glob.glob(path+"training/img/*.tif"))
@@ -50,7 +50,7 @@ batch_size=16
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
-steps_per_epoch=500
+steps_per_epoch = 1
 test_batch_size=100
 
 # Model-specific

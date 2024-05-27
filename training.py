@@ -125,8 +125,8 @@ def train_network(
 
     patience_ = 0
     first_step = True
-    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    data_dir = "/localscratch/testing/img/"
+    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    # data_dir = "/localscratch/testing/img/"
     golgi = get_normalized_tensor(load_data(data_dir+'class1/*.tif'), model, device)
     mitochondria = get_normalized_tensor(load_data(data_dir+'class2/*.tif'), model, device)
     granule = get_normalized_tensor(load_data(data_dir+'class3/*.tif'), model, device)
@@ -152,61 +152,15 @@ def train_network(
         running_reconstruction_loss = []
         running_kl_loss = []
         running_cl_loss = []
-        # if epoch % 10 == 0 and epoch <=50:
-        #     cl_w *= 10
-        #     kl_w /= 10
+
         for batch_idx, (x, y) in tqdm(enumerate(train_loader)):
             step_counter = batch_idx
             x = x.unsqueeze(1)  # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
-            # step = model.global_step
-
-            # if(test_log_every > 0):
-            #     if step % test_log_every == 0:
-
-            #         print("Testing the model at " "step {}". format(step))
-
-            #         with torch.no_grad():
-            #             boilerplate._test(epoch, img_folder, device, model,
-            #                               test_loader, gaussian_noise_std,
-            #                               model.data_std, nrows)
-            #             model.train()
+            model.mode_pred = False
             model.train()
             optimizer.zero_grad()
 
-            ### Make smaller batches
-            # virtual_batches = torch.split(x, virtual_batch, 0)
-            # virtual_batches_y = torch.split(y, virtual_batch, 0)
-            # for batch in virtual_batches:
-            # for indx in range(len(virtual_batches)):
-            #     batch = virtual_batches[indx]
-            #     batch_label = virtual_batches_y[indx]
-            #     outputs = boilerplate.forward_pass(
-            #         batch, batch_label, device, model, gaussian_noise_std
-            #     )
-
-            #     recons_loss = outputs["recons_loss"]
-            #     kl_loss = outputs["kl_loss"]
-            #     cl_loss = outputs["cl_loss"]
-            #     if model.contrastive_learning and not model.use_non_stochastic:
-            #         loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
-            #     elif model.use_non_stochastic:
-            #         loss = recons_loss + cl_w * cl_loss
-            #     else:
-            #         loss = recons_loss + kl_w * kl_loss
-            #     loss.backward()
-
-            #     if max_grad_norm is not None:
-            #         torch.nn.utils.clip_grad_norm_(
-            #             model.parameters(), max_norm=max_grad_norm
-            #         )
-            #     # Optimization step
-
-            #     running_training_loss.append(loss.item())
-            #     running_reconstruction_loss.append(recons_loss.item())
-            #     running_kl_loss.append(kl_loss.item())
-            #     running_cl_loss.append(cl_loss.item())
-            
             outputs = boilerplate.forward_pass(
                     x, y, device, model, gaussian_noise_std
                 )
@@ -220,7 +174,6 @@ def train_network(
                 loss = recons_loss + cl_w * cl_loss
             else:
                 loss = recons_loss + kl_w * kl_loss
-            # loss = recons_loss + kl_w * kl_loss
             loss.backward()
 
             if max_grad_norm is not None:
@@ -236,17 +189,10 @@ def train_network(
 #
             optimizer.step()
 
-            # model.increment_global_step()
-
             # first_step = False
         if step_counter % steps_per_epoch == steps_per_epoch-1:
             if True:
-                # print(f"Epoch[{epoch}/{max_epochs}]")
-                # print(f"Training loss: {np.mean(running_training_loss)}")
-                # print(f"Reconstruction loss: {np.mean(running_reconstruction_loss)}")
-                # print(f"KL loss: {np.mean(running_kl_loss)}")
-                # print(f"CL loss: {np.mean(running_cl_loss)}")                
-                ## Print training losses
+
                 to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f} CL Loss: {:.3f}"
                 to_print = to_print.format(
                     epoch,
@@ -307,7 +253,6 @@ def train_network(
                         # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
 
-######################################################################################################################
                     mu = []
                     mus = np.array([])   
                     for class_t in range(len(class_type)):
@@ -330,9 +275,7 @@ def train_network(
                     ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
 
                     wandb.log({"t-SNE": wandb.Image(plt)})
-######################################################################################################################
-                model.train()
-
+                    
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
 
@@ -382,10 +325,9 @@ def train_network(
                 print("----------------------------------------", flush=True)
 
                 if patience_ == val_loss_patience:
-                    #                     print("Employing early stopping, validation loss did not improve for 100 epochs !"
                     return
 
-                break
+                # break
 
 def get_normalized_tensor(img,model,device):
     test_images = torch.from_numpy(img.copy()).to(device)
@@ -406,8 +348,7 @@ def get_mus(model, z):
     z = z.to(device=device, dtype=torch.float)
     z = z.reshape(1,1,patch_size,patch_size)
     with torch.no_grad():
-            # sample = model(z, z)#, model_layers=[0,1,2,3,4,5])
-            sample = model(z, z, model_layers=[0,1,2,3,4,5])
+            sample = model(z, z, z,model_layers=[0,1,2])
             mu = sample['mu']
             for i in range(hierarchy_level):
                 data[i*n_channel:(i+1)*n_channel] = get_mean_centre(mu, i)

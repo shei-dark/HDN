@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=16GB
+#SBATCH --mem=30GB
 #SBATCH --ntasks=1
 #SBATCH --job-name=hdn
 #SBATCH --time=30:00:00

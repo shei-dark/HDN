@@ -196,7 +196,8 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x, y, x_orig=None, model_layers=None):
+    # def forward(self, x, y, x_orig=None, model_layers=None):
+    def forward(self, x, y, x_orig, model_layers):
         img_size = x.size()[2:]
 
         # Pad input to make everything easier with conv strides

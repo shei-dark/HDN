@@ -96,7 +96,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     x = x.to(device, non_blocking=True)
     x_mask = x
     x_mask[:,:,30:34,30:34] = 0
-    model_out = model(x_mask,y,x)
+    model_out = model(x_mask,y,x_orig=x,model_layers=[1,2,3])
     if model.mode_pred is False:
         if model.use_non_stochastic:
             recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
