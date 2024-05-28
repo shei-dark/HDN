@@ -25,6 +25,8 @@ import wandb
 import random
 from sklearn.manifold import TSNE
 
+import plotly.express as px
+
 patch_size = 64
 centre_size = 4
 n_channel = 32
@@ -125,8 +127,8 @@ def train_network(
 
     patience_ = 0
     first_step = True
-    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    # data_dir = "/localscratch/testing/img/"
+    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    data_dir = "/localscratch/testing/img/"
     golgi = get_normalized_tensor(load_data(data_dir+'class1/*.tif'), model, device)
     mitochondria = get_normalized_tensor(load_data(data_dir+'class2/*.tif'), model, device)
     granule = get_normalized_tensor(load_data(data_dir+'class3/*.tif'), model, device)
@@ -153,7 +155,7 @@ def train_network(
         running_kl_loss = []
         running_cl_loss = []
 
-        for batch_idx, (x, y) in tqdm(enumerate(train_loader)):
+        for batch_idx, (x, y) in enumerate(train_loader):
             step_counter = batch_idx
             x = x.unsqueeze(1)  # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
@@ -265,16 +267,101 @@ def train_network(
 
                     X_embedded = []
                     X_embedded = TSNE(n_components=2, random_state= 42, method="exact", learning_rate='auto', init='pca', metric='cosine', n_iter= 10000, n_iter_without_progress=500).fit_transform(mus)
+                    mean_of_classes = []
+                    mean_of_classes.append([X_embedded[:19].T[0].mean(), X_embedded[:19].T[1].mean()])
+                    mean_of_classes.append([X_embedded[19:180].T[0].mean(), X_embedded[19:180].T[1].mean()])
+                    mean_of_classes.append([X_embedded[180:].T[0].mean(), X_embedded[180:].T[1].mean()])
+
                     
+                    dis_matrix = np.array([])
+                    for i in range(543):
+                        for j in range(543):
+                            dis_matrix = np.append(dis_matrix, np.linalg.norm(mus[i] - mus[j]))
+
+                    dis_matrix = dis_matrix.reshape(543,543)
+
                     fig, ax = plt.subplots()
-                    fig.set_figheight(10)
-                    fig.set_figwidth(10)
+                    im = ax.imshow(dis_matrix)
+                    fig.tight_layout()
+                    plt.show()
+                    # fig = px.imshow(dis_matrix)
+                    # fig.show()
+                    wandb.log({"heatmap": wandb.Image(plt)})
 
-                    ax.scatter(X_embedded[:19].T[0], X_embedded[:19].T[1], c='orange', s=10, label='Golgi', alpha=1, edgecolors='none')
-                    ax.scatter(X_embedded[19:180].T[0], X_embedded[19:180].T[1], c='blue', s=10, label='Mitochondria', alpha=1, edgecolors='none')
-                    ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
 
-                    wandb.log({"t-SNE": wandb.Image(plt)})
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(19)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(19)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(19)])
+                    # labels = ['Golgi'] + ['Mitochondria'] + ['Granule']
+                    # plt.hist(dis_to_mean, bins=30, label=labels)
+                    # plt.title("dis Golgi to mean of classes")
+                    # plt.legend()
+                    # wandb.log({"Golgi vs all means": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(19,180)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(19,180)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(19,180)])
+                    # plt.hist(dis_to_mean, bins=40, label=labels)
+                    # plt.title("dis Mitochondria to mean of classes")
+                    # plt.legend()
+                    # wandb.log({"Mitochondria vs all means": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(180,543)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(180,543)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(180,543)])
+                    # plt.hist(dis_to_mean, bins=50, label=labels)
+                    # plt.title("dis Granule to mean of classes")
+                    # plt.legend()
+                    # wandb.log({"Granule vs all means": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(19)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(19,180)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(180,543)])
+                    # plt.hist(dis_to_mean, bins=50, label=labels)
+                    # plt.title("dis mean Golgi to")
+                    # plt.legend()
+                    # wandb.log({"Golgi mean vs all": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(19)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(19,180)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[1]) for i in range(180,543)])
+                    # plt.hist(dis_to_mean, bins=50, label=labels)
+                    # plt.title("dis mean Mitochondria to")
+                    # plt.legend()
+                    # wandb.log({"Mitochondria mean vs all": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # dis_to_mean = []
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(19)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(19,180)])
+                    # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[2]) for i in range(180,543)])
+                    # plt.hist(dis_to_mean, bins=50, label=labels)
+                    # plt.title("dis mean Granule to")
+                    # plt.legend()
+                    # wandb.log({"Granule mean vs all": wandb.Image(plt)})
+                    # plt.clf()
+
+                    # fig, ax = plt.subplots()
+                    # fig.set_figheight(10)
+                    # fig.set_figwidth(10)
+
+                    # ax.scatter(X_embedded[:19].T[0], X_embedded[:19].T[1], c='orange', s=10, label='Golgi', alpha=1, edgecolors='none')
+                    # ax.scatter(mean_of_classes[0][0], mean_of_classes[0][1], c='orange', s=50, label='Golgi mean', alpha=1, edgecolors='none')
+                    # ax.scatter(X_embedded[19:180].T[0], X_embedded[19:180].T[1], c='blue', s=10, label='Mitochondria', alpha=1, edgecolors='none')
+                    # ax.scatter(mean_of_classes[1][0], mean_of_classes[1][1], c='blue', s=50, label='Mitochondria mean', alpha=1, edgecolors='none')
+                    # ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
+                    # ax.scatter(mean_of_classes[2][0], mean_of_classes[2][1], c='green', s=50, label='Granule mean', alpha=1, edgecolors='none')
+
+                    # wandb.log({"t-SNE": wandb.Image(plt)})
                     
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
@@ -327,7 +414,7 @@ def train_network(
                 if patience_ == val_loss_patience:
                     return
 
-                # break
+            # break
 
 def get_normalized_tensor(img,model,device):
     test_images = torch.from_numpy(img.copy()).to(device)
@@ -344,15 +431,16 @@ def get_mus(model, z):
     data = np.zeros((n_features,))
     model.mode_pred=True
     model.eval()
-    model.to(device)
-    z = z.to(device=device, dtype=torch.float)
-    z = z.reshape(1,1,patch_size,patch_size)
     with torch.no_grad():
-            sample = model(z, z, z,model_layers=[0,1,2])
-            mu = sample['mu']
-            for i in range(hierarchy_level):
-                data[i*n_channel:(i+1)*n_channel] = get_mean_centre(mu, i)
-            data = data.T.reshape(-1,n_features)
+        model.to(device)
+        z = z.to(device=device, dtype=torch.float)
+        z = z.reshape(1,1,patch_size,patch_size)
+        with torch.no_grad():
+                sample = model(z, z, z,model_layers=[0,1,2])
+                mu = sample['mu']
+                for i in range(hierarchy_level):
+                    data[i*n_channel:(i+1)*n_channel] = get_mean_centre(mu, i)
+                data = data.T.reshape(-1,n_features)
     return data
 
 def get_mean_centre(x, i):
