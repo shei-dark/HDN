@@ -39,7 +39,7 @@ paths = sorted(glob.glob(path+"testing/mask/*.tif"))
 test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive_new_dataloader/" 
+directory_path = "./Contrastive_372/" 
 
 # Data-specific
 gaussian_noise_std = None
