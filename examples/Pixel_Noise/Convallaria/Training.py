@@ -21,8 +21,8 @@ import glob
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
-path = "/localscratch/"
+path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+# path = "/localscratch/"
 patch_size = 64
 
 paths = sorted(glob.glob(path+"training/img/*.tif"))
@@ -46,7 +46,7 @@ gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
 # batch_size=128
-batch_size=16
+batch_size=128
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
@@ -84,5 +84,5 @@ training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=s
                     #    train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-4, kl_w = 1)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-2, kl_w = 1)
 

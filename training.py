@@ -25,7 +25,7 @@ import wandb
 import random
 from sklearn.manifold import TSNE
 
-import plotly.express as px
+# import plotly.express as px
 
 patch_size = 64
 centre_size = 4
@@ -127,8 +127,8 @@ def train_network(
 
     patience_ = 0
     first_step = True
-    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    data_dir = "/localscratch/testing/img/"
+    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    # data_dir = "/localscratch/testing/img/"
     golgi = get_normalized_tensor(load_data(data_dir+'class1/*.tif'), model, device)
     mitochondria = get_normalized_tensor(load_data(data_dir+'class2/*.tif'), model, device)
     granule = get_normalized_tensor(load_data(data_dir+'class3/*.tif'), model, device)
