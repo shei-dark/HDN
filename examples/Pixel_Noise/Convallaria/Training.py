@@ -84,5 +84,5 @@ training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=s
                     #    train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-2, kl_w = 1)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-2, kl_w = 1e-1)
 
