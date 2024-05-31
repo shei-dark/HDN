@@ -98,24 +98,35 @@ class NormalStochasticBlock2d(nn.Module):
             # Compute log q(z)
             logprob_q = q.log_prob(z).sum((1, 2, 3))
             
-            if mode_pred is False: # if not predicting
-                # Compute KL (analytical or MC estimate)
-                kl_analytical = kl_divergence(q, p)
-                if analytical_kl:
-                    kl_elementwise = kl_analytical
-                else:
-                    kl_elementwise = kl_normal_mc(z, p_params, q_params)
-                kl_samplewise = kl_elementwise.sum((1, 2, 3))
+            # if mode_pred is False: # if not predicting
+            #     # Compute KL (analytical or MC estimate)
+            #     kl_analytical = kl_divergence(q, p)
+            #     if analytical_kl:
+            #         kl_elementwise = kl_analytical
+            #     else:
+            #         kl_elementwise = kl_normal_mc(z, p_params, q_params)
+            #     kl_samplewise = kl_elementwise.sum((1, 2, 3))
+
+            #     # Compute spatial KL analytically (but conditioned on samples from
+            #     # previous layers)
+            #     kl_spatial_analytical = kl_analytical.sum(1)
+            # else: # if predicting, no need to compute KL
+            #     kl_analytical = None
+            #     kl_elementwise = None
+            #     kl_samplewise = None
+            #     kl_spatial_analytical = None
+            
+            # Compute KL (analytical or MC estimate)
+            kl_analytical = kl_divergence(q, p)
+            if analytical_kl:
+                kl_elementwise = kl_analytical
+            else:
+                kl_elementwise = kl_normal_mc(z, p_params, q_params)
+            kl_samplewise = kl_elementwise.sum((1, 2, 3))
 
                 # Compute spatial KL analytically (but conditioned on samples from
                 # previous layers)
-                kl_spatial_analytical = kl_analytical.sum(1)
-            else: # if predicting, no need to compute KL
-                kl_analytical = None
-                kl_elementwise = None
-                kl_samplewise = None
-                kl_spatial_analytical = None
-
+            kl_spatial_analytical = kl_analytical.sum(1)
         else:
             kl_elementwise = kl_samplewise = kl_spatial_analytical = None
             logprob_q = None

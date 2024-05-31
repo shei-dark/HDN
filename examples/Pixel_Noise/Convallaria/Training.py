@@ -71,7 +71,6 @@ img_shape = (64,64)
 
 # train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
 train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
-
                                                                                            test_images,batch_size,
                                                                                            test_batch_size)
 

@@ -109,7 +109,7 @@ def train_network(
         },
         )
 
-        # run.config.update(dict(epochs=max_epochs))
+        run.config.update(dict(epochs=max_epochs))
 
     model_folder = directory_path + "model/"
     img_folder = directory_path + "imgs/"
@@ -209,9 +209,9 @@ def train_network(
                     run.log(
                             {
                                 "epoch": epoch,
-                                "recons_loss": np.mean(running_reconstruction_loss),
+                                "inpainting_loss": np.mean(running_reconstruction_loss),
                                 "kl_loss": np.mean(running_kl_loss),
-                                "cl_loss": np.mean(running_cl_loss),
+                                "cl_loss": np.mean(running_cl_loss)*cl_w,
                                 "loss": np.mean(running_training_loss),
                             }
                     )
@@ -253,18 +253,47 @@ def train_network(
                         val_kl_loss = val_outputs['kl_loss']
                         val_cl_loss = val_outputs["cl_loss"]
                         val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
+                        wandb.log({"val_inpainting_loss": val_recons_loss, "val_kl_loss": val_kl_loss, "val_cl_loss": val_cl_loss, "val_loss": val_loss})
+
                         # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
 
                     mu = []
-                    mus = np.array([])   
+                    mus = np.array([])
+                    kl = [{'kl_total':[], 'kl_0':[], 'kl_1':[], 'kl_2':[]},
+                           {'kl_total':[], 'kl_0':[], 'kl_1':[], 'kl_2':[]},
+                           {'kl_total':[], 'kl_0':[], 'kl_1':[], 'kl_2':[]}]
                     for class_t in range(len(class_type)):
                         for i in tqdm(range(len(class_type[class_t]))):
                             mu.extend(get_mus(model,class_type[class_t][i]))
+                            kl_losses = get_kl(model,class_type[class_t][i])
+                            kl[class_t]['kl_total'].append(kl_losses[0])
+                            kl[class_t]['kl_0'].append(kl_losses[1])
+                            kl[class_t]['kl_1'].append(kl_losses[2])
+                            kl[class_t]['kl_2'].append(kl_losses[3])
                         mus = np.append(mus, mu).reshape(-1, 96)
                         mu = []
                     for i in range(len(mus)):
                         mus[i] = np.asarray(mus[i])
+
+                    # golgi
+                    kl_total = torch.mean(torch.stack(kl[0]['kl_total']))
+                    kl_first_layer = torch.mean(torch.stack(kl[0]['kl_0']))
+                    kl_second_layer = torch.mean(torch.stack(kl[0]['kl_1']))
+                    kl_third_layer = torch.mean(torch.stack(kl[0]['kl_2']))
+                    wandb.log({"kl_total_golgi": kl_total, "kl_first_layer_golgi": kl_first_layer, "kl_second_layer_golgi": kl_second_layer, "kl_third_layer_golgi": kl_third_layer})
+                    kl_total = torch.mean(torch.stack(kl[1]['kl_total']))
+                    kl_first_layer = torch.mean(torch.stack(kl[1]['kl_0']))
+                    kl_second_layer = torch.mean(torch.stack(kl[1]['kl_1']))
+                    kl_third_layer = torch.mean(torch.stack(kl[1]['kl_2']))
+                    wandb.log({"kl_total_mitochondria": kl_total, "kl_first_layer_mitochondria": kl_first_layer, "kl_second_layer_mitochondria": kl_second_layer, "kl_third_layer_mitochondria": kl_third_layer})
+                    kl_total = torch.mean(torch.stack(kl[2]['kl_total']))
+                    kl_first_layer = torch.mean(torch.stack(kl[2]['kl_0']))
+                    kl_second_layer = torch.mean(torch.stack(kl[2]['kl_1']))
+                    kl_third_layer = torch.mean(torch.stack(kl[2]['kl_2']))
+                    wandb.log({"kl_total_granule": kl_total, "kl_first_layer_granule": kl_first_layer, "kl_second_layer_granule": kl_second_layer, "kl_third_layer_granule": kl_third_layer})
+
+
 
                     X_embedded = []
                     X_embedded = TSNE(n_components=2, random_state= 42, method="exact", learning_rate='auto', init='pca', metric='cosine', n_iter= 10000, n_iter_without_progress=500).fit_transform(mus)
@@ -318,9 +347,14 @@ def train_network(
                     ax[1,2].imshow(granule_sample.cpu().numpy().reshape(64,64))
                     ax[1,2].set_title("Granule sample Pred")
                     ax[1,2].add_patch(rect)
-
+                    for a in ax:
+                        for b in a:
+                            b.set_xlim(30 - 5, 30 + 4 + 5)
+                            b.set_ylim(30 + 4 + 5, 30 - 5)
+                    
                     wandb.log({"samples": wandb.Image(plt)})
                     plt.clf()
+
 
                     # dis_to_mean = []
                     # dis_to_mean.append([np.linalg.norm(X_embedded[i] - mean_of_classes[0]) for i in range(19)])
@@ -470,6 +504,18 @@ def get_pred(model, z):
                 sample = model(z, z, z,model_layers=[0,1,2])
                 pred = sample['out_mean']
     return pred
+
+def get_kl(model, z):
+    model.mode_pred=True
+    model.eval()
+    with torch.no_grad():
+        model.to(device)
+        z = z.to(device=device, dtype=torch.float)
+        z = z.reshape(1,1,patch_size,patch_size)
+        with torch.no_grad():
+                sample = model(z, z, z,model_layers=[0,1,2])
+                kl = [sample['kl_loss']/(16*21), sample['kl_spatial'][0], sample['kl_spatial'][1], sample['kl_spatial'][2]]
+    return kl
 
 def get_mus(model, z):
     n_features = n_channel * hierarchy_level
