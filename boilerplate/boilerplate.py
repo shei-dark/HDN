@@ -93,9 +93,11 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     patch_size = x.shape[2]
     mask_size = int(model.mask_size)
     masked_coord = int((patch_size-mask_size)/2)
-    x = x.to(device, non_blocking=True)
-    x_mask = x
+
+    x_mask = x.clone()  # Create a copy of x
     x_mask[:,:,30:34,30:34] = 0
+    x = x.to(device, non_blocking=True)
+    x_mask = x_mask.to(device, non_blocking=True)
     model_out = model(x_mask,y,x_orig=x,model_layers=[1,2,3])
     if model.mode_pred is False:
         if model.use_non_stochastic:
