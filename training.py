@@ -129,12 +129,13 @@ def train_network(
 
     patience_ = 0
     first_step = True
-    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    data_dir = "/localscratch/testing/img/"
+    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    # data_dir = "/localscratch/testing/img/"
     golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
     mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
     granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
-    mask_dir = "/localscratch/testing/mask/"
+    mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
+    # mask_dir = "/localscratch/testing/mask/"
     golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
     mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
     granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
@@ -319,7 +320,20 @@ def train_network(
                     mean_of_classes.append([X_embedded[19:180].T[0].mean(), X_embedded[19:180].T[1].mean()])
                     mean_of_classes.append([X_embedded[180:].T[0].mean(), X_embedded[180:].T[1].mean()])
 
-                    
+                    fig, ax = plt.subplots()
+                    fig.set_figheight(10)
+                    fig.set_figwidth(10)
+
+                    ax.scatter(X_embedded[:19].T[0], X_embedded[:19].T[1], c='orange', s=10, label='Golgi', alpha=1, edgecolors='none')
+                    ax.scatter(mean_of_classes[0][0], mean_of_classes[0][1], c='orange', s=50, label='Golgi mean', alpha=1, edgecolors='none')
+                    ax.scatter(X_embedded[19:180].T[0], X_embedded[19:180].T[1], c='blue', s=10, label='Mitochondria', alpha=1, edgecolors='none')
+                    ax.scatter(mean_of_classes[1][0], mean_of_classes[1][1], c='blue', s=50, label='Mitochondria mean', alpha=1, edgecolors='none')
+                    ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
+                    ax.scatter(mean_of_classes[2][0], mean_of_classes[2][1], c='green', s=50, label='Granule mean', alpha=1, edgecolors='none')
+
+                    wandb.log({"t-SNE": wandb.Image(plt)})
+                    plt.clf()
+
                     dis_matrix = np.array([])
                     for i in range(543):
                         for j in range(543):
@@ -589,19 +603,7 @@ def train_network(
                     wandb.log({"Granule mean vs all 3rd layer": wandb.Image(plt)})
                     plt.clf()
 
-                    fig, ax = plt.subplots()
-                    fig.set_figheight(10)
-                    fig.set_figwidth(10)
-
-                    ax.scatter(X_embedded[:19].T[0], X_embedded[:19].T[1], c='orange', s=10, label='Golgi', alpha=1, edgecolors='none')
-                    ax.scatter(mean_of_classes[0][0], mean_of_classes[0][1], c='orange', s=50, label='Golgi mean', alpha=1, edgecolors='none')
-                    ax.scatter(X_embedded[19:180].T[0], X_embedded[19:180].T[1], c='blue', s=10, label='Mitochondria', alpha=1, edgecolors='none')
-                    ax.scatter(mean_of_classes[1][0], mean_of_classes[1][1], c='blue', s=50, label='Mitochondria mean', alpha=1, edgecolors='none')
-                    ax.scatter(X_embedded[180:].T[0], X_embedded[180:].T[1], c='green', s=10, label='Granule', alpha=1, edgecolors='none')
-                    ax.scatter(mean_of_classes[2][0], mean_of_classes[2][1], c='green', s=50, label='Granule mean', alpha=1, edgecolors='none')
-
-                    wandb.log({"t-SNE": wandb.Image(plt)})
-                    plt.clf()
+                    
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
 

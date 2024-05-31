@@ -21,8 +21,8 @@ import glob
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
-path = "/localscratch/"
+path="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/"
+# path = "/localscratch/"
 patch_size = 64
 
 paths = sorted(glob.glob(path+"training/img/*.tif"))
@@ -39,14 +39,14 @@ paths = sorted(glob.glob(path+"testing/mask/*.tif"))
 test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive_test/" 
+directory_path = "./Contrastive/" 
 
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-# batch_size=128
-batch_size=16
+batch_size=128
+# batch_size=16
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
