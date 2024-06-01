@@ -217,7 +217,7 @@ def train_network(
                             {
                                 "epoch": epoch,
                                 "inpainting_loss": np.mean(running_reconstruction_loss),
-                                "kl_loss": np.mean(running_kl_loss),
+                                "kl_loss": np.mean(running_kl_loss)*kl_w,
                                 "cl_loss": np.mean(running_cl_loss)*cl_w,
                                 "loss": np.mean(running_training_loss),
                             }
@@ -268,7 +268,7 @@ def train_network(
                         # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
                         val_cl.append(val_cl_loss*cl_w)
-                        val_kl.append(val_kl_loss)
+                        val_kl.append(val_kl_loss*kl_w)
                         val_inpainting.append(val_recons_loss)
                     
                     wandb.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),

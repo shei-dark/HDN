@@ -414,6 +414,9 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     logvars: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
+    # ### test new contrastive loss
+    # return contrastive_loss(mus, labels)
+    # ###
     margin = 1
     labels_list = [0 for _ in range(len(labels))]
     for index, batch_label in enumerate(labels):
@@ -528,3 +531,30 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     #         return negative_loss/num_neg_pair - positive_loss/num_pos_pair + tripletloss
     #     else:
     #         return negative_loss - positive_loss + tripletloss
+
+# def contrastive_loss(z, labels, margin=1.0):
+#     # Compute pairwise distances
+#     batch_size = z.size(0)
+#     dist = torch.cdist(z, z, p=2)
+    
+#     # Create a mask for positive and negative pairs
+#     labels = labels.unsqueeze(1)
+#     positive_mask = labels == labels.T
+#     negative_mask = ~positive_mask
+    
+#     # Positive pairs: minimize distance
+#     positive_loss = torch.sum(positive_mask * dist)
+    
+#     # Negative pairs: maximize distance (with margin)
+#     negative_loss = torch.sum(negative_mask * F.relu(margin - dist))
+    
+#     # Normalize by number of pairs
+#     num_positive_pairs = positive_mask.sum()
+#     num_negative_pairs = negative_mask.sum()
+    
+#     positive_loss /= num_positive_pairs
+#     negative_loss /= num_negative_pairs
+    
+#     # Total contrastive loss
+#     loss = positive_loss + negative_loss
+#     return loss
