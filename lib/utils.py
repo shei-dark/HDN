@@ -49,7 +49,23 @@ class CropImage(nn.Module):
     def forward(self, x):
         return crop_img_tensor(x, self.size)
     
+class WeightScheduler:
+    def __init__(self, alpha_start, beta_start, alpha_end, beta_end, num_steps):
+        self.alpha_start = alpha_start
+        self.beta_start = beta_start
+        self.alpha_end = alpha_end
+        self.beta_end = beta_end
+        self.num_steps = num_steps
+        self.step_count = 0
 
+    def get_weights(self):
+        alpha = self.alpha_start + (self.alpha_end - self.alpha_start) * (self.step_count / self.num_steps)
+        beta = self.beta_start + (self.beta_end - self.beta_start) * (self.step_count / self.num_steps)
+        return alpha, beta
+
+    def step(self):
+        if self.step_count < self.num_steps:
+            self.step_count += 1
 
 def normalize(img, mean, std):
     """Normalize an array of images with mean and standard deviation. 
@@ -414,10 +430,10 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     logvars: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
-    # ### test new contrastive loss
-    # return contrastive_loss(mus, labels)
-    # ###
-    margin = 1
+    ### test new contrastive loss
+    return contrastive_loss(mus, labels)
+    ###
+    
     labels_list = [0 for _ in range(len(labels))]
     for index, batch_label in enumerate(labels):
         # all pixels in 4x4 centre have same label
@@ -532,29 +548,47 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     #     else:
     #         return negative_loss - positive_loss + tripletloss
 
-# def contrastive_loss(z, labels, margin=1.0):
-#     # Compute pairwise distances
-#     batch_size = z.size(0)
-#     dist = torch.cdist(z, z, p=2)
+def contrastive_loss(z, labels, margin=50.0):
+    # Compute pairwise distances
+    batch_size = len(z[0])
+    z = [torch.tensor(z[i]).reshape(batch_size, -1) for i in range(len(z))]
+    z = torch.cat(z,dim=-1).unsqueeze(0)
+    dist = torch.cdist(z, z, p=2).squeeze(0)
     
-#     # Create a mask for positive and negative pairs
-#     labels = labels.unsqueeze(1)
-#     positive_mask = labels == labels.T
-#     negative_mask = ~positive_mask
+    labels_list = [0 for _ in range(len(labels))]
+    for index, batch_label in enumerate(labels):
+        # all pixels in 4x4 centre have same label
+        centre = batch_label[30:34,30:34]
+
+        unique_center = torch.unique(centre)
+        if 0 not in unique_center and len(unique_center)==1:
+                labels_list[index] = int(unique_center[0])
+
+    labels_list = np.array(labels_list)
+    boolean_matrix = torch.tensor(labels_list[:, np.newaxis] == labels_list[np.newaxis, :]).to(device=z.device)
     
-#     # Positive pairs: minimize distance
-#     positive_loss = torch.sum(positive_mask * dist)
+    # Positive pairs: minimize distance
+    positive_loss = torch.sum(boolean_matrix * dist)
+    # Negative pairs: maximize distance (with margin)
+    negative_loss = torch.sum(~boolean_matrix * F.relu(margin - dist))
     
-#     # Negative pairs: maximize distance (with margin)
-#     negative_loss = torch.sum(negative_mask * F.relu(margin - dist))
+    # Normalize by number of pairs
+    num_positive_pairs = torch.sum(boolean_matrix)-batch_size
+    num_negative_pairs = torch.sum(~boolean_matrix)
+    if num_positive_pairs == 0:
+        print('No positive pairs')
+    if num_negative_pairs == 0:
+        print('No negative pairs')
+
+    if num_positive_pairs == 0:
+        positive_loss = 0
+    else:
+        positive_loss /= num_positive_pairs
+    if num_negative_pairs == 0:
+        negative_loss = 0
+    else:
+        negative_loss /= num_negative_pairs
     
-#     # Normalize by number of pairs
-#     num_positive_pairs = positive_mask.sum()
-#     num_negative_pairs = negative_mask.sum()
-    
-#     positive_loss /= num_positive_pairs
-#     negative_loss /= num_negative_pairs
-    
-#     # Total contrastive loss
-#     loss = positive_loss + negative_loss
-#     return loss
+    # Total contrastive loss
+    loss = positive_loss + negative_loss
+    return loss

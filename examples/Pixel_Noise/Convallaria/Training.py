@@ -39,8 +39,8 @@ paths = sorted(glob.glob(path+"testing/mask/*.tif"))
 test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "./Contrastive430/" 
-
+directory_path = "/group/jug/Sheida/HVAE/451/"
+# directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
@@ -83,5 +83,5 @@ training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=s
                     #    train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-1, kl_w = 10)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-1, kl_w = 100)
 
