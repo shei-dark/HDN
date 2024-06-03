@@ -131,7 +131,7 @@ def train_network(
 
     seconds_last = time.time()
 
-    w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e-2*kl_w, beta_end=cl_w*1e+3, num_steps=len(train_loader) * max_epochs)
+    w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
 
 
     while step_counter / steps_per_epoch < max_epochs:

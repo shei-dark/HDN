@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 from tifffile import imread
 import numpy as np
+from scipy.stats import shapiro, anderson
 
 patch_size = 64
 centre_size = 4
@@ -35,6 +36,19 @@ def log_all_plots(wandb, class_type, model, masks):
         mu = []
     for i in range(len(mus)):
         mus[i] = np.asarray(mus[i])
+
+    normal = 0
+    for dim in range(96):
+        stat, p_value = shapiro(mus[:,dim])
+        if p_value > 0.05:
+            normal += 1
+    wandb.log({"Shapiro": normal})
+    normal = 0
+    for dim in range(96):
+        result = anderson(mus[:,dim], dist='norm')
+        if result.statistic < result.critical_values[2]:
+            normal += 1
+    wandb.log({"Anderson": normal})
 
     # golgi
     kl_total = torch.mean(torch.stack(kl[0]["kl_total"]))
