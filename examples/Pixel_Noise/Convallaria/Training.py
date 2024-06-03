@@ -39,7 +39,7 @@ paths = sorted(glob.glob(path+"testing/mask/*.tif"))
 test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "/group/jug/Sheida/HVAE/452/"
+directory_path = "/group/jug/Sheida/HVAE/453/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
@@ -60,7 +60,7 @@ blocks_per_layer = 5
 mask_size = 4
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
-contrastive_learning = True
+contrastive_learning = False
 cl_mode = 'min max'
 
 debug             = False #[True, False]
