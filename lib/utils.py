@@ -67,6 +67,25 @@ class WeightScheduler:
         if self.step_count < self.num_steps:
             self.step_count += 1
 
+def update_loss_weights(w_kl, w_cl, kl_loss, cl_loss, inpainting_loss, factor=0.1):
+    # Adjust w_kl
+    if kl_loss > inpainting_loss:
+        w_kl *= (1 - factor)
+    else:
+        w_kl *= (1 + factor)
+
+    # Adjust w_cl
+    if cl_loss > inpainting_loss:
+        w_cl *= (1 - factor)
+    else:
+        w_cl *= (1 + factor)
+
+    # Ensure weights are within a reasonable range
+    w_kl = max(0.001, min(100, w_kl))
+    w_cl = max(0.001, min(100, w_cl))
+
+    return w_kl, w_cl
+
 def normalize(img, mean, std):
     """Normalize an array of images with mean and standard deviation. 
         Parameters

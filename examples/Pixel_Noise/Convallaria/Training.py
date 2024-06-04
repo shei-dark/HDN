@@ -39,7 +39,7 @@ paths = sorted(glob.glob(path+"testing/mask/*.tif"))
 test_y = np.array(tiff.imread(paths), dtype=np.int32)
 
 model_name = "Contrastive_MAE"
-directory_path = "/group/jug/Sheida/HVAE/455/"
+directory_path = "/group/jug/Sheida/HVAE/103/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
@@ -75,7 +75,7 @@ train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(tr
                                                                                            test_batch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=False).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=True).cuda()
 
 model.train() # Model set in training mode
 

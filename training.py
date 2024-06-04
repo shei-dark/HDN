@@ -7,8 +7,8 @@ import glob
 from boilerplate import boilerplate
 import wandb
 from glob import glob
-from lib.plotting import log_all_plots, get_normalized_tensor, load_data
-from lib.utils import WeightScheduler
+from lib.plotting import log_all_plots, get_normalized_tensor, load_data, log_silhouette
+from lib.utils import WeightScheduler, update_loss_weights
 
 
 def train_network(
@@ -131,7 +131,7 @@ def train_network(
 
     seconds_last = time.time()
 
-    w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
+    # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
 
 
     while step_counter / steps_per_epoch < max_epochs:
@@ -143,7 +143,7 @@ def train_network(
 
         for batch_idx, (x, y) in enumerate(train_loader):
             step_counter = batch_idx
-            kl_w, cl_w = w_scheduler.get_weights()
+            # kl_w, cl_w = w_scheduler.get_weights()
             x = x.unsqueeze(1)  # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
             model.mode_pred = False
@@ -198,6 +198,8 @@ def train_network(
                                 "kl_loss": np.mean(running_kl_loss)*kl_w,
                                 "cl_loss": np.mean(running_cl_loss)*cl_w,
                                 "loss": np.mean(running_training_loss),
+                                "kl_weight": kl_w,
+                                "cl_weight": cl_w,
                             }
                     )
                 print(to_print)
@@ -222,6 +224,7 @@ def train_network(
                 np.save(
                     model_folder + "train_cl_loss.npy", np.array(cl_loss_train_history)
                 )
+
 
                 ### Validation step
                 running_validation_loss = []
@@ -255,11 +258,13 @@ def train_network(
                                 "val_loss": torch.mean(torch.stack(running_validation_loss))})
 
                     log_all_plots(wandb, class_type, model, masks)
-
+                    log_silhouette(wandb, class_type, model, masks)
                     
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
-                w_scheduler.step()
+                # w_scheduler.step()
+                kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
+
                 ### Save validation losses
                 loss_val_history.append(total_epoch_loss_val.item())
                 np.save(model_folder + "val_loss.npy", np.array(loss_val_history))

@@ -2,10 +2,10 @@ from sklearn.manifold import TSNE
 import matplotlib.patches as patches
 from matplotlib import pyplot as plt
 import torch
-from tqdm import tqdm
 from tifffile import imread
 import numpy as np
 from scipy.stats import shapiro, anderson
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 patch_size = 64
 centre_size = 4
@@ -25,7 +25,7 @@ def log_all_plots(wandb, class_type, model, masks):
         {"kl_total": [], "kl_0": [], "kl_1": [], "kl_2": []},
     ]
     for class_t in range(len(class_type)):
-        for i in tqdm(range(len(class_type[class_t]))):
+        for i in range(len(class_type[class_t])):
             mu.extend(get_mus(model, class_type[class_t][i]))
             kl_losses = get_kl(model, class_type[class_t][i])
             kl[class_t]["kl_total"].append(kl_losses[0])
@@ -651,3 +651,20 @@ def get_mean_centre(x, i):
             .reshape(n_channel, -1)
             .mean(-1)
         )
+
+def log_silhouette(wandb, class_type, model, masks):
+    mu = []
+    mus = np.array([])
+    for class_t in range(len(class_type)):
+        for i in range(len(class_type[class_t])):
+            mu.extend(get_mus(model, class_type[class_t][i]))
+        mus = np.append(mus, mu).reshape(-1, 96)
+        mu = []
+    for i in range(len(mus)):
+        mus[i] = np.asarray(mus[i])
+
+    labels = np.array([0] * 19 + [1] * 161 + [2] * 363)
+
+    silhouette = silhouette_score(mus, labels)
+
+    wandb.log({"silhouette": silhouette})
