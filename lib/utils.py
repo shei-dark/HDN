@@ -81,8 +81,8 @@ def update_loss_weights(w_kl, w_cl, kl_loss, cl_loss, inpainting_loss, factor=0.
         w_cl *= (1 + factor)
 
     # Ensure weights are within a reasonable range
-    w_kl = max(0.001, min(100, w_kl))
-    w_cl = max(0.001, min(100, w_cl))
+    w_kl = max(0.001, min(1000, w_kl))
+    w_cl = max(0.001, min(1000, w_cl))
 
     return w_kl, w_cl
 
