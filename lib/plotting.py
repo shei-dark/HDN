@@ -37,6 +37,15 @@ def log_all_plots(wandb, class_type, model, masks):
     for i in range(len(mus)):
         mus[i] = np.asarray(mus[i])
 
+    # silhouette
+    labels = np.array([0] * 19 + [1] * 161 + [2] * 363)
+    silhouette = silhouette_score(mus, labels)
+    wandb.log({"silhouette": silhouette})
+
+    # davies bouldin
+    davies_bouldin = davies_bouldin_score(mus, labels)
+    wandb.log({"davies_bouldin": davies_bouldin})
+
     normal = 0
     for dim in range(96):
         stat, p_value = shapiro(mus[:,dim])
@@ -652,19 +661,4 @@ def get_mean_centre(x, i):
             .mean(-1)
         )
 
-def log_silhouette(wandb, class_type, model, masks):
-    mu = []
-    mus = np.array([])
-    for class_t in range(len(class_type)):
-        for i in range(len(class_type[class_t])):
-            mu.extend(get_mus(model, class_type[class_t][i]))
-        mus = np.append(mus, mu).reshape(-1, 96)
-        mu = []
-    for i in range(len(mus)):
-        mus[i] = np.asarray(mus[i])
-
-    labels = np.array([0] * 19 + [1] * 161 + [2] * 363)
-
-    silhouette = silhouette_score(mus, labels)
-
-    wandb.log({"silhouette": silhouette})
+    

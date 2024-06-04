@@ -258,7 +258,6 @@ def train_network(
                                 "val_loss": torch.mean(torch.stack(running_validation_loss))})
 
                     log_all_plots(wandb, class_type, model, masks)
-                    log_silhouette(wandb, class_type, model, masks)
                     
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
