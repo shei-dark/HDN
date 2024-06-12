@@ -232,7 +232,8 @@ class LadderVAE(nn.Module):
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
             kl = kl_sep.mean()
-        elif self.mode_pred:
+            #TODO undo change for using non stochastic
+        elif self.mode_pred and self.use_non_stochastic is False:
             kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data['kl']],
                            dim=1)
             kl_sep = kl.sum(1)

@@ -567,10 +567,11 @@ def compute_cl_loss(mus, logvars, labels, cl_mode):
     #     else:
     #         return negative_loss - positive_loss + tripletloss
 
-def contrastive_loss(z, labels, margin=50.0):
+def contrastive_loss(z, labels, margin=10.0):
     # Compute pairwise distances
     batch_size = len(z[0])
-    z = [torch.tensor(z[i]).reshape(batch_size, -1) for i in range(len(z))]
+    # z = [torch.tensor(z[i]).reshape(batch_size, -1) for i in range(len(z))]
+    z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
     z = torch.cat(z,dim=-1).unsqueeze(0)
     dist = torch.cdist(z, z, p=2).squeeze(0)
     

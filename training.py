@@ -7,7 +7,7 @@ import glob
 from boilerplate import boilerplate
 import wandb
 from glob import glob
-from lib.plotting import log_all_plots, get_normalized_tensor, load_data, log_silhouette
+from lib.plotting import log_all_plots, get_normalized_tensor, load_data
 from lib.utils import WeightScheduler, update_loss_weights
 
 
@@ -172,7 +172,7 @@ def train_network(
 
             running_training_loss.append(loss.item())
             running_reconstruction_loss.append(recons_loss.item())
-            running_kl_loss.append(kl_loss.item())
+            # running_kl_loss.append(kl_loss.item())
             running_cl_loss.append(cl_loss.item())
 #
             optimizer.step()
@@ -181,13 +181,13 @@ def train_network(
         if step_counter % steps_per_epoch == steps_per_epoch-1:
             if True:
 
-                to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f} CL Loss: {:.3f}"
+                to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} CL Loss: {:.3f}"
                 to_print = to_print.format(
                     epoch,
                     max_epochs,
                     np.mean(running_training_loss),
                     np.mean(running_reconstruction_loss),
-                    np.mean(running_kl_loss),
+                    # np.mean(running_kl_loss),
                     np.mean(running_cl_loss),
                 )
                 if use_wandb:
@@ -195,7 +195,7 @@ def train_network(
                             {
                                 "epoch": epoch,
                                 "inpainting_loss": np.mean(running_reconstruction_loss),
-                                "kl_loss": np.mean(running_kl_loss)*kl_w,
+                                # "kl_loss": np.mean(running_kl_loss)*kl_w,
                                 "cl_loss": np.mean(running_cl_loss)*cl_w,
                                 "loss": np.mean(running_training_loss),
                                 "kl_weight": kl_w,
@@ -211,16 +211,16 @@ def train_network(
                 reconstruction_loss_train_history.append(
                     np.mean(running_reconstruction_loss)
                 )
-                kl_loss_train_history.append(np.mean(running_kl_loss))
+                # kl_loss_train_history.append(np.mean(running_kl_loss))
                 cl_loss_train_history.append(np.mean(running_cl_loss))
                 np.save(model_folder + "train_loss.npy", np.array(loss_train_history))
                 np.save(
                     model_folder + "train_reco_loss.npy",
                     np.array(reconstruction_loss_train_history),
                 )
-                np.save(
-                    model_folder + "train_kl_loss.npy", np.array(kl_loss_train_history)
-                )
+                # np.save(
+                    # model_folder + "train_kl_loss.npy", np.array(kl_loss_train_history)
+                # )
                 np.save(
                     model_folder + "train_cl_loss.npy", np.array(cl_loss_train_history)
                 )
@@ -241,19 +241,19 @@ def train_network(
                         )
 
                         val_recons_loss = val_outputs["recons_loss"]
-                        val_kl_loss = val_outputs['kl_loss']
+                        # val_kl_loss = val_outputs['kl_loss']
                         val_cl_loss = val_outputs["cl_loss"]
-                        val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
-                        
+                        # val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
+                        val_loss = val_recons_loss + cl_w * val_cl_loss
 
                         # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
                         val_cl.append(val_cl_loss*cl_w)
-                        val_kl.append(val_kl_loss*kl_w)
+                        # val_kl.append(val_kl_loss*kl_w)
                         val_inpainting.append(val_recons_loss)
                     
                     wandb.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
-                                "val_kl_loss": torch.mean(torch.stack(val_kl)),
+                                # "val_kl_loss": torch.mean(torch.stack(val_kl)),
                                 "val_cl_loss": torch.mean(torch.stack(val_cl)),
                                 "val_loss": torch.mean(torch.stack(running_validation_loss))})
 
@@ -262,7 +262,7 @@ def train_network(
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
                 # w_scheduler.step()
-                kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
+                # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses
                 loss_val_history.append(total_epoch_loss_val.item())

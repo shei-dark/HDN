@@ -27,11 +27,11 @@ def log_all_plots(wandb, class_type, model, masks):
     for class_t in range(len(class_type)):
         for i in range(len(class_type[class_t])):
             mu.extend(get_mus(model, class_type[class_t][i]))
-            kl_losses = get_kl(model, class_type[class_t][i])
-            kl[class_t]["kl_total"].append(kl_losses[0])
-            kl[class_t]["kl_0"].append(kl_losses[1])
-            kl[class_t]["kl_1"].append(kl_losses[2])
-            kl[class_t]["kl_2"].append(kl_losses[3])
+            # kl_losses = get_kl(model, class_type[class_t][i])
+            # kl[class_t]["kl_total"].append(kl_losses[0])
+            # kl[class_t]["kl_0"].append(kl_losses[1])
+            # kl[class_t]["kl_1"].append(kl_losses[2])
+            # kl[class_t]["kl_2"].append(kl_losses[3])
         mus = np.append(mus, mu).reshape(-1, 96)
         mu = []
     for i in range(len(mus)):
@@ -60,42 +60,42 @@ def log_all_plots(wandb, class_type, model, masks):
     wandb.log({"Anderson": normal})
 
     # golgi
-    kl_total = torch.mean(torch.stack(kl[0]["kl_total"]))
-    kl_first_layer = torch.mean(torch.stack(kl[0]["kl_0"]))
-    kl_second_layer = torch.mean(torch.stack(kl[0]["kl_1"]))
-    kl_third_layer = torch.mean(torch.stack(kl[0]["kl_2"]))
-    wandb.log(
-        {
-            "kl_total_golgi": kl_total,
-            "kl_first_layer_golgi": kl_first_layer,
-            "kl_second_layer_golgi": kl_second_layer,
-            "kl_third_layer_golgi": kl_third_layer,
-        }
-    )
-    kl_total = torch.mean(torch.stack(kl[1]["kl_total"]))
-    kl_first_layer = torch.mean(torch.stack(kl[1]["kl_0"]))
-    kl_second_layer = torch.mean(torch.stack(kl[1]["kl_1"]))
-    kl_third_layer = torch.mean(torch.stack(kl[1]["kl_2"]))
-    wandb.log(
-        {
-            "kl_total_mitochondria": kl_total,
-            "kl_first_layer_mitochondria": kl_first_layer,
-            "kl_second_layer_mitochondria": kl_second_layer,
-            "kl_third_layer_mitochondria": kl_third_layer,
-        }
-    )
-    kl_total = torch.mean(torch.stack(kl[2]["kl_total"]))
-    kl_first_layer = torch.mean(torch.stack(kl[2]["kl_0"]))
-    kl_second_layer = torch.mean(torch.stack(kl[2]["kl_1"]))
-    kl_third_layer = torch.mean(torch.stack(kl[2]["kl_2"]))
-    wandb.log(
-        {
-            "kl_total_granule": kl_total,
-            "kl_first_layer_granule": kl_first_layer,
-            "kl_second_layer_granule": kl_second_layer,
-            "kl_third_layer_granule": kl_third_layer,
-        }
-    )
+    # kl_total = torch.mean(torch.stack(kl[0]["kl_total"]))
+    # kl_first_layer = torch.mean(torch.stack(kl[0]["kl_0"]))
+    # kl_second_layer = torch.mean(torch.stack(kl[0]["kl_1"]))
+    # kl_third_layer = torch.mean(torch.stack(kl[0]["kl_2"]))
+    # wandb.log(
+    #     {
+    #         "kl_total_golgi": kl_total,
+    #         "kl_first_layer_golgi": kl_first_layer,
+    #         "kl_second_layer_golgi": kl_second_layer,
+    #         "kl_third_layer_golgi": kl_third_layer,
+    #     }
+    # )
+    # kl_total = torch.mean(torch.stack(kl[1]["kl_total"]))
+    # kl_first_layer = torch.mean(torch.stack(kl[1]["kl_0"]))
+    # kl_second_layer = torch.mean(torch.stack(kl[1]["kl_1"]))
+    # kl_third_layer = torch.mean(torch.stack(kl[1]["kl_2"]))
+    # wandb.log(
+    #     {
+    #         "kl_total_mitochondria": kl_total,
+    #         "kl_first_layer_mitochondria": kl_first_layer,
+    #         "kl_second_layer_mitochondria": kl_second_layer,
+    #         "kl_third_layer_mitochondria": kl_third_layer,
+    #     }
+    # )
+    # kl_total = torch.mean(torch.stack(kl[2]["kl_total"]))
+    # kl_first_layer = torch.mean(torch.stack(kl[2]["kl_0"]))
+    # kl_second_layer = torch.mean(torch.stack(kl[2]["kl_1"]))
+    # kl_third_layer = torch.mean(torch.stack(kl[2]["kl_2"]))
+    # wandb.log(
+    #     {
+    #         "kl_total_granule": kl_total,
+    #         "kl_first_layer_granule": kl_first_layer,
+    #         "kl_second_layer_granule": kl_second_layer,
+    #         "kl_third_layer_granule": kl_third_layer,
+    #     }
+    # )
 
     X_embedded = []
     X_embedded = TSNE(
