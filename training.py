@@ -7,7 +7,7 @@ import glob
 from boilerplate import boilerplate
 import wandb
 from glob import glob
-from lib.plotting import log_all_plots, get_normalized_tensor, load_data, log_silhouette
+from lib.plotting import log_all_plots, get_normalized_tensor, load_data
 from lib.utils import WeightScheduler, update_loss_weights
 
 
@@ -104,13 +104,13 @@ def train_network(
 
     patience_ = 0
     first_step = True
-    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    # data_dir = "/localscratch/testing/img/"
+    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    data_dir = "/localscratch/testing/img/"
     golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
     mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
     granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
-    mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
-    # mask_dir = "/localscratch/testing/mask/"
+    # mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
+    mask_dir = "/localscratch/testing/mask/"
     golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
     mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
     granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))

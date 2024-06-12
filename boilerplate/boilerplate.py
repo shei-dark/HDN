@@ -15,10 +15,12 @@ import random
 from tifffile import imread
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from lib.dataloader import CustomDataset, MultiClassSampler, MemoryBank, DataLoader
 
 from models.lvae import LadderVAE
 import lib.utils as utils
-def _make_datamanager(train_images, train_labels, val_images, val_labels, test_images, batch_size, test_batch_size):
+
+def _make_datamanager(train_images, train_labels, val_images, val_labels, test_images, test_labels, batch_size):
     
     """Create data loaders for training, validation and test sets during training.
     The test set will simply be used for plotting and comparing generated images 
@@ -38,36 +40,35 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
         data_std: std of train data and validation data combined
     """
     
-    # np.random.shuffle(train_images)
-    # train_images = train_images
-    # np.random.shuffle(val_images)
-    # val_images = val_images
+    np.random.shuffle(train_images)
+    train_images = train_images
+    np.random.shuffle(val_images)
+    val_images = val_images
     
     combined_data = np.concatenate((train_images, val_images), axis=0)
     data_mean = np.mean(combined_data)
     data_std = np.std(combined_data)
     train_images = (train_images-data_mean)/data_std
     train_images = torch.from_numpy(train_images)
-    train_labels = torch.from_numpy(train_labels) #torch.zeros(len(train_images),).fill_(float('nan'))
-    train_set = TensorDataset(train_images, train_labels)
+    train_labels = torch.from_numpy(train_labels)
+    train_set = CustomDataset(train_images, train_labels)
     
     val_images = (val_images-data_mean)/data_std
     val_images = torch.from_numpy(val_images)
     val_labels = torch.from_numpy(val_labels) #torch.zeros(len(val_images),).fill_(float('nan'))
-    val_set = TensorDataset(val_images, val_labels)
+    val_set = CustomDataset(val_images, val_labels)
     
-    # np.random.shuffle(test_images)
-    # test_images = torch.from_numpy(test_images)
-    # test_images = (test_images-data_mean)/data_std
-    # test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
-    # test_set = TensorDataset(test_images, test_labels)
+    np.random.shuffle(test_images)
+    test_images = torch.from_numpy(test_images)
+    test_images = (test_images-data_mean)/data_std
+    test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
+    test_set = CustomDataset(test_images, test_labels)
     
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
-    # test_loader = DataLoader(test_set, batch_size=test_batch_size, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True)
     
-    # return train_loader, val_loader, test_loader, data_mean, data_std
-    return train_loader, val_loader, data_mean, data_std
+    return train_loader, val_loader, test_loader, data_mean, data_std
 
     
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
@@ -90,15 +91,17 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     return optimizer, scheduler
         
 def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
+    if y is None:
+        y = x
     patch_size = x.shape[2]
     mask_size = int(model.mask_size)
     masked_coord = int((patch_size-mask_size)/2)
 
     x_mask = x.clone()  # Create a copy of x
-    x_mask[:,:,30:34,30:34] = 0
+    x_mask[:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size] = 0
     x = x.to(device, non_blocking=True)
     x_mask = x_mask.to(device, non_blocking=True)
-    model_out = model(x_mask,y,x_orig=x,model_layers=[1,2,3])
+    model_out = model(x_mask,y,x_orig=x,model_layers=[0,1,2])
     if model.mode_pred is False:
         if model.use_non_stochastic:
             recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]

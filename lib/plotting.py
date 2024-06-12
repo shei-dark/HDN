@@ -661,4 +661,33 @@ def get_mean_centre(x, i):
             .mean(-1)
         )
 
-    
+def visualize_receptive_field(model, layer, input_shape, feature_idx):
+    # Register hooks to get the gradients
+    def hook_function(module, grad_in, grad_out):
+        grads.append(grad_in[0])
+
+    grads = []
+    hook = layer.register_backward_hook(hook_function)
+
+    # Create a dummy input
+    dummy_input = torch.zeros(*input_shape, requires_grad=True)
+    dummy_input = dummy_input.to(device)
+    # Forward pass
+    output = model(dummy_input, dummy_input, dummy_input, model_layers=[0, 1, 2])
+
+    # Choose a specific feature in the output of the target layer
+    feature = layer(dummy_input)[0, feature_idx]
+
+    # Backward pass
+    feature.backward(retain_graph=True)
+
+    # Get the gradients
+    gradients = grads[0]
+
+    # Remove the hook
+    hook.remove()
+
+    # Visualize the receptive field
+    plt.imshow(gradients[0].detach().numpy(), cmap='hot', interpolation='nearest')
+    plt.title('Receptive Field Visualization')
+    plt.show()
