@@ -11,7 +11,7 @@ from torch.nn import init
 from torch.optim.optimizer import Optimizer
 import os
 import glob
-import random
+from sklearn.utils import shuffle
 from tifffile import imread
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -40,17 +40,13 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
         data_std: std of train data and validation data combined
     """
     
-    np.random.shuffle(train_images)
-    train_images = train_images
-    np.random.shuffle(val_images)
-    val_images = val_images
+    train_images, train_labels = shuffle(train_images, train_labels)
+    val_images, val_labels = shuffle(val_images, val_labels)
     
     combined_data = np.concatenate((train_images, val_images), axis=0)
     data_mean = np.mean(combined_data)
     data_std = np.std(combined_data)
     train_images = (train_images-data_mean)/data_std
-    train_images = torch.from_numpy(train_images)
-    train_labels = torch.from_numpy(train_labels)
     train_set = CustomDataset(train_images, train_labels)
     
     val_images = (val_images-data_mean)/data_std
@@ -58,7 +54,6 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
     val_labels = torch.from_numpy(val_labels) #torch.zeros(len(val_images),).fill_(float('nan'))
     val_set = CustomDataset(val_images, val_labels)
     
-    np.random.shuffle(test_images)
     test_images = torch.from_numpy(test_images)
     test_images = (test_images-data_mean)/data_std
     test_labels = torch.zeros(len(test_images),).fill_(float('nan'))

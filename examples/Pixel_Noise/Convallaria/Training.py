@@ -23,21 +23,21 @@ from torch.utils.data import DataLoader
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# img_dir="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/"
+# data_dir="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/"
 data_dir = "/localscratch/contrastive/"
 patch_size = 64
 
-train_img_dir = sorted(glob(data_dir+"train/mito_golgi_gra/*.tif"))
+train_img_dir = sorted(glob.glob(data_dir+"train/mito_golgi_gra/*.tif"))
 train_images = tiff.imread(train_img_dir)
-train_label_dir = sorted(glob(data_dir+"train/label_mito_golgi_gra/*.tif"))
+train_label_dir = sorted(glob.glob(data_dir+"train/label_mito_golgi_gra/*.tif"))
 train_y = tiff.imread(train_label_dir)
-val_img_dir = sorted(glob(data_dir+"validation/mito_golgi_gra/*.tif"))
+val_img_dir = sorted(glob.glob(data_dir+"validation/mito_golgi_gra/*.tif"))
 val_images = tiff.imread(val_img_dir)
-val_label_dir = sorted(glob(data_dir+"validation/label_mito_golgi_gra/*.tif"))
+val_label_dir = sorted(glob.glob(data_dir+"validation/label_mito_golgi_gra/*.tif"))
 val_y = tiff.imread(val_label_dir)
-test_img_dir = sorted(glob(data_dir+"test/mito_golgi_gra/*.tif"))
+test_img_dir = sorted(glob.glob(data_dir+"test/mito_golgi_gra/*.tif"))
 test_images = tiff.imread(test_img_dir)
-test_label_dir = sorted(glob(data_dir+"test/label_mito_golgi_gra/*.tif"))
+test_label_dir = sorted(glob.glob(data_dir+"test/label_mito_golgi_gra/*.tif"))
 test_y = tiff.imread(test_label_dir)
 
 model_name = "Contrastive_MAE"
@@ -67,14 +67,14 @@ cl_mode = 'min max'
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
-use_non_stochastic = True
+use_non_stochastic = False
 project           = 'Contrastive_MAE'
 img_shape = (64,64)
 
 # train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
 train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
                                                                                            test_images,test_y,batch_size)
-dataset = CustomDataset(img_dir, patch_size) # dataset.data (7083, 64, 64) dataset.labels (7083,)
+dataset = CustomDataset(data_dir, patch_size) # dataset.data (7083, 64, 64) dataset.labels (7083,)
 sampler = MultiClassSampler(train_y, batch_size)
 data_loader = DataLoader(dataset, batch_sampler=sampler)
 feature_dim = 96
