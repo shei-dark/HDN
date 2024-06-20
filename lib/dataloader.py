@@ -9,36 +9,30 @@ import os
 from PIL import Image
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from collections import defaultdict
+
+def custom_collate_fn(batch):
+    patches, labels = zip(*batch)
+    patches = torch.stack(patches)
+    labels = torch.tensor(labels)
+    return patches, labels
 
 
 class CustomDataset(Dataset):
-    """
-    A custom dataset class for handling image patches and labels.
-
-    Args:
-        images (list): List of input images.
-        labels (list): List of corresponding labels.
-        patch_size (int, optional): Size of the image patches. Defaults to 64.
-        mask_size (int, optional): Size of the blind spot mask. Defaults to 4.
-    """
 
     def __init__(self, images, labels, patch_size=64, mask_size=4):
         self.patch_size = patch_size
         self.mask_size = mask_size
+        self.all_patches = []
         self.patches_by_label = self._extract_valid_patches(images, labels)
+        
+
+    def __len__(self):
+
+        return len(self.all_patches)
 
     def _extract_valid_patches(self, images, labels):
-        """
-        Extracts valid patches from the input images and labels.
 
-        Args:
-            images (list): List of input images.
-            labels (list): List of corresponding labels.
-
-        Returns:
-            dict: Dictionary containing patches grouped by label.
-        """
         patches_by_label = {}
         
         for img, lbl in zip(images, labels):
@@ -58,226 +52,71 @@ class CustomDataset(Dataset):
                             center_label = unique_labels[0]
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
-                            patches_by_label[center_label].append(
-                                torch.tensor(patch, dtype=torch.float32).unsqueeze(0)
-                            )
+                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label.astype(np.int16))))
+                            patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
-
-    def __getitem__(self, lbl_id, num_patches=1):
-        """
-        Retrieves a specified number of patches for a given label.
-
-        Args:
-            lbl_id (int): Label ID.
-            num_patches (int, optional): Number of patches to retrieve. Defaults to 1.
-
-        Returns:
-            list or torch.Tensor: List of selected patches or a single patch as a tensor.
-        """
-        patches = self.patches_by_label[lbl_id]
-        try:
-            selected_patches = random.sample(patches, num_patches)
-        except ValueError as e:
-            print(f"Number of patches requested ({num_patches}) exceeds the number of available patches ({len(patches)}).")
-            selected_patches = random.choice(patches)
-        return selected_patches
+    def __getitem__(self, idx):
+        if isinstance(idx, list):
+            patches = [self.all_patches[i] for i in idx]
+            patches, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(labels)
+        else:
+            patch, label = self.all_patches[idx]
+            return patch, label
+    
+    # def get_patches_by_label(self, label, sample_size=1):
+    #     if label not in self.patches_by_label:
+    #         raise ValueError(f"Label {label} not found in the dataset.")
+    #     patches = self.patches_by_label[label]
+    #     if sample_size > len(patches):
+    #         raise ValueError(f"Requested sample size {sample_size} exceeds available patches {len(patches)} for label {label}.")
+    #     sampled_patches = random.sample(patches, sample_size)
+    #     return torch.stack(sampled_patches)
 
 
-# class MultiClassSampler(Sampler):
-#     """
-#     A custom sampler that generates batches with balanced class distribution.
+class BalancedBatchSampler(Sampler):
 
-#     Args:
-#         labels (numpy.ndarray): Array of labels for each sample.
-#         batch_size (int): The desired batch size.
+    def __init__(self, dataset, batch_size):
+        self.dataset = dataset
+        self.batch_size = batch_size
 
-#     Attributes:
-#         labels (numpy.ndarray): Array of labels for each sample.
-#         batch_size (int): The desired batch size.
-#         label_to_indices (dict): Dictionary mapping each label to the indices of samples with that label.
+        # dictionary mapping labels to indices
+        self.label_to_indices = dataset.patches_by_label
+    
+        # Determine number of labels
+        self.num_labels = len(self.label_to_indices)
+        self.samples_per_label = self.batch_size // self.num_labels
+        self.remaining_samples = self.batch_size % self.num_labels  
+        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
 
-#     Methods:
-#         __iter__(): Generates batches with balanced class distribution.
-#         __len__(): Returns the total number of samples.
+    def __iter__(self):
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        num_batches_generated = 0
+        # Generate balanced batches
+        while num_batches_generated < self.max_batch:
+            batch = []
+            for label, indices in self.label_to_indices.items():
+                if len(indices) < self.samples_per_label:
+                    indices = random.choices(indices, k=max_class_size)  # Oversample
+                selected_indices = random.sample(indices, self.samples_per_label)
+                batch.extend(selected_indices)
+            
+            if len(batch) < self.batch_size:
+                # Handle any remaining spots in the batch
+                remaining_indices = []
+                for indices in self.label_to_indices.values():
+                    remaining_indices.extend(indices)
+                random.shuffle(remaining_indices)
+                batch.extend(remaining_indices[:self.batch_size - len(batch)])
 
-#     """
+            if len(batch) == self.batch_size:
+                random.shuffle(batch)
+                num_batches_generated += 1
+                yield batch 
+             # Return the batch and pause execution until the next batch is requested
 
-#     def __init__(self, labels, batch_size):
-#         self.labels = labels
-#         self.batch_size = batch_size
-#         self.label_to_indices = {}
-#         for label in set(labels):
-#             self.label_to_indices[label] = np.where(labels == label)[0]
-
-#     def __iter__(self):
-#         batches = []
-#         for _ in range(len(self) // self.batch_size):
-#             batch = []
-#             for label in self.label_to_indices:
-#                 batch.extend(
-#                     np.random.choice(
-#                         self.label_to_indices[label],
-#                         self.batch_size // len(self.label_to_indices),
-#                         replace=False,
-#                     )
-#                 )
-#             np.random.shuffle(batch)
-#             batches.append(batch)
-#         np.random.shuffle(batches)
-#         return iter(batches)
-
-#     def __len__(self):
-#         return len(self.labels)
-
-
-# class MemoryBank:
-#     """
-#     A class representing a memory bank for storing features and labels.
-
-#     Args:
-#         feature_dim (int): The dimension of the feature vectors.
-#         memory_size (int): The maximum number of feature vectors that can be stored in the memory bank.
-
-#     Attributes:
-#         memory (torch.Tensor): The memory bank for storing feature vectors.
-#         memory_labels (torch.Tensor): The labels corresponding to the feature vectors in the memory bank.
-#         memory_ptr (int): The current pointer position in the memory bank.
-#         memory_size (int): The maximum number of feature vectors that can be stored in the memory bank.
-#     """
-
-#     def __init__(self, feature_dim, memory_size):
-#         self.memory = torch.randn(memory_size, feature_dim)
-#         self.memory_labels = torch.zeros(memory_size, dtype=torch.long)
-#         self.memory_ptr = 0
-#         self.memory_size = memory_size
-
-#     def update(self, features, labels):
-#         """
-#         Updates the memory bank with new feature vectors and labels.
-
-#         Args:
-#             features (torch.Tensor): The feature vectors to be added to the memory bank.
-#             labels (torch.Tensor): The labels corresponding to the feature vectors.
-
-#         Returns:
-#             None
-#         """
-#         batch_size = features.size(0)
-#         if self.memory_ptr + batch_size > self.memory_size:
-#             overflow = self.memory_ptr + batch_size - self.memory_size
-#             self.memory[self.memory_ptr :] = features[: batch_size - overflow]
-#             self.memory_labels[self.memory_ptr :] = labels[: batch_size - overflow]
-#             self.memory_ptr = 0
-#             self.memory[:overflow] = features[batch_size - overflow :]
-#             self.memory_labels[:overflow] = labels[batch_size - overflow]
-#         else:
-#             self.memory[self.memory_ptr : self.memory_ptr + batch_size] = features
-#             self.memory_labels[self.memory_ptr : self.memory_ptr + batch_size] = labels
-#             self.memory_ptr += batch_size
-
-#     def sample_positives(self, features, labels, num_positives):
-#         """
-#         Samples hard positive feature vectors from the memory bank.
-
-#         Args:
-#             features (torch.Tensor): The input feature vectors.
-#             labels (torch.Tensor): The labels corresponding to the input feature vectors.
-#             num_positives (int): The number of hard positive samples to be retrieved.
-
-#         Returns:
-#             torch.Tensor: The hard positive feature vectors.
-#         """
-#         positives = []
-#         for feature, label in zip(features, labels):
-#             pos_indices = (
-#                 (self.memory_labels == label).nonzero(as_tuple=False).squeeze()
-#             )
-#             pos_samples = self.memory[pos_indices]
-#             distances = torch.norm(pos_samples - feature, dim=1)
-#             hard_positives = pos_samples[
-#                 distances.topk(num_positives, largest=False).indices
-#             ]
-#             positives.append(hard_positives)
-#         return torch.cat(positives)
-
-#     def sample_negatives(self, features, labels, num_negatives):
-#         """
-#         Samples hard negative feature vectors from the memory bank.
-
-#         Args:
-#             features (torch.Tensor): The input feature vectors.
-#             labels (torch.Tensor): The labels corresponding to the input feature vectors.
-#             num_negatives (int): The number of hard negative samples to be retrieved.
-
-#         Returns:
-#             torch.Tensor: The hard negative feature vectors.
-#         """
-#         negatives = []
-#         for feature, label in zip(features, labels):
-#             neg_indices = (
-#                 (self.memory_labels != label).nonzero(as_tuple=False).squeeze()
-#             )
-#             neg_samples = self.memory[neg_indices]
-#             distances = torch.norm(neg_samples - feature, dim=1)
-#             hard_negatives = neg_samples[
-#                 distances.topk(num_negatives, largest=False).indices
-#             ]
-#             negatives.append(hard_negatives)
-#         return torch.cat(negatives)
-
-
-# class DataLoader:
-#     def __init__(self, train_data, test_data):
-#         self.train_data = train_data
-#         self.test_data = test_data
-#         self.train_queue = queue.Queue()
-#         self.test_queues = {}
-
-#         # Initialize test queues for each label
-#         for label in self.test_data.keys():
-#             self.test_queues[label] = queue.Queue()
-
-#         # Populate the train queue
-#         self._populate_train_queue()
-
-#     def _populate_train_queue(self):
-#         for data in self.train_data:
-#             self.train_queue.put(data)
-
-#     def get_train_batch(self, batch_size):
-#         batch = []
-#         for _ in range(batch_size):
-#             try:
-#                 data = self.train_queue.get(timeout=1)
-#                 batch.append(data)
-#             except queue.Empty:
-#                 break
-#         return batch
-
-#     def get_test_batch(self, label, batch_size):
-#         with self.lock:
-#             test_queue = self.test_queues[label]
-#         batch = []
-#         for _ in range(batch_size):
-#             try:
-#                 data = test_queue.get(timeout=1)
-#                 batch.append(data)
-#             except queue.Empty:
-#                 break
-#         return batch
-
-#     def add_test_data(self, label, data):
-#         with self.lock:
-#             test_queue = self.test_queues[label]
-#         test_queue.put(data)
-
-#     def evaluate_test_data(self):
-#         for label, test_queue in self.test_queues.items():
-#             while not test_queue.empty():
-#                 data = test_queue.get()
-#                 # Perform evaluation on the test data
-#                 # ...
-
-#     def stop(self):
-#         self.train_thread.join()
+    def __len__(self):
+        # Estimate the length based on the largest class
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        return (max_class_size * self.num_labels) // self.batch_size

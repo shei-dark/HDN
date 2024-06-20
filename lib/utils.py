@@ -611,3 +611,4 @@ def contrastive_loss(z, labels, margin=50.0):
     # Total contrastive loss
     loss = positive_loss + negative_loss
     return loss
+

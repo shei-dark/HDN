@@ -17,7 +17,7 @@ import wandb
 import random
 import tifffile as tiff
 import glob
-from lib.dataloader import CustomDataset, MultiClassSampler, MemoryBank
+from lib.dataloader import CustomDataset#, MultiClassSampler, MemoryBank
 from torch.utils.data import DataLoader
 
 use_cuda = torch.cuda.is_available()
@@ -74,12 +74,12 @@ img_shape = (64,64)
 # train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
 train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
                                                                                            test_images,test_y,batch_size)
-dataset = CustomDataset(data_dir, patch_size) # dataset.data (7083, 64, 64) dataset.labels (7083,)
-sampler = MultiClassSampler(train_y, batch_size)
-data_loader = DataLoader(dataset, batch_sampler=sampler)
+# dataset = CustomDataset(data_dir, patch_size) # dataset.data (7083, 64, 64) dataset.labels (7083,)
+# sampler = MultiClassSampler(train_y, batch_size)
+# data_loader = DataLoader(dataset, batch_sampler=sampler)
 feature_dim = 96
-memory_size = 1000
-memory_bank = MemoryBank(feature_dim, memory_size)
+# memory_size = 1000
+# memory_bank = MemoryBank(feature_dim, memory_size)
 
 
 

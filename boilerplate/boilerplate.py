@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import TensorDataset
 from torch.utils.data import Dataset, DataLoader
-from torchvision.utils import save_image
+# from torchvision.utils import save_image
 from torch.nn import init
 from torch.optim.optimizer import Optimizer
 import os
@@ -15,8 +15,7 @@ from sklearn.utils import shuffle
 from tifffile import imread
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from lib.dataloader import CustomDataset, MultiClassSampler, MemoryBank, DataLoader
-
+from lib.dataloader import CustomDataset, BalancedBatchSampler
 from models.lvae import LadderVAE
 import lib.utils as utils
 
@@ -46,24 +45,20 @@ def _make_datamanager(train_images, train_labels, val_images, val_labels, test_i
     combined_data = np.concatenate((train_images, val_images), axis=0)
     data_mean = np.mean(combined_data)
     data_std = np.std(combined_data)
+
     train_images = (train_images-data_mean)/data_std
     train_set = CustomDataset(train_images, train_labels)
-    
+    train_sampler = BalancedBatchSampler(train_set, batch_size)
+    train_loader = DataLoader(train_set, sampler=train_sampler)
+
+
     val_images = (val_images-data_mean)/data_std
-    val_images = torch.from_numpy(val_images)
-    val_labels = torch.from_numpy(val_labels) #torch.zeros(len(val_images),).fill_(float('nan'))
     val_set = CustomDataset(val_images, val_labels)
+    val_sampler = BalancedBatchSampler(val_set, batch_size)
+    val_loader = DataLoader(val_set, sampler=val_sampler)
     
-    test_images = torch.from_numpy(test_images)
-    test_images = (test_images-data_mean)/data_std
-    test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
-    test_set = CustomDataset(test_images, test_labels)
     
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=True)
-    
-    return train_loader, val_loader, test_loader, data_mean, data_std
+    return train_loader, val_loader, data_mean, data_std
 
     
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:

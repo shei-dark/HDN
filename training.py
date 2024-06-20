@@ -144,7 +144,6 @@ def train_network(
         for batch_idx, (x, y) in enumerate(train_loader):
             step_counter = batch_idx
             # kl_w, cl_w = w_scheduler.get_weights()
-            x = x.unsqueeze(1)  # Remove for RGB
             x = x.to(device=device, dtype=torch.float)
             model.mode_pred = False
             model.train()

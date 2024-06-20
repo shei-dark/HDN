@@ -6,7 +6,7 @@ from typing import Union
 
 import numpy as np
 import torch
-import torchvision.transforms.functional as F
+# import torchvision.transforms.functional as F
 from torch import nn
 from torch.distributions import kl_divergence
 from torch.distributions.normal import Normal
