@@ -64,15 +64,6 @@ class CustomDataset(Dataset):
         else:
             patch, label = self.all_patches[idx]
             return patch, label
-    
-    # def get_patches_by_label(self, label, sample_size=1):
-    #     if label not in self.patches_by_label:
-    #         raise ValueError(f"Label {label} not found in the dataset.")
-    #     patches = self.patches_by_label[label]
-    #     if sample_size > len(patches):
-    #         raise ValueError(f"Requested sample size {sample_size} exceeds available patches {len(patches)} for label {label}.")
-    #     sampled_patches = random.sample(patches, sample_size)
-    #     return torch.stack(sampled_patches)
 
 
 class BalancedBatchSampler(Sampler):

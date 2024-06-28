@@ -31,7 +31,7 @@ def train_network(
     project_name="",
     save_output=True,
     batch_size=8,
-    cl_w=1e-7,
+    cl_w=1,
     kl_w=1,
 ):
 
@@ -65,6 +65,53 @@ def train_network(
     max_grad_norm: float
         Value to limit/clamp the gradients at.
     """
+    
+
+    model_folder = directory_path + "model/"
+    img_folder = directory_path + "imgs/"
+    device = model.device
+    optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
+    loss_train_history = []
+    reconstruction_loss_train_history = []
+    kl_loss_train_history = []
+    cl_loss_train_history = []
+    loss_val_history = []
+    running_loss = 0.0
+    step_counter = 0
+    epoch = 0
+    cl_w = cl_w
+    kl_w = kl_w
+
+    patience_ = 0
+    first_step = True
+    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    # data_dir = "/localscratch/testing/img/"
+    golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
+    mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
+    granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
+    mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
+    # mask_dir = "/localscratch/testing/mask/"
+    golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
+    mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
+    granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
+    class_type = [golgi, mitochondria, granule]
+    masks = [golgi_mask, mitochondria_mask, granule_mask]
+
+    try:
+        os.makedirs(model_folder)
+    except FileExistsError:
+        # directory already exists
+        pass
+
+    try:
+        os.makedirs(img_folder)
+    except FileExistsError:
+        # directory already exists
+        pass
+
+    seconds_last = time.time()
+    os.environ["WANDB_START_TIMEOUT"] = "600"
+    # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
     wandb.login()
     if debug == False:
         use_wandb = True
@@ -87,53 +134,6 @@ def train_network(
 
         run.config.update(dict(epochs=max_epochs))
 
-    model_folder = directory_path + "model/"
-    img_folder = directory_path + "imgs/"
-    device = model.device
-    optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
-    loss_train_history = []
-    reconstruction_loss_train_history = []
-    kl_loss_train_history = []
-    cl_loss_train_history = []
-    loss_val_history = []
-    running_loss = 0.0
-    step_counter = 0
-    epoch = 0
-    cl_w = cl_w
-    kl_w = kl_w
-
-    patience_ = 0
-    first_step = True
-    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    data_dir = "/localscratch/testing/img/"
-    golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
-    mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
-    granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
-    # mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
-    mask_dir = "/localscratch/testing/mask/"
-    golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
-    mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
-    granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
-    class_type = [golgi, mitochondria, granule]
-    masks = [golgi_mask, mitochondria_mask, granule_mask]
-
-    try:
-        os.makedirs(model_folder)
-    except FileExistsError:
-        # directory already exists
-        pass
-
-    try:
-        os.makedirs(img_folder)
-    except FileExistsError:
-        # directory already exists
-        pass
-
-    seconds_last = time.time()
-
-    # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
-
-
     while step_counter / steps_per_epoch < max_epochs:
         epoch = epoch + 1
         running_training_loss = []
@@ -144,7 +144,7 @@ def train_network(
         for batch_idx, (x, y) in enumerate(train_loader):
             step_counter = batch_idx
             # kl_w, cl_w = w_scheduler.get_weights()
-            x = x.to(device=device, dtype=torch.float)
+            x = x.squeeze(0).to(device=device, dtype=torch.float)
             model.mode_pred = False
             model.train()
             optimizer.zero_grad()
@@ -233,7 +233,7 @@ def train_network(
                 model.eval()
                 with torch.no_grad():
                     for i, (x, y) in enumerate(val_loader):
-                        x = x.unsqueeze(1)  # Remove for RGB
+                        x = x.squeeze(0)  # Remove for RGB
                         x = x.to(device=device, dtype=torch.float)
                         val_outputs = boilerplate.forward_pass(
                             x, y, device, model, gaussian_noise_std
@@ -261,7 +261,7 @@ def train_network(
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
                 # w_scheduler.step()
-                kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
+                # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses
                 loss_val_history.append(total_epoch_loss_val.item())
@@ -307,3 +307,4 @@ def train_network(
 
             # break
 
+    wandb.finish()

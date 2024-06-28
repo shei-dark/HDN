@@ -198,6 +198,7 @@ class LadderVAE(nn.Module):
 
     # def forward(self, x, y, x_orig=None, model_layers=None):
     def forward(self, x, y=None, x_orig=None, model_layers=[0,1,2]):
+        # x = x.squeeze(0)
         if x_orig is None:
             x_orig = x
         if y is None:

@@ -574,17 +574,7 @@ def contrastive_loss(z, labels, margin=50.0):
     z = torch.cat(z,dim=-1).unsqueeze(0)
     dist = torch.cdist(z, z, p=2).squeeze(0)
     
-    labels_list = [0 for _ in range(len(labels))]
-    for index, batch_label in enumerate(labels):
-        # all pixels in 4x4 centre have same label
-        centre = batch_label[30:34,30:34]
-
-        unique_center = torch.unique(centre)
-        if 0 not in unique_center and len(unique_center)==1:
-                labels_list[index] = int(unique_center[0])
-
-    labels_list = np.array(labels_list)
-    boolean_matrix = torch.tensor(labels_list[:, np.newaxis] == labels_list[np.newaxis, :]).to(device=z.device)
+    boolean_matrix = (labels == labels.T).to(device=z.device)
     
     # Positive pairs: minimize distance
     positive_loss = torch.sum(boolean_matrix * dist)
