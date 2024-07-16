@@ -1,15 +1,11 @@
-import queue
 import torch
 from torch.utils.data import Dataset, DataLoader, Sampler
 import numpy as np
 import random
-from PIL import Image
 from glob import glob
 import os
-from PIL import Image
 import numpy as np
 import torch
-from collections import defaultdict
 
 def custom_collate_fn(batch):
     patches, labels = zip(*batch)
@@ -52,18 +48,18 @@ class CustomDataset(Dataset):
                             center_label = unique_labels[0]
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
-                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label.astype(np.int16))))
+                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label.astype(np.int16)), torch.tensor(patch_label.astype(np.int16)).unsqueeze(0)))
                             patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):
         if isinstance(idx, list):
             patches = [self.all_patches[i] for i in idx]
-            patches, labels = zip(*patches)
-            return torch.stack(patches), torch.tensor(labels)
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
         else:
-            patch, label = self.all_patches[idx]
-            return patch, label
+            patch, cls, label = self.all_patches[idx]
+            return patch, cls, label
 
 
 class BalancedBatchSampler(Sampler):

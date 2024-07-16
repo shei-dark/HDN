@@ -7,7 +7,7 @@ import glob
 from boilerplate import boilerplate
 import wandb
 from glob import glob
-from lib.plotting import log_all_plots, get_normalized_tensor, load_data
+from lib.logging import log_all_plots, get_normalized_tensor, load_data
 from lib.utils import WeightScheduler, update_loss_weights
 wandb.require("core")
 
@@ -141,7 +141,7 @@ def train_network(
         running_kl_loss = []
         running_cl_loss = []
 
-        for batch_idx, (x, y) in enumerate(train_loader):
+        for batch_idx, (x, y, _) in enumerate(train_loader):
             step_counter = batch_idx
             # kl_w, cl_w = w_scheduler.get_weights()
             x = x.squeeze(0).to(device=device, dtype=torch.float)
