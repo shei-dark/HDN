@@ -14,19 +14,19 @@ def plot(*args, plot_types=None, box_size=3):
     - plot_types: list of strings, specifying the plot type for each subplot ('imshow' or 'scatter')
     """
     colors = [
-    (0, 0, 0),           # Black
-    (1, 1, 1), # white 
-    (230/255, 159/255, 0),  # Orange
-    # (86/255, 180/255, 233/255), # Sky blue
-    (0.5803921568627451, 0.403921568627451, 0.7411764705882353), # violet
-    (0, 158/255, 115/255),  # Bluish green
+        (0.8, 0.8, 0.8),               # white for label -1
+        (1, 0.8, 0.9),          # pink for label 0
+        (230/255, 159/255, 0),  # orange for label 1
+        (0.5803921568627451, 0.403921568627451, 0.7411764705882353), # violet for label 2
+        (0, 158/255, 115/255),  # bluish green for label 3
+        
     ]
 
     # Create the colormap
     cmap = mcolors.ListedColormap(colors)
 
     # Define the bounds and normalization
-    bounds = np.arange(len(colors)-1) - 0.5
+    bounds = [-1, 0, 1, 2, 3, 4]    
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
     n = len(args)
@@ -74,7 +74,7 @@ def plot(*args, plot_types=None, box_size=3):
 
     # Add custom legend to the top center of the whole figure
     labels = [
-        "Uncategorized", "Nucleus", "Mitochondria", "Granules"
+        "Outside of the cell", "Uncategorized", "Nucleus", "Granules", "Mitochondria"
     ]
     handles = [patches.Patch(color=color, label=label) for color, label in zip(colors, labels)]
 
