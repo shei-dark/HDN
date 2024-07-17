@@ -16,6 +16,7 @@ from tqdm import tqdm
 import wandb
 import random
 import tifffile as tiff
+import os
 import glob
 from lib.dataloader import CustomDataset#, MultiClassSampler, MemoryBank
 from torch.utils.data import DataLoader
@@ -23,22 +24,26 @@ from torch.utils.data import DataLoader
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-data_dir="/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/"
+data_dir="/group/jug/Sheida/pancreatic beta cells/download/"
 # data_dir = "/localscratch/contrastive/"
 patch_size = 64
 
-train_img_dir = sorted(glob.glob(data_dir+"train/mito_golgi_gra/*.tif"))
-train_images = tiff.imread(train_img_dir)
-train_label_dir = sorted(glob.glob(data_dir+"train/label_mito_golgi_gra/*.tif"))
-train_y = tiff.imread(train_label_dir)
-val_img_dir = sorted(glob.glob(data_dir+"validation/mito_golgi_gra/*.tif"))
-val_images = tiff.imread(val_img_dir)
-val_label_dir = sorted(glob.glob(data_dir+"validation/label_mito_golgi_gra/*.tif"))
-val_y = tiff.imread(val_label_dir)
-test_img_dir = sorted(glob.glob(data_dir+"test/mito_golgi_gra/*.tif"))
-test_images = tiff.imread(test_img_dir)
-test_label_dir = sorted(glob.glob(data_dir+"test/label_mito_golgi_gra/*.tif"))
-test_y = tiff.imread(test_label_dir)
+Three_train_images = ['high_c1', 'high_c2', 'high_c3']
+
+# Load source images
+train_img_paths = [os.path.join(data_dir, img, f"{img}_source.tif") for img in Three_train_images]
+train_images = {img: tiff.imread(path) for img, path in zip(Three_train_images, train_img_paths)}
+
+# Print loaded train images paths
+print("Train images loaded from paths:")
+for img, path in zip(Three_train_images, train_img_paths):
+   print(path)
+
+ground_truth_images = {}
+# Load ground truth images
+for img in Three_train_images:
+   gt_path = os.path.join(data_dir, f"{img}_gt.tif")
+   ground_truth_images[img] = tiff.imread(gt_path)
 
 model_name = "Contrastive_MAE"
 directory_path = "/group/jug/Sheida/HVAE/cl_w_b_1/"
@@ -72,15 +77,8 @@ project           = 'Contrastive_MAE'
 img_shape = (64,64)
 
 # train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
-train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
-                                                                                           test_images,test_y,batch_size)
-# dataset = CustomDataset(data_dir, patch_size) # dataset.data (7083, 64, 64) dataset.labels (7083,)
-# sampler = MultiClassSampler(train_y, batch_size)
-# data_loader = DataLoader(dataset, batch_sampler=sampler)
+train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images, ground_truth_images, batch_size)
 feature_dim = 96
-# memory_size = 1000
-# memory_bank = MemoryBank(feature_dim, memory_size)
-
 
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
@@ -89,7 +87,6 @@ model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data
 model.train() # Model set in training mode
 
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
-                    #    train_loader=train_loader,val_loader=val_loader,test_loader=test_loader,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
                        model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-3, kl_w = 1)

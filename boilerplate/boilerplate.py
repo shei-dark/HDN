@@ -18,47 +18,58 @@ from tqdm import tqdm
 from lib.dataloader import CustomDataset, BalancedBatchSampler
 from models.lvae import LadderVAE
 import lib.utils as utils
+from sklearn.model_selection import train_test_split
 
-def _make_datamanager(train_images, train_labels, val_images, val_labels, test_images, test_labels, batch_size):
-    
-    """Create data loaders for training, validation and test sets during training.
-    The test set will simply be used for plotting and comparing generated images 
-    from the learned denoised posterior during training phase. 
-    No evaluation will be done on the test set during training. 
-    Args:
-        train_images (np array): A 3d array
-        val_images (np array): A 3d array
-        test_images (np array): A 3d array
-        batch_size (int): The batch size for training and validation steps
-        test_batch_size (int): The batch size for test steps
-    Returns:
-        train_loader: Training data loader
-        val_loader: Validation data loader
-        test_loader: Test data loader
-        data_mean: mean of train data and validation data combined
-        data_std: std of train data and validation data combined
-    """
-    
-    train_images, train_labels = shuffle(train_images, train_labels)
-    val_images, val_labels = shuffle(val_images, val_labels)
-    
-    combined_data = np.concatenate((train_images, val_images), axis=0)
-    data_mean = np.mean(combined_data)
-    data_std = np.std(combined_data)
 
-    train_images = (train_images-data_mean)/data_std
+def _make_datamanager(train_images, train_labels, batch_size):
+
+    # Initialize dictionaries for the split data
+    train_images_split = {}
+    val_images_split = {}
+    train_labels_split = {}
+    val_labels_split = {}
+
+    keys = ['high_c1', 'high_c2', 'high_c3']
+
+    for key in keys:
+        filtered_image, filtered_label = _filter_slices(train_images[key], train_labels[key])
+        train_slices_image, val_slices_image, train_slices_label, val_slices_label = _split_slices(
+            filtered_image, filtered_label
+        )
+        train_images_split[key] = train_slices_image
+        val_images_split[key] = val_slices_image
+        train_labels_split[key] = train_slices_label
+        val_labels_split[key] = val_slices_label
+
+    train_images, train_labels, val_images, val_labels, data_mean, data_std = _split_slices(train_images, train_labels, val_split=0.1)
+
     train_set = CustomDataset(train_images, train_labels)
     train_sampler = BalancedBatchSampler(train_set, batch_size)
     train_loader = DataLoader(train_set, sampler=train_sampler)
 
-
-    val_images = (val_images-data_mean)/data_std
     val_set = CustomDataset(val_images, val_labels)
     val_sampler = BalancedBatchSampler(val_set, batch_size)
     val_loader = DataLoader(val_set, sampler=val_sampler)
     
     
     return train_loader, val_loader, data_mean, data_std
+
+def _filter_slices(image, label):
+    valid_indices = ~np.all(label == -1, axis=(1, 2))
+    return image[valid_indices], label[valid_indices]
+
+def _split_slices(image, label, validation_ratio=0.1, random_state=42):
+    num_slices = image.shape[0]
+    indices = np.arange(num_slices)
+    train_indices, val_indices = train_test_split(
+        indices, test_size=validation_ratio, random_state=random_state
+    )
+    train_slices_image = image[train_indices]
+    val_slices_image = image[val_indices]
+    train_slices_label = label[train_indices]
+    val_slices_label = label[val_indices]
+    return (train_slices_image, val_slices_image, train_slices_label, val_slices_label)
+
 
     
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
