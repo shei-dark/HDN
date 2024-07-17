@@ -39,12 +39,12 @@ class FeatureExtractor:
         distances = np.linalg.norm(train - test, axis=1)
         closest_index = np.argmin(distances)
         if closest_index // 100 == 0:
-            closest_index = 1
+            return 1
         elif closest_index // 100 == 1:
-            closest_index = 2
+            return 2
         elif closest_index // 100 == 2:
-            closest_index = 3
-        return closest_index
+            return 3
+        return None
 
         # # Initialize an array to hold the indices of the closest points in train for each point in test
         # closest_indices = np.zeros(test.shape[0], dtype=int)

@@ -44,7 +44,11 @@ class CustomDataset(Dataset):
                         self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
                     ]
                     unique_labels = np.unique(blind_spot_area)
-                    if len(unique_labels) == 1 and unique_labels[0] != 0:
+                    # without background
+                    # if len(unique_labels) == 1 and unique_labels[0] != 0:
+                    # with background
+                    # -1 is for outside of the cell
+                    if len(unique_labels) == 1 and unique_labels[0] != -1:
                             center_label = unique_labels[0]
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
