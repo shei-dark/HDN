@@ -45,6 +45,22 @@ for img in Three_train_images:
    gt_path = os.path.join(data_dir, f"{img}_gt.tif")
    ground_truth_images[img] = tiff.imread(gt_path)
 
+One_test_image = ['high_c4']
+
+# Load test image
+test_img_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_source.tif")
+test_image = tiff.imread(test_img_path)
+
+# Print loaded test images paths
+print("Test image loaded from path:")
+for img, path in zip(One_test_image, test_img_path):
+   print(path)
+
+# Load test ground truth images
+test_gt_path = os.path.join(data_dir, f"{One_test_image[0]}_gt.tif")
+test_ground_truth_image = tiff.imread(test_gt_path)
+
+
 model_name = "Contrastive_MAE"
 directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v0/"
 # directory_path = "test"
