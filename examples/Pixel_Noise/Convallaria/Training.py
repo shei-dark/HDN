@@ -25,7 +25,7 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 data_dir="/group/jug/Sheida/pancreatic beta cells/download/"
-# data_dir = "/localscratch/contrastive/"
+# data_dir = "/localscratch/data/"
 patch_size = 64
 
 Three_train_images = ['high_c1', 'high_c2', 'high_c3']
@@ -46,7 +46,7 @@ for img in Three_train_images:
    ground_truth_images[img] = tiff.imread(gt_path)
 
 model_name = "Contrastive_MAE"
-directory_path = "/group/jug/Sheida/HVAE/cl_w_b_1/"
+directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v0/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
