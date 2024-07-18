@@ -6,6 +6,7 @@ from glob import glob
 import os
 import numpy as np
 import torch
+from tqdm import tqdm
 
 def custom_collate_fn(batch):
     patches, labels = zip(*batch)
@@ -31,29 +32,31 @@ class CustomDataset(Dataset):
 
         patches_by_label = {}
         
-        for img, lbl in zip(images, labels):
-            height, width = img.shape
-            for i in range(0, height // self.patch_size):
-                for j in range(0, width // self.patch_size):
-                    x = j * self.patch_size
-                    y = i * self.patch_size
-                    patch = img[y : y + self.patch_size, x : x + self.patch_size]
-                    patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-                    blind_spot_area = patch_label[
-                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                    ]
-                    unique_labels = np.unique(blind_spot_area)
-                    # without background
-                    # if len(unique_labels) == 1 and unique_labels[0] != 0:
-                    # with background
-                    # -1 is for outside of the cell
-                    if len(unique_labels) == 1 and unique_labels[0] != -1:
-                            center_label = unique_labels[0]
-                            if center_label not in patches_by_label:
-                                patches_by_label[center_label] = []
-                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label.astype(np.int16)), torch.tensor(patch_label.astype(np.int16)).unsqueeze(0)))
-                            patches_by_label[center_label].append(len(self.all_patches) - 1)
+        keys = list(images.keys())
+        for key in keys:
+            for img, lbl in tqdm(zip(images[key], labels[key]), 'Extracting patches from ' + key):
+                height, width = img.shape
+                for i in range(0, height // self.patch_size):
+                    for j in range(0, width // self.patch_size):
+                        x = j * self.patch_size
+                        y = i * self.patch_size
+                        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+                        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+                        blind_spot_area = patch_label[
+                            self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                            self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                        ]
+                        unique_labels = np.unique(blind_spot_area)
+                            # without background
+                        # if len(unique_labels) == 1 and unique_labels[0] != 0:
+                            # with background
+                        # -1 is for outside of the cell
+                        if len(unique_labels) == 1 and unique_labels[0] != -1:
+                                center_label = unique_labels[0]
+                                if center_label not in patches_by_label:
+                                    patches_by_label[center_label] = []
+                                self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                                patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):

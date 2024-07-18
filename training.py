@@ -9,7 +9,7 @@ import wandb
 from glob import glob
 from lib.logging import log_all_plots, get_normalized_tensor, load_data
 from lib.utils import WeightScheduler, update_loss_weights
-wandb.require("core")
+# wandb.require("core")
 
 def train_network(
     model,
