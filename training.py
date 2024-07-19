@@ -18,7 +18,7 @@ def train_network(
     steps_per_epoch,
     train_loader,
     val_loader,
-    # test_loader,
+    test_set,
     virtual_batch,
     gaussian_noise_std,
     model_name,
@@ -83,19 +83,19 @@ def train_network(
     kl_w = kl_w
 
     patience_ = 0
-    first_step = True
-    # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    data_dir = "/localscratch/testing/img/"
-    golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
-    mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
-    granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
-    # mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
-    mask_dir = "/localscratch/testing/mask/"
-    golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
-    mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
-    granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
-    class_type = [golgi, mitochondria, granule]
-    masks = [golgi_mask, mitochondria_mask, granule_mask]
+    # first_step = True
+    # # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
+    # data_dir = "/localscratch/testing/img/"
+    # golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
+    # mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
+    # granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
+    # # mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
+    # mask_dir = "/localscratch/testing/mask/"
+    # golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
+    # mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
+    # granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
+    # class_type = [golgi, mitochondria, granule]
+    # masks = [golgi_mask, mitochondria_mask, granule_mask]
 
     try:
         os.makedirs(model_folder)
@@ -232,7 +232,7 @@ def train_network(
                 val_inpainting = []
                 model.eval()
                 with torch.no_grad():
-                    for i, (x, y) in enumerate(val_loader):
+                    for i, (x, y) in enumerate(val_loader): # TODO: too many values to unpack (expected 2)
                         x = x.squeeze(0)  # Remove for RGB
                         x = x.to(device=device, dtype=torch.float)
                         val_outputs = boilerplate.forward_pass(
@@ -256,7 +256,7 @@ def train_network(
                                 "val_cl_loss": torch.mean(torch.stack(val_cl)),
                                 "val_loss": torch.mean(torch.stack(running_validation_loss))})
 
-                    log_all_plots(wandb, class_type, model, masks)
+                    log_all_plots(wandb, test_set, model)
                     
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)

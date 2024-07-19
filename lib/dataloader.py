@@ -68,6 +68,60 @@ class CustomDataset(Dataset):
             patch, cls, label = self.all_patches[idx]
             return patch, cls, label
 
+class CustomTestDataset(Dataset):
+
+    def __init__(self, images, labels, patch_size=64, mask_size=4):
+        self.patch_size = patch_size
+        self.mask_size = mask_size
+        self.all_patches = []
+        self.patches_by_label = self._extract_valid_patches(images, labels)
+        
+
+    def __len__(self):
+
+        return len(self.all_patches)
+
+    def _extract_valid_patches(self, images, labels):
+
+        patches_by_label = {}
+        
+        
+        for idx in tqdm(range(len(images)), 'Extracting patches from high_c4'):
+            img = images[idx]
+            lbl = labels[idx]
+            height, width = img.shape
+            for i in range(0, height // self.patch_size):
+                for j in range(0, width // self.patch_size):
+                    x = j * self.patch_size
+                    y = i * self.patch_size
+                    patch = img[y : y + self.patch_size, x : x + self.patch_size]
+                    patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+                    blind_spot_area = patch_label[
+                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                    ]
+                    unique_labels = np.unique(blind_spot_area)
+                        # without background
+                    # if len(unique_labels) == 1 and unique_labels[0] != 0:
+                        # with background
+                    # -1 is for outside of the cell
+                    if len(unique_labels) == 1 and unique_labels[0] != -1:
+                            center_label = unique_labels[0]
+                            if center_label not in patches_by_label:
+                                patches_by_label[center_label] = []
+                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                            patches_by_label[center_label].append(len(self.all_patches) - 1)
+        return patches_by_label
+
+    def __getitem__(self, idx):
+        if isinstance(idx, list):
+            patches = [self.all_patches[i] for i in idx]
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+        else:
+            patch, cls, label = self.all_patches[idx]
+            return patch, cls, label
+        
 
 class BalancedBatchSampler(Sampler):
 

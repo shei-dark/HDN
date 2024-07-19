@@ -15,13 +15,13 @@ from sklearn.utils import shuffle
 from tifffile import imread
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from lib.dataloader import CustomDataset, BalancedBatchSampler
+from lib.dataloader import CustomDataset, CustomTestDataset, BalancedBatchSampler
 from models.lvae import LadderVAE
 import lib.utils as utils
 from sklearn.model_selection import train_test_split
 
 
-def _make_datamanager(images, labels, batch_size):
+def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
 
     # Initialize dictionaries for the split data
     train_images = {}
@@ -42,7 +42,7 @@ def _make_datamanager(images, labels, batch_size):
         val_labels[key] = val_label
 
     # compute mean and std of the data
-    all_elements = np.concatenate([np.concatenate((train_images[key],val_images[key]),axis=0).flatten() for key in keys])
+    all_elements = np.concatenate([train_images[key].flatten() for key in keys])
     data_mean = np.mean(all_elements)
     data_std = np.std(all_elements)
 
@@ -50,6 +50,10 @@ def _make_datamanager(images, labels, batch_size):
     for key in tqdm(keys, 'Normalizing data'):
         train_images[key] = (train_images[key] - data_mean) / data_std
         val_images[key] = (val_images[key] - data_mean) / data_std
+
+    filtered_test_image, filtered_test_label = _filter_slices(test_img, test_lbl)
+    filtered_test_image = (filtered_test_image - data_mean) / data_std
+    test_set = CustomTestDataset(filtered_test_image, filtered_test_label)
 
     train_set = CustomDataset(train_images, train_labels)
     train_sampler = BalancedBatchSampler(train_set, batch_size)
@@ -60,7 +64,7 @@ def _make_datamanager(images, labels, batch_size):
     val_loader = DataLoader(val_set, sampler=val_sampler)
     
     
-    return train_loader, val_loader, data_mean, data_std
+    return train_loader, val_loader, test_set, data_mean, data_std
 
 def _filter_slices(image, label):
     # 23, 53, 13 number of slices for c1, c2 and c3 respectively are invalid
