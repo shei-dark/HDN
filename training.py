@@ -3,12 +3,9 @@ import time
 import datetime
 import torch
 import os
-import glob
 from boilerplate import boilerplate
 import wandb
-from glob import glob
-from lib.logging import log_all_plots, get_normalized_tensor, load_data
-from lib.utils import WeightScheduler, update_loss_weights
+wandb.login()
 # wandb.require("core")
 
 def train_network(
@@ -83,19 +80,6 @@ def train_network(
     kl_w = kl_w
 
     patience_ = 0
-    # first_step = True
-    # # data_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/img/"
-    # data_dir = "/localscratch/testing/img/"
-    # golgi = get_normalized_tensor(load_data(sorted(glob(data_dir+'class1/*.tif'))), model, device)
-    # mitochondria = get_normalized_tensor(load_data(sorted(glob(data_dir+'class2/*.tif'))), model, device)
-    # granule = get_normalized_tensor(load_data(sorted(glob(data_dir+'class3/*.tif'))), model, device)
-    # # mask_dir = "/group/jug/Sheida/pancreatic beta cells/download/high_c1/contrastive/patches/testing/mask/"
-    # mask_dir = "/localscratch/testing/mask/"
-    # golgi_mask = load_data(sorted(glob(mask_dir+'class1/*.tif')))
-    # mitochondria_mask = load_data(sorted(glob(mask_dir+'class2/*.tif')))
-    # granule_mask = load_data(sorted(glob((mask_dir+'class3/*.tif'))))
-    # class_type = [golgi, mitochondria, granule]
-    # masks = [golgi_mask, mitochondria_mask, granule_mask]
 
     try:
         os.makedirs(model_folder)
@@ -112,7 +96,7 @@ def train_network(
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
     # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
-    wandb.login()
+
     if debug == False:
         use_wandb = True
     else:
@@ -120,19 +104,19 @@ def train_network(
 
     if use_wandb:
         run = wandb.init(
-        # Set the project where this run will be logged
-        project=project_name,
-        # Track hyperparameters and run metadata
-        config={
-            "learning_rate": lr,
-            "epochs": max_epochs,
-            "batch_size": batch_size,
-            "contrastive_learning_weight": cl_w,
-            "KLD weight": kl_w,
-        },
+            # Set the project where this run will be logged
+            project="HVAE",
+            # Track hyperparameters and run metadata
+            config={
+                "learning_rate": lr,
+                "epochs": max_epochs,
+                "batch_size": batch_size,
+                "contrastive_learning_weight": cl_w,
+                "KLD weight": kl_w,
+            },
         )
 
-        run.config.update(dict(epochs=max_epochs))
+        # run.config.update(dict(epochs=max_epochs))
 
     while step_counter / steps_per_epoch < max_epochs:
         epoch = epoch + 1
@@ -190,7 +174,7 @@ def train_network(
                     np.mean(running_cl_loss),
                 )
                 if use_wandb:
-                    run.log(
+                    wandb.log(
                             {
                                 "epoch": epoch,
                                 "inpainting_loss": np.mean(running_reconstruction_loss),
@@ -232,7 +216,7 @@ def train_network(
                 val_inpainting = []
                 model.eval()
                 with torch.no_grad():
-                    for i, (x, y) in enumerate(val_loader): # TODO: too many values to unpack (expected 2)
+                    for i, (x, y, _) in enumerate(val_loader):
                         x = x.squeeze(0)  # Remove for RGB
                         x = x.to(device=device, dtype=torch.float)
                         val_outputs = boilerplate.forward_pass(
@@ -250,13 +234,13 @@ def train_network(
                         val_cl.append(val_cl_loss*cl_w)
                         val_kl.append(val_kl_loss*kl_w)
                         val_inpainting.append(val_recons_loss)
-                    
-                    wandb.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
-                                "val_kl_loss": torch.mean(torch.stack(val_kl)),
-                                "val_cl_loss": torch.mean(torch.stack(val_cl)),
-                                "val_loss": torch.mean(torch.stack(running_validation_loss))})
+                    if use_wandb:
+                        wandb.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
+                                    "val_kl_loss": torch.mean(torch.stack(val_kl)),
+                                    "val_cl_loss": torch.mean(torch.stack(val_cl)),
+                                    "val_loss": torch.mean(torch.stack(running_validation_loss))})
 
-                    log_all_plots(wandb, test_set, model)
+                    # log_all_plots(wandb, test_set, model)
                     
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
@@ -305,6 +289,6 @@ def train_network(
                 if patience_ == val_loss_patience:
                     return
 
-            # break
+            break
 
     wandb.finish()

@@ -1,31 +1,21 @@
 import warnings
 warnings.filterwarnings('ignore')
 # We import all our dependencies.
-import numpy as np
 import torch
 import sys
 sys.path.append('../../../')
 sys.path.append('/home/sheida.rahnamai/GIT/HDN/')
 from models.lvae import LadderVAE
 from boilerplate import boilerplate
-import lib.utils as utils
 import training
-from tifffile import imread
-from matplotlib import pyplot as plt
-from tqdm import tqdm
-import wandb
-import random
 import tifffile as tiff
 import os
-import glob
-from lib.dataloader import CustomDataset#, MultiClassSampler, MemoryBank
-from torch.utils.data import DataLoader
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# data_dir="/group/jug/Sheida/pancreatic beta cells/download/"
-data_dir = "/localscratch/data/"
+data_dir="/group/jug/Sheida/pancreatic beta cells/download/"
+# data_dir = "/localscratch/data/"
 patch_size = 64
 
 Three_train_images = ['high_c1', 'high_c2', 'high_c3']
@@ -60,15 +50,15 @@ test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_g
 test_ground_truth_image = tiff.imread(test_gt_path)
 
 
-model_name = "Contrastive_MAE"
+model_name = "HVAE"
 directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v0/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-# batch_size=128
-batch_size=16
+batch_size=128
+# batch_size=8
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
@@ -88,14 +78,14 @@ cl_mode = 'min max'
 debug             = False #[True, False]
 save_output       = True #[True, False]
 use_non_stochastic = False
-project           = 'Contrastive_MAE'
+project           = 'HVAE'
 img_shape = (64,64)
 
 # train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
 train_loader, val_loader, test_set, data_mean, data_std = boilerplate._make_datamanager(train_images, ground_truth_images, test_image, test_ground_truth_image, batch_size)
 feature_dim = 96
 
-# val loader -> batch of payches of images with shape (1, batch_size, channel, patch_size, patch_size)
+# val loader -> batch of patches of images with shape (1, batch_size, channel, patch_size, patch_size)
 # then we have the centre label of the patch and the whole label of the patch
 # the centre label is used for contrastive learning
 # centre label of shape (1, batch_size)
