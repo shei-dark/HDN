@@ -5,8 +5,7 @@ import torch
 import os
 from boilerplate import boilerplate
 import wandb
-wandb.login()
-# wandb.require("core")
+wandb.require("core")
 
 def train_network(
     model,
@@ -15,7 +14,7 @@ def train_network(
     steps_per_epoch,
     train_loader,
     val_loader,
-    test_set,
+    # test_set,
     virtual_batch,
     gaussian_noise_std,
     model_name,
@@ -103,18 +102,10 @@ def train_network(
         use_wandb = False
 
     if use_wandb:
-        run = wandb.init(
-            # Set the project where this run will be logged
-            project="HVAE",
-            # Track hyperparameters and run metadata
-            config={
-                "learning_rate": lr,
-                "epochs": max_epochs,
-                "batch_size": batch_size,
-                "contrastive_learning_weight": cl_w,
-                "KLD weight": kl_w,
-            },
-        )
+        run = wandb.init(project="HVAE")
+        config = run.config
+        config.learning_rate = lr
+
 
         # run.config.update(dict(epochs=max_epochs))
 
@@ -162,7 +153,7 @@ def train_network(
 
             # first_step = False
         if step_counter % steps_per_epoch == steps_per_epoch-1:
-            if True:
+            # if True:
 
                 to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f} CL Loss: {:.3f}"
                 to_print = to_print.format(
@@ -174,7 +165,7 @@ def train_network(
                     np.mean(running_cl_loss),
                 )
                 if use_wandb:
-                    wandb.log(
+                    run.log(
                             {
                                 "epoch": epoch,
                                 "inpainting_loss": np.mean(running_reconstruction_loss),
@@ -235,7 +226,7 @@ def train_network(
                         val_kl.append(val_kl_loss*kl_w)
                         val_inpainting.append(val_recons_loss)
                     if use_wandb:
-                        wandb.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
+                        run.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
                                     "val_kl_loss": torch.mean(torch.stack(val_kl)),
                                     "val_cl_loss": torch.mean(torch.stack(val_cl)),
                                     "val_loss": torch.mean(torch.stack(running_validation_loss))})
@@ -289,6 +280,6 @@ def train_network(
                 if patience_ == val_loss_patience:
                     return
 
-            break
+            # break
 
-    wandb.finish()
+    run.finish()

@@ -21,7 +21,9 @@ import lib.utils as utils
 from sklearn.model_selection import train_test_split
 
 
-def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
+# def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
+def _make_datamanager(images, labels, batch_size):
+
 
     # Initialize dictionaries for the split data
     train_images = {}
@@ -51,9 +53,9 @@ def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
         train_images[key] = (train_images[key] - data_mean) / data_std
         val_images[key] = (val_images[key] - data_mean) / data_std
 
-    filtered_test_image, filtered_test_label = _filter_slices(test_img, test_lbl)
-    filtered_test_image = (filtered_test_image - data_mean) / data_std
-    test_set = CustomTestDataset(filtered_test_image, filtered_test_label)
+    # filtered_test_image, filtered_test_label = _filter_slices(test_img, test_lbl)
+    # filtered_test_image = (filtered_test_image - data_mean) / data_std
+    # test_set = CustomTestDataset(filtered_test_image, filtered_test_label)
 
     train_set = CustomDataset(train_images, train_labels)
     train_sampler = BalancedBatchSampler(train_set, batch_size)
@@ -64,7 +66,9 @@ def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
     val_loader = DataLoader(val_set, sampler=val_sampler)
     
     
-    return train_loader, val_loader, test_set, data_mean, data_std
+    # return train_loader, val_loader, test_set, data_mean, data_std
+    return train_loader, val_loader, data_mean, data_std
+
 
 def _filter_slices(image, label):
     # 23, 53, 13 number of slices for c1, c2 and c3 respectively are invalid
