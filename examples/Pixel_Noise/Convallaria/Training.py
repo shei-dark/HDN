@@ -62,7 +62,7 @@ batch_size=128
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
-steps_per_epoch = 1
+steps_per_epoch = 2
 test_batch_size=100
 
 # Model-specific

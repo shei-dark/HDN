@@ -5,7 +5,10 @@ import torch
 import os
 from boilerplate import boilerplate
 import wandb
+from tqdm import tqdm
+
 wandb.require("core")
+
 
 def train_network(
     model,
@@ -30,7 +33,6 @@ def train_network(
     cl_w=1,
     kl_w=1,
 ):
-
     """Train Hierarchical DivNoising network.
     Parameters
     ----------
@@ -61,10 +63,8 @@ def train_network(
     max_grad_norm: float
         Value to limit/clamp the gradients at.
     """
-    
 
     model_folder = directory_path + "model/"
-    img_folder = directory_path + "imgs/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
     loss_train_history = []
@@ -79,81 +79,86 @@ def train_network(
     kl_w = kl_w
 
     patience_ = 0
-
+    first_step = True
     try:
         os.makedirs(model_folder)
     except FileExistsError:
         # directory already exists
         pass
 
-    try:
-        os.makedirs(img_folder)
-    except FileExistsError:
-        # directory already exists
-        pass
 
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
     # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
-
+    wandb.login()
     if debug == False:
         use_wandb = True
     else:
         use_wandb = False
 
     if use_wandb:
-        run = wandb.init(project="HVAE")
-        config = run.config
-        config.learning_rate = lr
+        if use_wandb:
+            run = wandb.init(
+            # Set the project where this run will be logged
+            project=project_name,
+            # Track hyperparameters and run metadata
+            config={
+                "learning_rate": lr,
+                "epochs": max_epochs,
+                "batch_size": batch_size,
+                "contrastive_learning_weight": cl_w,
+                "KLD weight": kl_w,
+            },
+            )
+        
+        run.config.update(dict(epochs=max_epochs))
 
+    try:
+        while epoch < max_epochs:
+            epoch = epoch + 1
+            running_training_loss = []
+            running_reconstruction_loss = []
+            running_kl_loss = []
+            running_cl_loss = []
 
-        # run.config.update(dict(epochs=max_epochs))
+            for batch_idx, (x, y, _) in enumerate(train_loader):
+                print(f"epoch: {epoch}, step_counter: {step_counter}")
+                step_counter = batch_idx
+                # global_step_count += 1
+                # kl_w, cl_w = w_scheduler.get_weights()
+                x = x.squeeze(0).to(device=device, dtype=torch.float)
+                model.mode_pred = False
+                model.train()
+                optimizer.zero_grad()
 
-    while step_counter / steps_per_epoch < max_epochs:
-        epoch = epoch + 1
-        running_training_loss = []
-        running_reconstruction_loss = []
-        running_kl_loss = []
-        running_cl_loss = []
+                outputs = boilerplate.forward_pass(x, y, device, model, gaussian_noise_std)
 
-        for batch_idx, (x, y, _) in enumerate(train_loader):
-            step_counter = batch_idx
-            # kl_w, cl_w = w_scheduler.get_weights()
-            x = x.squeeze(0).to(device=device, dtype=torch.float)
-            model.mode_pred = False
-            model.train()
-            optimizer.zero_grad()
+                recons_loss = outputs["recons_loss"]
+                kl_loss = outputs["kl_loss"]
+                cl_loss = outputs["cl_loss"]
+                if model.contrastive_learning and not model.use_non_stochastic:
+                    loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
+                elif model.use_non_stochastic:
+                    loss = recons_loss + cl_w * cl_loss
+                else:
+                    loss = recons_loss + kl_w * kl_loss
+                loss.backward()
+                if max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=max_grad_norm
+                    )
+                # Optimization step
 
-            outputs = boilerplate.forward_pass(
-                    x, y, device, model, gaussian_noise_std
-                )
-            
-            recons_loss = outputs["recons_loss"]
-            kl_loss = outputs["kl_loss"]
-            cl_loss = outputs["cl_loss"]
-            if model.contrastive_learning and not model.use_non_stochastic:
-                loss = recons_loss + kl_w * kl_loss + cl_w * cl_loss
-            elif model.use_non_stochastic:
-                loss = recons_loss + cl_w * cl_loss
-            else:
-                loss = recons_loss + kl_w * kl_loss
-            loss.backward()
-            if max_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=max_grad_norm
-                )
-            # Optimization step
+                running_training_loss.append(loss.item())
+                running_reconstruction_loss.append(recons_loss.item())
+                running_kl_loss.append(kl_loss.item())
+                running_cl_loss.append(cl_loss.item())
+                #
+                optimizer.step()
 
-            running_training_loss.append(loss.item())
-            running_reconstruction_loss.append(recons_loss.item())
-            running_kl_loss.append(kl_loss.item())
-            running_cl_loss.append(cl_loss.item())
-#
-            optimizer.step()
-
-            # first_step = False
-        if step_counter % steps_per_epoch == steps_per_epoch-1:
-            # if True:
+                # first_step = False
+            # if step_counter % steps_per_epoch == steps_per_epoch - 1:
+            if True:
 
                 to_print = "Epoch[{}/{}] Training Loss: {:.3f} Reconstruction Loss: {:.3f} KL Loss: {:.3f} CL Loss: {:.3f}"
                 to_print = to_print.format(
@@ -166,15 +171,15 @@ def train_network(
                 )
                 if use_wandb:
                     run.log(
-                            {
-                                "epoch": epoch,
-                                "inpainting_loss": np.mean(running_reconstruction_loss),
-                                "kl_loss": np.mean(running_kl_loss)*kl_w,
-                                "cl_loss": np.mean(running_cl_loss)*cl_w,
-                                "loss": np.mean(running_training_loss),
-                                "kl_weight": kl_w,
-                                "cl_weight": cl_w,
-                            }
+                        {
+                            "epoch": epoch,
+                            "inpainting_loss": np.mean(running_reconstruction_loss),
+                            "kl_loss": np.mean(running_kl_loss) * kl_w,
+                            "cl_loss": np.mean(running_cl_loss) * cl_w,
+                            "loss": np.mean(running_training_loss),
+                            "kl_weight": kl_w,
+                            "cl_weight": cl_w,
+                        }
                     )
                 print(to_print)
                 print("saving", model_folder + model_name + "_last_vae.net")
@@ -192,13 +197,8 @@ def train_network(
                     model_folder + "train_reco_loss.npy",
                     np.array(reconstruction_loss_train_history),
                 )
-                np.save(
-                    model_folder + "train_kl_loss.npy", np.array(kl_loss_train_history)
-                )
-                np.save(
-                    model_folder + "train_cl_loss.npy", np.array(cl_loss_train_history)
-                )
-
+                np.save(model_folder + "train_kl_loss.npy", np.array(kl_loss_train_history))
+                np.save(model_folder + "train_cl_loss.npy", np.array(cl_loss_train_history))
 
                 ### Validation step
                 running_validation_loss = []
@@ -215,24 +215,31 @@ def train_network(
                         )
 
                         val_recons_loss = val_outputs["recons_loss"]
-                        val_kl_loss = val_outputs['kl_loss']
+                        val_kl_loss = val_outputs["kl_loss"]
                         val_cl_loss = val_outputs["cl_loss"]
                         val_loss = val_recons_loss + kl_w * val_kl_loss + cl_w * val_cl_loss
-                        
 
                         # val_loss = val_recons_loss + cl_w * val_cl_loss
                         running_validation_loss.append(val_loss)
-                        val_cl.append(val_cl_loss*cl_w)
-                        val_kl.append(val_kl_loss*kl_w)
+                        val_cl.append(val_cl_loss * cl_w)
+                        val_kl.append(val_kl_loss * kl_w)
                         val_inpainting.append(val_recons_loss)
                     if use_wandb:
-                        run.log({"val_inpainting_loss": torch.mean(torch.stack(val_inpainting)),
-                                    "val_kl_loss": torch.mean(torch.stack(val_kl)),
-                                    "val_cl_loss": torch.mean(torch.stack(val_cl)),
-                                    "val_loss": torch.mean(torch.stack(running_validation_loss))})
+                        run.log(
+                            {
+                                "val_inpainting_loss": torch.mean(
+                                    torch.stack(val_inpainting)
+                                ),
+                                "val_kl_loss": torch.mean(torch.stack(val_kl)),
+                                "val_cl_loss": torch.mean(torch.stack(val_cl)),
+                                "val_loss": torch.mean(
+                                    torch.stack(running_validation_loss)
+                                ),
+                            }
+                        )
 
                     # log_all_plots(wandb, test_set, model)
-                    
+
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
                 # w_scheduler.step()
@@ -278,8 +285,11 @@ def train_network(
                 print("----------------------------------------", flush=True)
 
                 if patience_ == val_loss_patience:
+                    print("Early stopping")
                     return
-
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise
             # break
-
-    run.finish()
+    if use_wandb:
+        run.finish()
