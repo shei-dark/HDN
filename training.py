@@ -122,7 +122,6 @@ def train_network(
             running_cl_loss = []
 
             for batch_idx, (x, y, _) in enumerate(train_loader):
-                print(f"epoch: {epoch}, step_counter: {step_counter}")
                 step_counter = batch_idx
                 # global_step_count += 1
                 # kl_w, cl_w = w_scheduler.get_weights()
