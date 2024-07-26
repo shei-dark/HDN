@@ -34,17 +34,17 @@ class FeatureExtractor:
         return feature_map
 
 
-    def get_closest(self, train, test):
+    def get_closest(self, train, test, sample_size):
 
         distances = np.linalg.norm(train - test, axis=1)
         closest_index = np.argmin(distances)
-        if closest_index // 200 == 0:
+        if closest_index // sample_size == 0:
             return 0
-        elif closest_index // 200 == 1:
+        elif closest_index // sample_size == 1:
             return 1
-        elif closest_index // 200 == 2:
+        elif closest_index // sample_size == 2:
             return 2
-        elif closest_index // 200 == 3:
+        elif closest_index // sample_size == 3:
             return 3
         return None
 

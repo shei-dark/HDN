@@ -439,7 +439,7 @@ def contrastive_kl_loss(mus, logvars, labels, margin=50.0):
     loss = positive_loss + negative_loss
     return loss
 
-def contrastive_loss(z, labels, margin=50.0):
+def contrastive_loss(z, labels, margin=100.0):
     # Compute pairwise distances
     batch_size = len(z[0])
     z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
