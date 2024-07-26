@@ -82,7 +82,7 @@ def plot_wo_b(*args, plot_types=None, box_size=3):
     plt.tight_layout()
     plt.show()
 
-def plot_w_b(*args, plot_types=None, box_size=3):
+def plot_w_b(*args, plot_types=None, box_size=3, with_test=False):
     """
     This function accepts a variable number of inputs in the form of tuples and plots them in subplots.
     Each input tuple is expected to be in the form (data, title, extra).
@@ -121,15 +121,16 @@ def plot_w_b(*args, plot_types=None, box_size=3):
         elif plot_type == 'scatter':
             for scatter_data, label in zip(data, extra):
                 axs[i].scatter(scatter_data[:, 0], scatter_data[:, 1], c=label[0], cmap=cmap, norm=norm, s=label[1], alpha=0.3)
-            last_data = data[-1]
-            last_label = extra[-1]
-            axs[i].scatter(last_data[:, 0], last_data[:, 1], facecolors='none', edgecolors='red', s=last_label[1]*1.5, linewidth=1)
+            if with_test:
+                last_data = data[-1]
+                last_label = extra[-1]
+                axs[i].scatter(last_data[:, 0], last_data[:, 1], facecolors='none', edgecolors='red', s=last_label[1]*1.5, linewidth=1)
 
-            # Custom legend for the scatter plot
-            
-            handle = plt.Line2D([0], [0], marker='o', color='r', markerfacecolor=cmap(norm(last_label[0])),\
-                                markersize=7, linestyle='None', markeredgewidth=1, label='Test')
-            axs[i].legend(handles=[handle], loc='best')
+                # Custom legend for the scatter plot
+                
+                handle = plt.Line2D([0], [0], marker='o', color='r', markerfacecolor=cmap(norm(last_label[0])),\
+                                    markersize=7, linestyle='None', markeredgewidth=1, label='Test')
+                axs[i].legend(handles=[handle], loc='best')
 
         axs[i].set_title(title)
         axs[i].set_xticks([])  # Hide x-axis ticks
