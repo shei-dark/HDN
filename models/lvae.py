@@ -38,7 +38,8 @@ class LadderVAE(nn.Module):
                  use_non_stochastic=False,
                  contrastive_learning=False,
                  cl_mode = 'cosine similarity',
-                 use_uncond_mode_at=[]): # unconditional sampling
+                 use_uncond_mode_at=[],
+                 margin=50): # unconditional sampling
         super().__init__()
         self.mask_size = mask_size
         self.color_ch = color_ch
@@ -63,6 +64,7 @@ class LadderVAE(nn.Module):
         self.use_non_stochastic=use_non_stochastic
         self.use_uncond_mode_at=use_uncond_mode_at
         self._global_step = 0
+        self.margin = margin
         
         assert(self.data_std is not None)
         assert(self.data_mean is not None)
@@ -223,7 +225,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode)
+            cl_loss, class_wise_cl = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 
@@ -260,6 +262,7 @@ class LadderVAE(nn.Module):
             'kl_spatial': td_data['kl_spatial'],
             'kl_loss': kl_loss,
             'cl_loss': cl_loss,
+            'class_wise_cl': class_wise_cl,
             'logp': td_data['logprob_p'],
             'out_mean': likelihood_info['mean'],
             'out_mode': likelihood_info['mode'],

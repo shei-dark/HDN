@@ -51,7 +51,7 @@ for img in Three_train_images:
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v2/"
+directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v4/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
@@ -70,6 +70,7 @@ num_latents = 3
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
 mask_size = 4
+margin = 0
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
@@ -92,12 +93,12 @@ feature_dim = 96
 # label of the patch of shape (1, batch_size, channel, patch_size, patch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=True).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=True, margin=margin).cuda()
 
 model.train() # Model set in training mode
 
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-3, kl_w = 1)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-4, kl_w = 1e-1)
 

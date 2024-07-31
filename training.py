@@ -132,6 +132,8 @@ def train_network(
 
                 outputs = boilerplate.forward_pass(x, y, device, model, gaussian_noise_std)
 
+                class_wise_cl = outputs["class_wise_cl"]
+
                 recons_loss = outputs["recons_loss"]
                 kl_loss = outputs["kl_loss"]
                 cl_loss = outputs["cl_loss"]
@@ -178,8 +180,11 @@ def train_network(
                             "loss": np.mean(running_training_loss),
                             "kl_weight": kl_w,
                             "cl_weight": cl_w,
+                            "margin": model.margin,
                         }
                     )
+                    for key, value in class_wise_cl.items():
+                        run.log({f"{key}": value})
                 print(to_print)
                 print("saving", model_folder + model_name + "_last_vae.net")
                 torch.save(model, model_folder + model_name + "_last_vae.net")

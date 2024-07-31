@@ -383,13 +383,22 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def compute_cl_loss(mus, logvars, labels, cl_mode):
+def compute_cl_loss(mus, logvars, labels, cl_mode, margin):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
     logvars: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
-    return contrastive_loss(mus, labels)
+    # --------------
+    positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4)
+    normalized_negative_losses = normalize_losses(negative_losses)
+    alphas = compute_alphas(normalized_negative_losses)
+    cl_loss = compute_total_contrastive_loss(positive_loss, negative_losses, alphas)
+
+    return cl_loss, negative_losses
+    # --------------
+
+    # return contrastive_loss(mus, labels, margin)
     # return contrastive_kl_loss(mus, logvars, labels)
 
 def contrastive_kl_loss(mus, logvars, labels, margin=50.0):
@@ -439,7 +448,7 @@ def contrastive_kl_loss(mus, logvars, labels, margin=50.0):
     loss = positive_loss + negative_loss
     return loss
 
-def contrastive_loss(z, labels, margin=100.0):
+def contrastive_loss(z, labels, margin=50.0):
     # Compute pairwise distances
     batch_size = len(z[0])
     z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
@@ -474,3 +483,59 @@ def contrastive_loss(z, labels, margin=100.0):
     loss = positive_loss + negative_loss
     return loss
 
+def class_wise_contrastive_loss(z, labels, num_classes=4):
+    # Compute pairwise distances
+    batch_size = len(z[0])
+    z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
+    z = torch.cat(z, dim=-1).unsqueeze(0)
+    dist = torch.cdist(z, z, p=2).squeeze(0)
+    
+    # Compute positive pairs loss
+    boolean_matrix = (labels == labels.T).to(device=z.device)
+    positive_loss = torch.sum(boolean_matrix * dist)
+    
+    # Normalize positive loss
+    num_positive_pairs = torch.sum(boolean_matrix) - batch_size
+    if num_positive_pairs == 0:
+        positive_loss = 0
+    else:
+        positive_loss /= num_positive_pairs
+    
+    # Compute negative pairs loss per class pair
+    negative_losses = {}
+    for i in range(num_classes):
+        for j in range(i+1, num_classes):
+            mask_i = (labels == i).unsqueeze(1)
+            mask_j = (labels == j).unsqueeze(1)
+            mask_ij = (mask_i & mask_j.T).squeeze(1)
+            
+            neg_boolean_matrix = mask_ij.to(device=z.device)
+            negative_loss = torch.sum(neg_boolean_matrix * torch.log1p(dist))
+            
+            num_negative_pairs = torch.sum(neg_boolean_matrix)
+            if num_negative_pairs == 0:
+                negative_loss = 0
+            else:
+                negative_loss /= num_negative_pairs
+            
+            negative_losses[f'{i}{j}'] = negative_loss.item()
+    
+    return positive_loss, negative_losses
+
+def normalize_losses(negative_losses):
+    losses = torch.tensor(list(negative_losses.values()))
+    normalized_losses = (losses - losses.min()) / (losses.max() - losses.min())
+    normalized_dict = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
+    return normalized_dict
+
+def compute_alphas(normalized_losses):
+    alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
+    return alphas
+
+def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
+    weighted_negative_loss = 0
+    for pair, loss in negative_losses.items():
+        weighted_negative_loss += alphas.get(pair, 1.0) * loss
+    
+    total_contrastive_loss = positive_loss + weighted_negative_loss
+    return total_contrastive_loss
