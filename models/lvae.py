@@ -206,7 +206,7 @@ class LadderVAE(nn.Module):
         if y is None:
             y = x
         img_size = x.size()[2:]
-
+        class_wise_cl = 0
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x)
         # x_pad[:,:,30:34,30:34] = 0
