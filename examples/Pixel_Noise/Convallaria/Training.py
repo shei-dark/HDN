@@ -51,14 +51,14 @@ for img in Three_train_images:
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v6/"
-# directory_path = "test"
+# directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v6/"
+directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-batch_size=128
-# batch_size=8
+# batch_size=128
+batch_size=8
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500

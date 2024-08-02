@@ -537,5 +537,5 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
     
-    total_contrastive_loss = positive_loss + weighted_negative_loss
+    total_contrastive_loss = positive_loss - weighted_negative_loss
     return total_contrastive_loss
