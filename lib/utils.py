@@ -492,7 +492,7 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
     
     # Compute positive pairs loss
     boolean_matrix = (labels == labels.T).to(device=z.device)
-    positive_loss = torch.sum(boolean_matrix * dist)
+    positive_loss = torch.sum(boolean_matrix * torch.log1p(dist))
     
     # Normalize positive loss
     num_positive_pairs = torch.sum(boolean_matrix) - batch_size
