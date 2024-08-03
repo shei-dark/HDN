@@ -51,14 +51,14 @@ for img in Three_train_images:
 
 
 model_name = "HVAE"
-# directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v6/"
+# directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v8/"
 directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-# batch_size=128
-batch_size=8
+batch_size=128
+# batch_size=8
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
@@ -100,5 +100,5 @@ model.train() # Model set in training mode
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-3, kl_w = 1)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-4, kl_w = 1e-1)
 

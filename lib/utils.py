@@ -492,7 +492,7 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
     
     # Compute positive pairs loss
     boolean_matrix = (labels == labels.T).to(device=z.device)
-    positive_loss = torch.sum(boolean_matrix * torch.log1p(dist))
+    positive_loss = torch.sum(boolean_matrix * dist)
     
     # Normalize positive loss
     num_positive_pairs = torch.sum(boolean_matrix) - batch_size
@@ -503,14 +503,14 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
     
     # Compute negative pairs loss per class pair
     negative_losses = {}
-    for i in range(num_classes):
+    for i in range(num_classes-1):
         for j in range(i+1, num_classes):
             mask_i = (labels == i).unsqueeze(1)
             mask_j = (labels == j).unsqueeze(1)
             mask_ij = (mask_i & mask_j.T).squeeze(1)
             
             neg_boolean_matrix = mask_ij.to(device=z.device)
-            negative_loss = torch.sum(neg_boolean_matrix * torch.log1p(dist))
+            negative_loss = torch.sum(neg_boolean_matrix * dist)
             
             num_negative_pairs = torch.sum(neg_boolean_matrix)
             if num_negative_pairs == 0:
@@ -518,15 +518,17 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
             else:
                 negative_loss /= num_negative_pairs
             
-            negative_losses[f'{i}{j}'] = negative_loss.item()
+            negative_losses[f'{i}{j}'] = negative_loss
     
     return positive_loss, negative_losses
 
 def normalize_losses(negative_losses):
-    losses = torch.tensor(list(negative_losses.values()))
-    normalized_losses = (losses - losses.min()) / (losses.max() - losses.min())
-    normalized_dict = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
-    return normalized_dict
+    min_term = torch.tensor(list(negative_losses.values())).min()
+    max_term = torch.tensor(list(negative_losses.values())).max()
+    diff = max_term - min_term
+    for key, val in negative_losses.items():
+        negative_losses[key] = (val - min_term) / diff
+    return negative_losses
 
 def compute_alphas(normalized_losses):
     alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
