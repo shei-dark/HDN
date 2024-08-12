@@ -390,7 +390,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin):
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
     # --------------
-    positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4)
+    positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
     normalized_negative_losses = normalize_losses(negative_losses)
     alphas = compute_alphas(normalized_negative_losses)
     cl_loss = compute_total_contrastive_loss(positive_loss, negative_losses, alphas)
@@ -401,7 +401,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin):
     # return contrastive_loss(mus, labels, margin)
     # return contrastive_kl_loss(mus, logvars, labels)
 
-def contrastive_kl_loss(mus, logvars, labels, margin=50.0):
+def contrastive_kl_loss(mus, logvars, labels, margin=20.0):
     torch.cuda.empty_cache()
     batch_size = len(mus[0])
     n_channel = mus[0].shape[1]
@@ -448,7 +448,7 @@ def contrastive_kl_loss(mus, logvars, labels, margin=50.0):
     loss = positive_loss + negative_loss
     return loss
 
-def contrastive_loss(z, labels, margin=50.0):
+def contrastive_loss(z, labels, margin=20.0):
     # Compute pairwise distances
     batch_size = len(z[0])
     z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
@@ -483,7 +483,7 @@ def contrastive_loss(z, labels, margin=50.0):
     loss = positive_loss + negative_loss
     return loss
 
-def class_wise_contrastive_loss(z, labels, num_classes=4):
+def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
     # Compute pairwise distances
     batch_size = len(z[0])
     z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
@@ -510,7 +510,7 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
             mask_ij = (mask_i & mask_j.T).squeeze(1)
             
             neg_boolean_matrix = mask_ij.to(device=z.device)
-            negative_loss = torch.sum(neg_boolean_matrix * dist)
+            negative_loss = torch.sum(neg_boolean_matrix * F.relu(margin - dist))
             
             num_negative_pairs = torch.sum(neg_boolean_matrix)
             if num_negative_pairs == 0:
@@ -539,14 +539,11 @@ def compute_alphas(normalized_losses):
 
 def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
     weighted_negative_loss = 0
-    target_negative_loss = 20.0
+
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
-
-    # Penalize based on how far the weighted_negative_loss is from the target
-    negative_loss_penalty = torch.abs(weighted_negative_loss - target_negative_loss)
     
     
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
-    total_contrastive_loss = positive_loss + negative_loss_penalty
+    total_contrastive_loss = positive_loss + weighted_negative_loss
     return total_contrastive_loss

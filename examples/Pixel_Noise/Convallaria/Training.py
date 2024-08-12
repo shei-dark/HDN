@@ -51,7 +51,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v11/"
+directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v12/"
 # directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
@@ -70,7 +70,7 @@ num_latents = 3
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
 mask_size = 4
-margin = 0
+margin = 20
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
