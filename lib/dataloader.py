@@ -109,8 +109,9 @@ class CustomTestDataset(Dataset):
                             center_label = unique_labels[0]
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
-                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
-                            patches_by_label[center_label].append(len(self.all_patches) - 1)
+                            if len(patches_by_label[center_label]) < 100:
+                                self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                                patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):
@@ -136,6 +137,53 @@ class BalancedBatchSampler(Sampler):
         self.num_labels = len(self.label_to_indices)
         self.samples_per_label = self.batch_size // self.num_labels
         self.remaining_samples = self.batch_size % self.num_labels  
+        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
+
+    def __iter__(self):
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        num_batches_generated = 0
+        # Generate balanced batches
+        while num_batches_generated < self.max_batch:
+            batch = []
+            for label, indices in self.label_to_indices.items():
+                if len(indices) < self.samples_per_label:
+                    indices = random.choices(indices, k=max_class_size)  # Oversample
+                selected_indices = random.sample(indices, self.samples_per_label)
+                batch.extend(selected_indices)
+            
+            if len(batch) < self.batch_size:
+                # Handle any remaining spots in the batch
+                remaining_indices = []
+                for indices in self.label_to_indices.values():
+                    remaining_indices.extend(indices)
+                random.shuffle(remaining_indices)
+                batch.extend(remaining_indices[:self.batch_size - len(batch)])
+
+            if len(batch) == self.batch_size:
+                random.shuffle(batch)
+                num_batches_generated += 1
+                yield batch 
+             # Return the batch and pause execution until the next batch is requested
+
+    def __len__(self):
+        # Estimate the length based on the largest class
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        return (max_class_size * self.num_labels) // self.batch_size
+
+
+class UnbalancedBatchSampler(Sampler):
+
+    def __init__(self, dataset, batch_size):
+        self.dataset = dataset
+        self.batch_size = batch_size
+
+        # dictionary mapping labels to indices
+        self.label_to_indices = dataset.patches_by_label
+    
+        # Determine number of labels
+        self.num_labels = len(self.label_to_indices)
+        self.samples_per_label = [self.batch_size // 3, self.batch_size // 6, self.batch_size // 3, self.batch_size // 6]
+        self.remaining_samples = self.batch_size - np.sum(self.samples_per_label)
         self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
 
     def __iter__(self):

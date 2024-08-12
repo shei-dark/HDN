@@ -523,21 +523,30 @@ def class_wise_contrastive_loss(z, labels, num_classes=4):
     return positive_loss, negative_losses
 
 def normalize_losses(negative_losses):
-    min_term = torch.tensor(list(negative_losses.values())).min()
-    max_term = torch.tensor(list(negative_losses.values())).max()
-    diff = max_term - min_term
-    for key, val in negative_losses.items():
-        negative_losses[key] = (val - min_term) / diff
-    return negative_losses
+    losses = torch.tensor(list(negative_losses.values()))
+    normalized_losses = (losses - losses.min()) / (losses.max() - losses.min())
+    normalized_dict = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
+    return normalized_dict
 
 def compute_alphas(normalized_losses):
     alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
+    for key, value in alphas.items():
+        if value == 0:
+            alphas[key] = 0.0001
+        if value == 1:
+            alphas[key] = 0.9999
     return alphas
 
 def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
     weighted_negative_loss = 0
+    target_negative_loss = 20.0
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
+
+    # Penalize based on how far the weighted_negative_loss is from the target
+    negative_loss_penalty = torch.abs(weighted_negative_loss - target_negative_loss)
     
-    total_contrastive_loss = positive_loss - weighted_negative_loss
+    
+    # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
+    total_contrastive_loss = positive_loss + negative_loss_penalty
     return total_contrastive_loss

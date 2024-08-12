@@ -35,24 +35,24 @@ for img in Three_train_images:
    gt_path = os.path.join(data_dir, img, f"{img}_gt.tif")
    ground_truth_images[img] = tiff.imread(gt_path)
 
-# One_test_image = ['high_c4']
+One_test_image = ['high_c4']
 
 # Load test image
-# test_img_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_source.tif")
-# test_image = tiff.imread(test_img_path)
+test_img_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_source.tif")
+test_images = tiff.imread(test_img_path)
 
 # Print loaded test images paths
-# print("Test image loaded from path:")
-# print(test_img_path)
+print("Test image loaded from path:")
+print(test_img_path)
 
 # Load test ground truth images
-# test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
-# test_ground_truth_image = tiff.imread(test_gt_path)
+test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
+test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-# directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v8/"
-directory_path = "test"
+directory_path = "/group/jug/Sheida/HVAE/cl_w_bg_v11/"
+# directory_path = "test"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
@@ -82,8 +82,7 @@ use_non_stochastic = False
 project           = 'HVAE'
 img_shape = (64,64)
 
-# train_loader, val_loader, test_loader, data_mean, data_std = boilerplate._make_datamanager(train_images,train_y,val_images,val_y,
-train_loader, val_loader, data_mean, data_std = boilerplate._make_datamanager(train_images, ground_truth_images, batch_size)#test_image, test_ground_truth_image, batch_size)
+train_loader, val_loader, test_set, data_mean, data_std = boilerplate._make_datamanager(train_images, ground_truth_images, test_images, test_ground_truth_image, batch_size)
 feature_dim = 96
 
 # val loader -> batch of patches of images with shape (1, batch_size, channel, patch_size, patch_size)
@@ -100,5 +99,5 @@ model.train() # Model set in training mode
 training.train_network(model=model,lr=lr,max_epochs=max_epochs,steps_per_epoch=steps_per_epoch,directory_path=directory_path,
                        train_loader=train_loader,val_loader=val_loader,
                        virtual_batch=virtual_batch,gaussian_noise_std=gaussian_noise_std,
-                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-4, kl_w = 1e-1)
+                       model_name=model_name,val_loss_patience=100, debug=debug, save_output=save_output, project_name=project, batch_size=batch_size, cl_w = 1e-2, kl_w = 1e-1, test_set=test_set)
 

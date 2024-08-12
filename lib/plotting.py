@@ -161,4 +161,4 @@ def plot_w_b(*args, plot_types=None, box_size=3, with_test=False):
 
     plt.tight_layout()
     plt.show()
-
+    return plt

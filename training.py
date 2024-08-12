@@ -6,6 +6,7 @@ import os
 from boilerplate import boilerplate
 import wandb
 from tqdm import tqdm
+from lib.logging import log_all_plots
 
 wandb.require("core")
 
@@ -32,6 +33,7 @@ def train_network(
     batch_size=8,
     cl_w=1,
     kl_w=1,
+    test_set=None,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -156,7 +158,6 @@ def train_network(
                 running_cl_loss.append(cl_loss.item())
                 #
                 optimizer.step()
-
                 # first_step = False
             # if step_counter % steps_per_epoch == steps_per_epoch - 1:
             if True:
@@ -242,7 +243,7 @@ def train_network(
                             }
                         )
 
-                    # log_all_plots(wandb, test_set, model)
+                    log_all_plots(wandb, test_set, model)
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)

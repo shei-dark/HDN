@@ -1,17 +1,23 @@
-from sklearn.manifold import TSNE
+from openTSNE import TSNE
 import matplotlib.patches as patches
-from matplotlib import pyplot as plt
+from matplotlib import pyplot
 import torch
 from tifffile import imread
 import numpy as np
 from scipy.stats import shapiro, anderson
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 from enum import IntEnum
+from scipy.spatial.distance import cdist
+import seaborn as sns
+from lib import plotting as p
+
 
 patch_size = 64
 centre_size = 4
 n_channel = 32
 hierarchy_level = 3
+sample_size = 100
+dimension = 43008
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -32,14 +38,14 @@ def log_all_plots(wandb, test_set, model):
         indices_list = test_set.patches_by_label[class_t.value]
         patches, clss, lbls = test_set[indices_list]
         for patch in patches:                          
-            mu.extend(get_mus(model, patch))
-        mus = np.append(mus, mu).reshape(-1, 96)
+            mu.extend(get_feature_maps(model, patch))
+        mus = np.append(mus, mu).reshape(-1, dimension)
         mu = []
     for i in range(len(mus)):
         mus[i] = np.asarray(mus[i])
 
     # silhouette
-    labels = np.array([0] * 19 + [1] * 161 + [2] * 363)
+    labels = np.array([0] * sample_size + [1] * sample_size + [2] * sample_size + [3] * sample_size)
     silhouette = silhouette_score(mus, labels)
     wandb.log({"silhouette": silhouette})
 
@@ -48,504 +54,56 @@ def log_all_plots(wandb, test_set, model):
     wandb.log({"davies_bouldin": davies_bouldin})
 
     normal = 0
-    for dim in range(96):
+    for dim in range(dimension):
         stat, p_value = shapiro(mus[:,dim])
         if p_value > 0.05:
             normal += 1
     wandb.log({"Shapiro": normal})
     normal = 0
-    for dim in range(96):
+    for dim in range(dimension):
         result = anderson(mus[:,dim], dist='norm')
         if result.statistic < result.critical_values[2]:
             normal += 1
     wandb.log({"Anderson": normal})
 
-    
+    distances = cdist(mus, mus, metric='euclidean')
 
-    X_embedded = []
-    X_embedded = TSNE(
+    wandb.log({"Pairwise Distance Heatmap": wandb.Histogram(distances)})
+
+    plt.clf()
+
+    tsne = []
+    tsne = TSNE(
         n_components=2,
+        perplexity=50,
         random_state=42,
-        method="exact",
         learning_rate="auto",
-        init="pca",
         metric="cosine",
         n_iter=10000,
-        n_iter_without_progress=500,
-    ).fit_transform(mus)
-    mean_of_classes = []
-    mean_of_classes.append([X_embedded[:19].T[0].mean(), X_embedded[:19].T[1].mean()])
-    mean_of_classes.append(
-        [X_embedded[19:180].T[0].mean(), X_embedded[19:180].T[1].mean()]
-    )
-    mean_of_classes.append([X_embedded[180:].T[0].mean(), X_embedded[180:].T[1].mean()])
+    ).fit(mus)
+    bg_tsne = tsne[:sample_size]
+    nuc_tsne = tsne[sample_size:2*sample_size]
+    gra_tsne = tsne[2*sample_size:3*sample_size]
+    mito_tsne = tsne[3*sample_size:]
 
-    fig, ax = plt.subplots()
-    fig.set_figheight(10)
-    fig.set_figwidth(10)
-
-    ax.scatter(
-        X_embedded[:19].T[0],
-        X_embedded[:19].T[1],
-        c="orange",
-        s=10,
-        label="Golgi",
-        alpha=1,
-        edgecolors="none",
-    )
-    ax.scatter(
-        mean_of_classes[0][0],
-        mean_of_classes[0][1],
-        c="orange",
-        s=50,
-        label="Golgi mean",
-        alpha=1,
-        edgecolors="none",
-    )
-    ax.scatter(
-        X_embedded[19:180].T[0],
-        X_embedded[19:180].T[1],
-        c="blue",
-        s=10,
-        label="Mitochondria",
-        alpha=1,
-        edgecolors="none",
-    )
-    ax.scatter(
-        mean_of_classes[1][0],
-        mean_of_classes[1][1],
-        c="blue",
-        s=50,
-        label="Mitochondria mean",
-        alpha=1,
-        edgecolors="none",
-    )
-    ax.scatter(
-        X_embedded[180:].T[0],
-        X_embedded[180:].T[1],
-        c="green",
-        s=10,
-        label="Granule",
-        alpha=1,
-        edgecolors="none",
-    )
-    ax.scatter(
-        mean_of_classes[2][0],
-        mean_of_classes[2][1],
-        c="green",
-        s=50,
-        label="Granule mean",
-        alpha=1,
-        edgecolors="none",
-    )
-
-    wandb.log({"t-SNE": wandb.Image(plt)})
+    point_size = 10
+    plt = p.plot_w_b(([bg_tsne, nuc_tsne, gra_tsne, mito_tsne], "TSNE",\
+                    [([0]*sample_size,point_size), ([1]*sample_size,point_size), ([2]*sample_size,point_size),\
+                    ([3]*sample_size,point_size)]),\
+            plot_types=['scatter'],box_size=10
+            )
+    wandb.log({"TSNE": wandb.Image(plt)})
     plt.clf()
 
-    dis_matrix = np.array([])
-    for i in range(543):
-        for j in range(543):
-            dis_matrix = np.append(dis_matrix, np.linalg.norm(mus[i] - mus[j]))
-
-    dis_matrix = dis_matrix.reshape(543, 543)
-
-    fig, ax = plt.subplots()
-    im = ax.imshow(dis_matrix)
-    fig.tight_layout()
-    wandb.log({"heatmap": wandb.Image(plt)})
-    plt.clf()
-
-    i, j, k = (
-        np.random.randint(len(class_type[0])),
-        np.random.randint(len(class_type[1])),
-        np.random.randint(len(class_type[2])),
-    )
-    print(i, j, k)
-    golgi_sample = get_pred(model, class_type[0][i])
-    mitochondria_sample = get_pred(model, class_type[1][j])
-    granule_sample = get_pred(model, class_type[2][k])
-
-    fig, ax = plt.subplots(3, 3)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 0].imshow(class_type[0][i].cpu().numpy().reshape(64, 64))
-    ax[0, 0].set_title("Golgi sample GT")
-    ax[0, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 0].imshow(golgi_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 0].set_title("Golgi sample Pred")
-    ax[1, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 1].imshow(class_type[1][j].cpu().numpy().reshape(64, 64))
-    ax[0, 1].set_title("Mitochondria sample GT")
-    ax[0, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 1].imshow(mitochondria_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 1].set_title("Mitochondria sample Pred")
-    ax[1, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 2].imshow(class_type[2][k].cpu().numpy().reshape(64, 64))
-    ax[0, 2].set_title("Granule sample GT")
-    ax[0, 2].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 2].imshow(granule_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 2].set_title("Granule sample Pred")
-    ax[1, 2].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 0].imshow(masks[0][i])
-    ax[2, 0].set_title("Golgi mask")
-    ax[2, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 1].imshow(masks[1][j])
-    ax[2, 1].set_title("Mitochondria mask")
-    ax[2, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 2].imshow(masks[2][k])
-    ax[2, 2].set_title("Granule mask")
-    ax[2, 2].add_patch(rect)
-    for a in ax:
-        for b in a:
-            b.set_xlim(30 - 5, 30 + 4 + 5)
-            b.set_ylim(30 + 4 + 5, 30 - 5)
-
-    wandb.log({"samples closeup": wandb.Image(plt)})
-    plt.clf()
-
-    fig, ax = plt.subplots(3, 3)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 0].imshow(class_type[0][i].cpu().numpy().reshape(64, 64))
-    ax[0, 0].set_title("Golgi sample GT")
-    ax[0, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 0].imshow(golgi_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 0].set_title("Golgi sample Pred")
-    ax[1, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 1].imshow(class_type[1][j].cpu().numpy().reshape(64, 64))
-    ax[0, 1].set_title("Mitochondria sample GT")
-    ax[0, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 1].imshow(mitochondria_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 1].set_title("Mitochondria sample Pred")
-    ax[1, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[0, 2].imshow(class_type[2][k].cpu().numpy().reshape(64, 64))
-    ax[0, 2].set_title("Granule sample GT")
-    ax[0, 2].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[1, 2].imshow(granule_sample.cpu().numpy().reshape(64, 64))
-    ax[1, 2].set_title("Granule sample Pred")
-    ax[1, 2].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 0].imshow(masks[0][i])
-    ax[2, 0].set_title("Golgi mask")
-    ax[2, 0].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 1].imshow(masks[1][j])
-    ax[2, 1].set_title("Mitochondria mask")
-    ax[2, 1].add_patch(rect)
-    rect = patches.Rectangle(
-        (29.5, 29.5), 4, 4, linewidth=2, edgecolor="r", facecolor="none"
-    )
-    ax[2, 2].imshow(masks[2][k])
-    ax[2, 2].set_title("Granule mask")
-    ax[2, 2].add_patch(rect)
-
-    wandb.log({"samples": wandb.Image(plt)})
-    plt.clf()
-
-    mean_of_classes[0] = np.mean(mus[:19], axis=0)
-    mean_of_classes[1] = np.mean(mus[19:180], axis=0)
-    mean_of_classes[2] = np.mean(mus[180:], axis=0)
-
-    dis_to_mean = []
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(19)])
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(19)])
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(19)])
-    labels = ["Golgi"] + ["Mitochondria"] + ["Granule"]
-    plt.hist(dis_to_mean, bins=30, label=labels)
-    plt.title("dis of Golgi samples to mean of classes")
-    plt.legend()
-    wandb.log({"Golgi vs all means": wandb.Image(plt)})
-    plt.clf()
-
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(19, 180)]
-    )
-    plt.hist(dis_to_mean, bins=40, label=labels)
-    plt.title("dis of Mitochondria samples to mean of classes")
-    plt.legend()
-    wandb.log({"Mitochondria vs all means": wandb.Image(plt)})
-    plt.clf()
-
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(180, 543)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(180, 543)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis of Granule samples to mean of classes")
-    plt.legend()
-    wandb.log({"Granule vs all means": wandb.Image(plt)})
-    plt.clf()
-
-    dis_to_mean = []
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(19)])
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[0]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Golgi to")
-    plt.legend()
-    wandb.log({"Golgi mean vs all": wandb.Image(plt)})
-    plt.clf()
-
-    dis_to_mean = []
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(19)])
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[1]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Mitochondria to")
-    plt.legend()
-    wandb.log({"Mitochondria mean vs all": wandb.Image(plt)})
-    plt.clf()
-
-    dis_to_mean = []
-    dis_to_mean.append([np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(19)])
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i] - mean_of_classes[2]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Granule to")
-    plt.legend()
-    wandb.log({"Granule mean vs all": wandb.Image(plt)})
-    plt.clf()
-
-    # first layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[0][:32]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[0][:32]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[0][:32]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Golgi 1st layer to")
-    plt.legend()
-    wandb.log({"Golgi mean vs all 1st layer": wandb.Image(plt)})
-    plt.clf()
-
-    # second layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][32:64] - mean_of_classes[0][32:64]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[0][32:64])
-            for i in range(19, 180)
-        ]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[0][32:64])
-            for i in range(180, 543)
-        ]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Golgi 2nd layer to")
-    plt.legend()
-    wandb.log({"Golgi mean vs all 2nd layer": wandb.Image(plt)})
-    plt.clf()
-
-    # third layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[0][64:]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[0][64:]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[0][64:]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Golgi 3rd layer to")
-    plt.legend()
-    wandb.log({"Golgi mean vs all 3rd layer": wandb.Image(plt)})
-    plt.clf()
-
-    # first layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[1][:32]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[1][:32]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[1][:32]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Mitochondria 1st layer to")
-    plt.legend()
-    wandb.log({"Mitochondria mean vs all 1st layer": wandb.Image(plt)})
-    plt.clf()
-
-    # second layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][32:64] - mean_of_classes[1][32:64]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[1][32:64])
-            for i in range(19, 180)
-        ]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[1][32:64])
-            for i in range(180, 543)
-        ]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Mitochondria 2nd layer to")
-    plt.legend()
-    wandb.log({"Mitochondria mean vs all 2nd layer": wandb.Image(plt)})
-    plt.clf()
-
-    # third layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[1][64:]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[1][64:]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[1][64:]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Mitochondria 3rd layer to")
-    plt.legend()
-    wandb.log({"Mitochondria mean vs all 3rd layer": wandb.Image(plt)})
-    plt.clf()
-
-    # first layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[2][:32]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[2][:32]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][:32] - mean_of_classes[2][:32]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Granule 1st layer to")
-    plt.legend()
-    wandb.log({"Granule mean vs all 1st layer": wandb.Image(plt)})
-    plt.clf()
-
-    # second layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][32:64] - mean_of_classes[2][32:64]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[2][32:64])
-            for i in range(19, 180)
-        ]
-    )
-    dis_to_mean.append(
-        [
-            np.linalg.norm(mus[i][32:64] - mean_of_classes[2][32:64])
-            for i in range(180, 543)
-        ]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Granule 2nd layer to")
-    plt.legend()
-    wandb.log({"Granule mean vs all 2nd layer": wandb.Image(plt)})
-    plt.clf()
-
-    # third layer
-    dis_to_mean = []
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[2][64:]) for i in range(19)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[2][64:]) for i in range(19, 180)]
-    )
-    dis_to_mean.append(
-        [np.linalg.norm(mus[i][64:] - mean_of_classes[2][64:]) for i in range(180, 543)]
-    )
-    plt.hist(dis_to_mean, bins=50, label=labels)
-    plt.title("dis mean Granule 3rd layer to")
-    plt.legend()
-    wandb.log({"Granule mean vs all 3rd layer": wandb.Image(plt)})
-    plt.clf()
+# Function to draw custom bracket annotations
+def draw_custom_bracket(ax, start, end, label):
+    mid = (start + end) / 2
+    # Draw the bracket
+    ax.plot([-0.05, -0.1], [start, start], color='black', lw=1.5)
+    ax.plot([-0.1, -0.1], [start, end], color='black', lw=1.5)
+    ax.plot([-0.1, -0.05], [end, end], color='black', lw=1.5)
+    # Add the text label
+    ax.text(-0.15, mid, label, va='center', ha='right', fontsize=12)
 
 
 def get_normalized_tensor(img, model, device):
@@ -590,70 +148,22 @@ def get_kl(model, z):
             ]
     return kl
 
+def get_feature_maps(model, patch):
+    mus = get_mus(model, patch)
+    feature_map = [mus[i].flatten() for i in range(len(mus))]
+    feature_map = np.array(torch.cat(feature_map,dim=-1).cpu().numpy())
+    return feature_map
 
-def get_mus(model, z):
-    n_features = n_channel * hierarchy_level
-    data = np.zeros((n_features,))
-    model.mode_pred = True
-    model.eval()
-    with torch.no_grad():
-        model.to(device)
-        z = z.to(device=device, dtype=torch.float)
-        z = z.reshape(1, 1, patch_size, patch_size)
+def get_mus(model, patch):
+        hierarchy_level = model.n_layers
+        n_channels = model.z_dims
+        model.mode_pred = True
+        model.eval()
+        device = model.device
         with torch.no_grad():
-            sample = model(z, z, z, model_layers=[0, 1, 2])
-            mu = sample["mu"]
-            for i in range(hierarchy_level):
-                data[i * n_channel : (i + 1) * n_channel] = get_mean_centre(mu, i)
-            data = data.T.reshape(-1, n_features)
-    return data
-
-
-def get_mean_centre(x, i):
-
-    if i == 3:
-        return x[i][0].cpu().numpy().reshape(n_channel, -1).mean(-1)
-    elif i == 4:
-        return x[i][0].cpu().numpy().reshape(n_channel, -1).mean(-1)
-    else:
-        lower_bound = 2 ** (5 - 1 - i) - int(centre_size / 2)
-        upper_bound = 2 ** (5 - 1 - i) + int(centre_size / 2)
-        return (
-            x[i][0]
-            .cpu()
-            .numpy()[:, lower_bound:upper_bound, lower_bound:upper_bound]
-            .reshape(n_channel, -1)
-            .mean(-1)
-        )
-
-
-def visualize_receptive_field(model, layer, input_shape, feature_idx):
-    # Register hooks to get the gradients
-    def hook_function(module, grad_in, grad_out):
-        grads.append(grad_in[0])
-
-    grads = []
-    hook = layer.register_backward_hook(hook_function)
-
-    # Create a dummy input
-    dummy_input = torch.zeros(*input_shape, requires_grad=True)
-    dummy_input = dummy_input.to(device)
-    # Forward pass
-    output = model(dummy_input, dummy_input, dummy_input, model_layers=[0, 1, 2])
-
-    # Choose a specific feature in the output of the target layer
-    feature = layer(dummy_input)[0, feature_idx]
-
-    # Backward pass
-    feature.backward(retain_graph=True)
-
-    # Get the gradients
-    gradients = grads[0]
-
-    # Remove the hook
-    hook.remove()
-
-    # Visualize the receptive field
-    plt.imshow(gradients[0].detach().numpy(), cmap='hot', interpolation='nearest')
-    plt.title('Receptive Field Visualization')
-    plt.show()
+            patch = patch.to(device=device, dtype=torch.float)
+            patch = patch.reshape(1, 1, patch_size, patch_size)
+            with torch.no_grad():
+                sample = model(patch, patch, patch, model_layers=[i for i in range(hierarchy_level)])
+                mu = sample["mu"]
+        return mu
