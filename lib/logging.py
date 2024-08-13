@@ -70,8 +70,6 @@ def log_all_plots(wandb, test_set, model):
 
     wandb.log({"Pairwise Distance Heatmap": wandb.Histogram(distances)})
 
-    plt.clf()
-
     tsne = []
     tsne = TSNE(
         n_components=2,
@@ -93,7 +91,7 @@ def log_all_plots(wandb, test_set, model):
             plot_types=['scatter'],box_size=10
             )
     wandb.log({"TSNE": wandb.Image(plt)})
-    plt.clf()
+
 
 # Function to draw custom bracket annotations
 def draw_custom_bracket(ax, start, end, label):
