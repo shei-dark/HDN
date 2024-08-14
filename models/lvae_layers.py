@@ -42,7 +42,8 @@ class TopDownLayer(nn.Module):
                  learn_top_prior=False,
                  top_prior_param_shape=None,
                  use_non_stochastic = False,
-                 analytical_kl=False):
+                 analytical_kl=False,
+                 clip_q=None):
 
         super().__init__()
 
@@ -97,6 +98,7 @@ class TopDownLayer(nn.Module):
                 c_vars=z_dim,
                 c_out=n_filters,
                 transform_p_params=(not is_top_layer),
+                clip_q=clip_q,
             )
 
         if not is_top_layer:

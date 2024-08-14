@@ -39,7 +39,9 @@ class LadderVAE(nn.Module):
                  contrastive_learning=False,
                  cl_mode = 'cosine similarity',
                  use_uncond_mode_at=[],
-                 margin=50): # unconditional sampling
+                 margin=50,
+                 clip_q=None,
+                 beta=0.5): # unconditional sampling
         super().__init__()
         self.mask_size = mask_size
         self.color_ch = color_ch
@@ -65,6 +67,7 @@ class LadderVAE(nn.Module):
         self.use_uncond_mode_at=use_uncond_mode_at
         self._global_step = 0
         self.margin = margin
+        self.beta = beta
         
         assert(self.data_std is not None)
         assert(self.data_mean is not None)
@@ -160,6 +163,7 @@ class LadderVAE(nn.Module):
                     gated=gated,
                     analytical_kl=analytical_kl,
                     use_non_stochastic=use_non_stochastic,
+                    clip_q=clip_q
                 ))
 
         # Final top-down layer
@@ -225,7 +229,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss, class_wise_cl = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin)
+            cl_loss, npl_sum, ppl, npl, alphas = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin, self.beta)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 
@@ -262,7 +266,10 @@ class LadderVAE(nn.Module):
             'kl_spatial': td_data['kl_spatial'],
             'kl_loss': kl_loss,
             'cl_loss': cl_loss,
-            'class_wise_cl': class_wise_cl,
+            'ppl': ppl,
+            'npl': npl,
+            'npl_sum': npl_sum,
+            'alphas': alphas,
             'logp': td_data['logprob_p'],
             'out_mean': likelihood_info['mean'],
             'out_mode': likelihood_info['mode'],

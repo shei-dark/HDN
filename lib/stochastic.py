@@ -12,7 +12,7 @@ class NormalStochasticBlock2d(nn.Module):
     If q's parameters are not given, do the same but sample from p(z).
     """
 
-    def __init__(self, c_in, c_vars, c_out, kernel=3, transform_p_params=True):
+    def __init__(self, c_in, c_vars, c_out, kernel=3, transform_p_params=True, clip_q=None):
         super().__init__()
         assert kernel % 2 == 1
         pad = kernel // 2
@@ -20,7 +20,7 @@ class NormalStochasticBlock2d(nn.Module):
         self.c_in = c_in
         self.c_out = c_out
         self.c_vars = c_vars
-
+        self.clip_q = clip_q
         if transform_p_params:
             self.conv_in_p = nn.Conv2d(c_in, 2 * c_vars, kernel, padding=pad)
         self.conv_in_q = nn.Conv2d(c_in, 2 * c_vars, kernel, padding=pad)
@@ -34,7 +34,8 @@ class NormalStochasticBlock2d(nn.Module):
                 force_constant_output=False,
                 analytical_kl=False,
                 mode_pred=False,
-                use_uncond_mode=False):
+                use_uncond_mode=False,
+                ):
 
         assert (forced_latent is None) or (not use_mode)
 
@@ -54,6 +55,8 @@ class NormalStochasticBlock2d(nn.Module):
             # Define q(z)
             q_params = self.conv_in_q(q_params)
             q_mu, q_lv = q_params.chunk(2, dim=1)
+            if self.clip_q is not None:
+                q_lv = torch.clip(q_lv, max=self.clip_q)
             q = Normal(q_mu, (q_lv / 2).exp())
 
             # Sample from q(z)

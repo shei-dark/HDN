@@ -21,7 +21,7 @@ import lib.utils as utils
 from sklearn.model_selection import train_test_split
 
 
-def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
+def _make_datamanager(images, labels, test_img, test_lbl, batch_size, with_eval_on_test):
 # def _make_datamanager(images, labels, batch_size):
 
 
@@ -53,9 +53,11 @@ def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
         train_images[key] = (train_images[key] - data_mean) / data_std
         val_images[key] = (val_images[key] - data_mean) / data_std
 
-    filtered_test_image, filtered_test_label = _filter_slices(test_img, test_lbl)
-    filtered_test_image = (filtered_test_image - data_mean) / data_std
-    test_set = CustomTestDataset(filtered_test_image, filtered_test_label)
+    test_set = None
+    if with_eval_on_test:
+        filtered_test_image, filtered_test_label = _filter_slices(test_img, test_lbl)
+        filtered_test_image = (filtered_test_image - data_mean) / data_std
+        test_set = CustomTestDataset(filtered_test_image, filtered_test_label)
 
     train_set = CustomDataset(train_images, train_labels)
     train_sampler = BalancedBatchSampler(train_set, batch_size)
@@ -69,7 +71,6 @@ def _make_datamanager(images, labels, test_img, test_lbl, batch_size):
     
     
     return train_loader, val_loader, test_set, data_mean, data_std
-    # return train_loader, val_loader, data_mean, data_std
 
 
 def _filter_slices(image, label):
@@ -123,29 +124,34 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
     x_mask = x_mask.to(device, non_blocking=True)
     model_out = model(x_mask,y,x_orig=x,model_layers=[0,1,2])
     if model.mode_pred is False:
+        cl_loss = model_out['cl_loss']
+        npl = model_out['npl']
+        ppl = model_out['ppl']
+        npl_sum = model_out['npl_sum']
+        alphas = model_out['alphas']
+        recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
+
         if model.use_non_stochastic:
-            recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
             
             if gaussian_noise_std is None:
                 recons_loss = recons_sep.mean()
             else:
                 recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
-    
-            cl_loss = model_out['cl_loss']
-            # cl_loss = cl_loss.mean()
             
             output = {
                     'recons_loss': recons_loss,
                     'kl_loss': None,
                     'cl_loss': cl_loss,
-                    'class_wise_cl': model_out['class_wise_cl'],
+                    'npl': npl,
+                    'ppl': ppl,
+                    'npl_sum': npl_sum,
+                    'alphas': alphas,
                     'out_mean': model_out['out_mean'],
                     'out_sample': model_out['out_sample'],
                     'mu': model_out['mu'],
                     'logvar': model_out['logvar']
                 }
         else:
-            recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
             kl_sep = model_out['kl_sep']
             kl = model_out['kl']
             kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
@@ -154,15 +160,15 @@ def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
                 recons_loss = recons_sep.mean()
             else:
                 recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
-    
-            cl_loss = model_out['cl_loss']
-            # cl_loss = cl_loss.mean()
-            
+                
             output = {
                     'recons_loss': recons_loss,
                     'kl_loss': kl_loss,
                     'cl_loss': cl_loss,
-                    'class_wise_cl': model_out['class_wise_cl'],
+                    'npl': npl,
+                    'ppl': ppl,
+                    'npl_sum': npl_sum,
+                    'alphas': alphas,
                     'out_mean': model_out['out_mean'],
                     'out_sample': model_out['out_sample'],
                     'mu': model_out['mu'],

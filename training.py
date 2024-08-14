@@ -18,7 +18,7 @@ def train_network(
     steps_per_epoch,
     train_loader,
     val_loader,
-    # test_set,
+    test_set,
     virtual_batch,
     gaussian_noise_std,
     model_name,
@@ -33,7 +33,6 @@ def train_network(
     batch_size=8,
     cl_w=1,
     kl_w=1,
-    test_set=None,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -114,7 +113,7 @@ def train_network(
             )
         
         run.config.update(dict(epochs=max_epochs))
-
+        wandb.run.log_code(("/home/sheida.rahnamai/GIT/HDN/"), include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"))
     try:
         while epoch < max_epochs:
             epoch = epoch + 1
@@ -134,7 +133,10 @@ def train_network(
 
                 outputs = boilerplate.forward_pass(x, y, device, model, gaussian_noise_std)
 
-                class_wise_cl = outputs["class_wise_cl"]
+                ppl = outputs['ppl']
+                npl = outputs["npl"]
+                npl_sum = outputs["npl_sum"]
+                alphas = outputs["alphas"]
 
                 recons_loss = outputs["recons_loss"]
                 kl_loss = outputs["kl_loss"]
@@ -145,6 +147,8 @@ def train_network(
                     loss = recons_loss + cl_w * cl_loss
                 else:
                     loss = recons_loss + kl_w * kl_loss
+                if torch.isnan(loss).any():
+                    continue
                 loss.backward()
                 if max_grad_norm is not None:
                     torch.nn.utils.clip_grad_norm_(
@@ -181,11 +185,15 @@ def train_network(
                             "loss": np.mean(running_training_loss),
                             "kl_weight": kl_w,
                             "cl_weight": cl_w,
+                            "beta": model.beta,
+                            "negative pair loss": npl_sum,
+                            "positive pair loss": ppl,
                             "margin": model.margin,
                         }
                     )
-                    for key, value in class_wise_cl.items():
+                    for key, value in npl.items():
                         run.log({f"{key}": value})
+                        run.log({f"alpha_{key}": alphas[key]})
                 print(to_print)
                 print("saving", model_folder + model_name + "_last_vae.net")
                 torch.save(model, model_folder + model_name + "_last_vae.net")
@@ -243,7 +251,8 @@ def train_network(
                             }
                         )
 
-                    log_all_plots(wandb, test_set, model)
+                    if test_set is not None:
+                        log_all_plots(wandb, test_set, model)
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)

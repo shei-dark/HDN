@@ -383,7 +383,7 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def compute_cl_loss(mus, logvars, labels, cl_mode, margin):
+def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
     logvars: (hierarchy levels, batch_size, C, H, W) list
@@ -391,11 +391,12 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin):
     """
     # --------------
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
-    normalized_negative_losses = normalize_losses(negative_losses)
-    alphas = compute_alphas(normalized_negative_losses)
-    cl_loss = compute_total_contrastive_loss(positive_loss, negative_losses, alphas)
+    # normalized_negative_losses = normalize_losses(negative_losses)
+    # alphas = compute_alphas(normalized_negative_losses)
+    alphas = compute_probability_alphas(negative_losses)
+    cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
-    return cl_loss, negative_losses
+    return cl_loss, npl_sum, positive_loss, negative_losses, alphas
     # --------------
 
     # return contrastive_loss(mus, labels, margin)
@@ -528,16 +529,17 @@ def normalize_losses(negative_losses):
     normalized_dict = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
     return normalized_dict
 
-def compute_alphas(normalized_losses):
-    alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
-    for key, value in alphas.items():
-        if value == 0:
-            alphas[key] = 0.0001
-        if value == 1:
-            alphas[key] = 0.9999
+def compute_probability_alphas(negative_losses):
+    losses = torch.tensor(list(negative_losses.values()))
+    normalized_losses = F.softmax(losses, dim=0)
+    alphas = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
     return alphas
 
-def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
+def compute_alphas(normalized_losses):
+    alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
+    return alphas
+
+def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta):
     weighted_negative_loss = 0
 
     for pair, loss in negative_losses.items():
@@ -545,5 +547,5 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas):
     
     
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
-    total_contrastive_loss = positive_loss + weighted_negative_loss
-    return total_contrastive_loss
+    total_contrastive_loss = beta * positive_loss + (1-beta) * weighted_negative_loss
+    return total_contrastive_loss, weighted_negative_loss

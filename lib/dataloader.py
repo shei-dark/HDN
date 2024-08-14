@@ -7,6 +7,7 @@ import os
 import numpy as np
 import torch
 from tqdm import tqdm
+from random import shuffle
 
 def custom_collate_fn(batch):
     patches, labels = zip(*batch)
@@ -132,6 +133,8 @@ class BalancedBatchSampler(Sampler):
 
         # dictionary mapping labels to indices
         self.label_to_indices = dataset.patches_by_label
+        for key in self.label_to_indices:
+            shuffle(self.label_to_indices[key])
     
         # Determine number of labels
         self.num_labels = len(self.label_to_indices)
