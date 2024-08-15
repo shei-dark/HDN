@@ -266,10 +266,6 @@ class LadderVAE(nn.Module):
             'kl_spatial': td_data['kl_spatial'],
             'kl_loss': kl_loss,
             'cl_loss': cl_loss,
-            'ppl': ppl,
-            'npl': npl,
-            'npl_sum': npl_sum,
-            'alphas': alphas,
             'logp': td_data['logprob_p'],
             'out_mean': likelihood_info['mean'],
             'out_mode': likelihood_info['mode'],
@@ -278,6 +274,11 @@ class LadderVAE(nn.Module):
             'mu':td_data['mu'],
             'logvar':td_data['logvar'],
         }
+        if not self.mode_pred:
+            output['ppl'] = ppl
+            output['npl'] = npl
+            output['npl_sum'] = npl_sum
+            output['alphas'] = alphas
         return output
 
     def bottomup_pass(self, x):
