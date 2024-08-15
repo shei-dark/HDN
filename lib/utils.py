@@ -48,7 +48,23 @@ class CropImage(nn.Module):
 
     def forward(self, x):
         return crop_img_tensor(x, self.size)
-    
+
+class BetaScheduler:
+
+    def __init__(self, beta_start, beta_end, num_steps):
+        self.beta_start = beta_start
+        self.beta_end = beta_end
+        self.num_steps = num_steps
+        self.step_count = 0
+
+    def get_weights(self):
+        beta = self.beta_start + (self.beta_end - self.beta_start) * (self.step_count / self.num_steps)
+        return beta
+
+    def step(self):
+        if self.step_count < self.num_steps:
+            self.step_count += 1
+
 class WeightScheduler:
     def __init__(self, alpha_start, beta_start, alpha_end, beta_end, num_steps):
         self.alpha_start = alpha_start

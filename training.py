@@ -7,6 +7,7 @@ from boilerplate import boilerplate
 import wandb
 from tqdm import tqdm
 from lib.logging import log_all_plots
+from lib.utils import BetaScheduler
 
 wandb.require("core")
 
@@ -68,6 +69,7 @@ def train_network(
     model_folder = directory_path + "model/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
+    beta = model.beta
     loss_train_history = []
     reconstruction_loss_train_history = []
     kl_loss_train_history = []
@@ -90,7 +92,7 @@ def train_network(
 
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
-    # w_scheduler = WeightScheduler(alpha_start=kl_w, beta_start=cl_w, alpha_end=1e+2*kl_w, beta_end=cl_w*1e-2, num_steps=len(train_loader) * max_epochs)
+    beta_scheduler = BetaScheduler(beta_start=beta, beta_end=1-beta, num_steps=max_epochs)
     wandb.login()
     if debug == False:
         use_wandb = True
@@ -125,7 +127,7 @@ def train_network(
             for batch_idx, (x, y, _) in enumerate(train_loader):
                 step_counter = batch_idx
                 # global_step_count += 1
-                # kl_w, cl_w = w_scheduler.get_weights()
+                model.beta = beta_scheduler.get_weights()
                 x = x.squeeze(0).to(device=device, dtype=torch.float)
                 model.mode_pred = False
                 model.train()
@@ -256,7 +258,7 @@ def train_network(
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
-                # w_scheduler.step()
+                beta_scheduler.step()
                 # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses
