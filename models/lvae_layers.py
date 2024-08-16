@@ -192,7 +192,7 @@ class TopDownLayer(nn.Module):
         # Last top-down block (sequence of residual blocks)
         x = self.deterministic_block(x)
 
-        keys = ['z', 'kl_samplewise', 'kl_spatial', 'logprob_p', 'logprob_q', 'mu', 'logvar']
+        keys = ['z', 'kl_samplewise', 'kl_spatial', 'logprob_p', 'logprob_q', 'mu', 'logvar', 'p_params', 'q_params']
         data = {k: data_stoch[k] for k in keys}
         return x, x_pre_residual, data
 

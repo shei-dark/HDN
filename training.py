@@ -92,7 +92,7 @@ def train_network(
 
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
-    beta_scheduler = BetaScheduler(beta_start=beta, beta_end=1-beta, num_steps=max_epochs)
+    # beta_scheduler = BetaScheduler(beta_start=beta, beta_end=1-beta, num_steps=max_epochs)
     wandb.login()
     if debug == False:
         use_wandb = True
@@ -124,10 +124,35 @@ def train_network(
             running_kl_loss = []
             running_cl_loss = []
 
+            if epoch == 10:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = 1
+            
+            if epoch == 20:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = 2
+
+            if epoch == 30:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = 4
+            
+            if epoch == 50:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = 2
+
+            if epoch == 60:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = 1
+
             for batch_idx, (x, y, _) in enumerate(train_loader):
                 step_counter = batch_idx
                 # global_step_count += 1
-                model.beta = beta_scheduler.get_weights()
+                # model.beta = beta_scheduler.get_weights()
                 x = x.squeeze(0).to(device=device, dtype=torch.float)
                 model.mode_pred = False
                 model.train()
@@ -258,7 +283,7 @@ def train_network(
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
-                beta_scheduler.step()
+                # beta_scheduler.step()
                 # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses

@@ -51,7 +51,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/v13/"
+directory_path = "/group/jug/Sheida/HVAE/v14/"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
@@ -71,13 +71,14 @@ z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
 mask_size = 4
 margin = 50
-beta = 0.0
+beta = 1.0
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
 cl_mode = 'min max'
 clip_q = 20
 eval_on_test = False
+learn_top_prior = False
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
@@ -95,7 +96,7 @@ feature_dim = 96
 # label of the patch of shape (1, batch_size, channel, patch_size, patch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=True, margin=margin, clip_q=clip_q, beta=beta).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=learn_top_prior, margin=margin, clip_q=clip_q, beta=beta).cuda()
 
 model.train() # Model set in training mode
 
