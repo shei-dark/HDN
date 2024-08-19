@@ -12,7 +12,7 @@ from torch.optim.optimizer import Optimizer
 import os
 import glob
 from sklearn.utils import shuffle
-from tifffile import imread
+from tifffile import imread, imwrite
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from lib.dataloader import CustomDataset, CustomTestDataset, BalancedBatchSampler, UnbalancedBatchSampler
@@ -238,8 +238,12 @@ def generate_and_save_samples(model, filename, nrows = 4) -> None:
            nrows (int): Number of rows in which to arrange denoised/generated images.
            
     """
-    samples = model.sample_prior(nrows**2)
-    save_image_grid(samples, filename, nrows=nrows)
+    samples = model.sample_prior(nrows**2, model_layers=[0,1,2])
+    # save_image_grid(samples, filename, nrows=nrows)
+    samples = samples.detach().cpu().numpy()
+    for i in range(samples.shape[0]):
+        imwrite(f'sample_{i}', samples[i,0].astype(np.float32))
+    
     return samples
     
 def save_image_grid_reconstructions(inputs,recons,filename):

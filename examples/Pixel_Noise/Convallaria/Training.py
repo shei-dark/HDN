@@ -51,7 +51,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/v14/"
+directory_path = "/group/jug/Sheida/HVAE/v15/"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
