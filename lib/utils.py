@@ -407,16 +407,25 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     # --------------
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
-    normalized_negative_losses = normalize_losses(negative_losses)
-    alphas = compute_alphas(normalized_negative_losses)
+    # normalized_negative_losses = normalize_losses(negative_losses)
+    # alphas = compute_alphas(normalized_negative_losses)
     # alphas = compute_probability_alphas(negative_losses)
-    cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
+    alphas = alphas_one(negative_losses)
+    # cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
+    _, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
+    cl_loss = positive_loss
 
     return cl_loss, npl_sum, positive_loss, negative_losses, alphas
     # --------------
 
     # return contrastive_loss(mus, labels, margin)
     # return contrastive_kl_loss(mus, logvars, labels)
+
+def alphas_one(negative_losses):
+    alphas = {}
+    for key in negative_losses.keys():
+        alphas[key] = 1.0
+    return alphas
 
 def contrastive_kl_loss(mus, logvars, labels, margin=20.0):
     torch.cuda.empty_cache()
@@ -565,7 +574,8 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
-    
+        
+    weighted_negative_loss /= len(negative_losses)
     
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
     total_contrastive_loss = beta * positive_loss + (1-beta) * weighted_negative_loss
