@@ -92,7 +92,7 @@ def train_network(
 
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
-    beta_scheduler = BetaScheduler(beta_start=beta, beta_end=1-beta, num_steps=100)
+    # beta_scheduler = BetaScheduler(beta_start=beta, beta_end=1-beta, num_steps=100)
     wandb.login()
     if debug == False:
         use_wandb = True
@@ -152,7 +152,7 @@ def train_network(
             for batch_idx, (x, y, _) in enumerate(train_loader):
                 step_counter = batch_idx
                 # global_step_count += 1
-                model.beta = beta_scheduler.get_weights()
+                # model.beta = beta_scheduler.get_weights()
                 x = x.squeeze(0).to(device=device, dtype=torch.float)
                 model.mode_pred = False
                 model.train()
@@ -283,7 +283,7 @@ def train_network(
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
-                beta_scheduler.step()
+                # beta_scheduler.step()
                 # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses

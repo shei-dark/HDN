@@ -407,9 +407,9 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     # --------------
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
-    # normalized_negative_losses = normalize_losses(negative_losses)
-    # alphas = compute_alphas(normalized_negative_losses)
-    alphas = compute_probability_alphas(negative_losses)
+    normalized_negative_losses = normalize_losses(negative_losses)
+    alphas = compute_alphas(normalized_negative_losses)
+    # alphas = compute_probability_alphas(negative_losses)
     cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
     return cl_loss, npl_sum, positive_loss, negative_losses, alphas
@@ -553,6 +553,11 @@ def compute_probability_alphas(negative_losses):
 
 def compute_alphas(normalized_losses):
     alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
+    for key, value in alphas.items():
+        if value == 0:
+            alphas[key] += 0.001
+        if value == 1:
+            alphas[key] -= 0.001
     return alphas
 
 def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta):
