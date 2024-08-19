@@ -51,7 +51,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/v15/"
+directory_path = "/group/jug/Sheida/HVAE/v16/"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
@@ -78,7 +78,7 @@ contrastive_learning = True
 cl_mode = 'min max'
 clip_q = 20
 eval_on_test = False
-learn_top_prior = False
+learn_top_prior = True
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
