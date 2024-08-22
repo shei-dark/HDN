@@ -18,3 +18,5 @@ examples/Pixel_Noise/Convallaria/wandb
 hdn.sbatch
 .DS_Store
 *.pkl
+*.tif
+*.tiff

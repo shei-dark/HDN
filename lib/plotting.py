@@ -136,11 +136,15 @@ def plot_w_b(*args, plot_types=None, box_size=3, with_test=False):
         axs[i].set_xticks([])  # Hide x-axis ticks
         axs[i].set_yticks([])  # Hide y-axis ticks
         if isinstance(extra, tuple):
-            y, x, size = extra
+            try:
+                y, x, height, width = extra
+            except ValueError:
+                y, x, height = extra
+                width = height
             rect = patches.Rectangle(
                 (x, y),
-                size,
-                size,
+                width,
+                height,
                 linewidth=1,
                 edgecolor="r",
                 facecolor="none",
