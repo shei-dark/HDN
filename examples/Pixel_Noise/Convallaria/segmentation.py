@@ -16,10 +16,9 @@ from torch.nn.functional import unfold
 from sklearn.cluster import KMeans
 
 
+def get_closest(train, test, metric):
 
-def get_closest(train, test, sample_size):
-
-        distances = cdist(test, train, metric='euclidean')
+        distances = cdist(test, train, metric=metric)
         closest_index = np.argmin(distances, axis=1)
         return closest_index
 
@@ -36,8 +35,19 @@ def get_all_patches(image, patch_size, stride):
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
+dist_metric = ['euclidean', 'cosine', 'correlation', 'seuclidean']
+# Euclidean Distance ('euclidean')
+# The standard Euclidean distance between two points in Euclidean space.
+# Cosine Distance ('cosine')
+# Measures the cosine of the angle between two non-zero vectors, commonly used in text analysis.
+# Correlation Distance ('correlation')
+# Computes the distance based on the Pearson correlation coefficient.
+# Seuclidean Distance ('seuclidean')
+# The standardized Euclidean distance, taking into account the variance of each feature.
+
+num_clusters = 4
 patch_size = 64
-sample_size = 100
+sample_size = 500
 centre_size = 4
 n_channel = 32
 hierarchy_level = 3
@@ -47,7 +57,6 @@ model = torch.load(model_dir+"HVAE_best_vae.net")
 # train data
 
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
-# data_dir = "/localscratch/data/"
 Three_train_images = ['high_c1', 'high_c2', 'high_c3']
 
 # Load source images
@@ -94,13 +103,12 @@ for key in tqdm(keys, 'Normalizing data'):
    val_images[key] = (val_images[key] - data_mean) / data_std
 
 train_set = CustomDataset(train_images, train_labels)
-val_set = CustomDataset(val_images, val_labels)
 
 One_test_image = ['high_c4']
 
 # Load test image
 test_img_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_source.tif")
-test_image = tiff.imread(test_img_path)
+test_images = tiff.imread(test_img_path)
 
 # Print loaded test images paths
 print("Test image loaded from path:")
@@ -129,14 +137,7 @@ granule_lbl = granule_lbl.squeeze(1)
 mito_samples = mito_samples.squeeze(1)
 mito_lbl = mito_lbl.squeeze(1)
 
-#test data
-
-test_images = (test_image-data_mean)/data_std
-
-test_slice = test_images[626]
-test_slice_lbl = test_ground_truth_image[626]
 train_batch = torch.cat([bg_samples, nucleus_samples, granule_samples, mito_samples], dim=0)
-
 model.mode_pred = True
 model.eval()
 device = model.device
@@ -149,35 +150,47 @@ with torch.no_grad():
                            for i in range(4)], dim=0)
    mu_train_mean = np.array(mu_train_mean.cpu().numpy())
 
+#test data
 
+test_images = (test_images-data_mean)/data_std
 
+for test_index in tqdm(range(1, len(test_images)), desc='Test data'):
 
-all_patches = get_all_patches(test_slice, patch_size, 1).unsqueeze(1)
-test_batch_size = 400
-h, w = test_slice.shape
-new_h, new_w = h - patch_size + 1, w - patch_size + 1
-feature_maps = np.zeros((new_h * new_w))
+   test_slice = test_images[test_index]
+   test_slice_lbl = test_ground_truth_image[test_index]
+   all_patches = get_all_patches(test_slice, patch_size, 1).unsqueeze(1)
+   test_batch_size = 400
+   h, w = test_slice.shape
+   new_h, new_w = h - patch_size + 1, w - patch_size + 1
+   feature_maps = np.zeros((len(dist_metric),(new_h * new_w)))
 
-model.mode_pred = True
-model.eval()
-device = model.device
-index = 0 
-all_mus = np.zeros(((new_h * new_w), 43008))
-with torch.no_grad():
-   all_patches = all_patches.to(device=device, dtype=torch.float)
-   for start in tqdm(range(0, all_patches.shape[0], test_batch_size)):
-      end = min(start + test_batch_size, all_patches.shape[0])
-      output = model(all_patches[start:end], model_layers=[i for i in range(hierarchy_level)])
-      mu_test = torch.cat([output["mu"][i].view(end - start, -1) for i in range(hierarchy_level)], dim=1)
-      mu_test = np.array(mu_test.cpu().numpy())
-      all_mus[index:index + test_batch_size] = mu_test
-      feature_maps[index:index + test_batch_size] = get_closest(mu_train_mean, mu_test, sample_size)
-      index += test_batch_size
+   model.mode_pred = True
+   model.eval()
+   device = model.device
+   index = 0 
+   all_mus = np.zeros(((new_h * new_w), 43008))
+   with torch.no_grad():
+      all_patches = all_patches.to(device=device, dtype=torch.float)
+      for start in tqdm(range(0, all_patches.shape[0], test_batch_size)):
+         end = min(start + test_batch_size, all_patches.shape[0])
+         output = model(all_patches[start:end], model_layers=[i for i in range(hierarchy_level)])
+         mu_test = torch.cat([output["mu"][i].view(end - start, -1) for i in range(hierarchy_level)], dim=1)
+         mu_test = np.array(mu_test.cpu().numpy())
+         all_mus[index:index + test_batch_size] = mu_test
+         for m in range(len(dist_metric)):
+            feature_maps[m][index:index + test_batch_size] = get_closest(mu_train_mean, mu_test, metric=dist_metric[m])
+         index += test_batch_size
 
-# Perform K-means clustering
-num_clusters = 4
-kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-cluster_labels = kmeans.fit_predict(all_mus)
-clusters = cluster_labels.reshape(new_h, new_w)
-feature_maps = feature_maps.reshape(new_h, new_w)
-tiff.imwrite("clusters.tif", clusters)
+   feature_maps = feature_maps.reshape(len(dist_metric), new_h, new_w)
+   # ['euclidean', 'cosine', 'correlation', 'seuclidean']
+   for d in range(len(dist_metric)):
+      tiff.imwrite(f"{data_dir}/seg/{dist_metric[d]}/seg{test_index}.tif", feature_maps[d])
+
+   while(num_clusters <= 10):
+      # Perform K-means clustering
+      kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+      cluster_labels = kmeans.fit_predict(all_mus)
+      clusters = cluster_labels.reshape(new_h, new_w)
+      tiff.imwrite(f"{data_dir}/seg/clusters{num_clusters}/seg{test_index}.tif", clusters)
+      num_clusters += 1
+      
