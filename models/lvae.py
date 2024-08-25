@@ -221,7 +221,6 @@ class LadderVAE(nn.Module):
         out, td_data = self.topdown_pass(bu_values, model_layers=model_layers)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
-        # TODO: masking - put 0 in the centre
         # Log likelihood and other info (per data point)
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)

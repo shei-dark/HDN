@@ -154,7 +154,7 @@ with torch.no_grad():
 
 test_images = (test_images-data_mean)/data_std
 
-for test_index in tqdm(range(1, len(test_images)), desc='Test data'):
+for test_index in tqdm(range(500, len(test_images)), desc='Test data'):
 
    test_slice = test_images[test_index]
    test_slice_lbl = test_ground_truth_image[test_index]
@@ -186,11 +186,11 @@ for test_index in tqdm(range(1, len(test_images)), desc='Test data'):
    for d in range(len(dist_metric)):
       tiff.imwrite(f"{data_dir}/seg/{dist_metric[d]}/seg{test_index}.tif", feature_maps[d])
 
-   while(num_clusters <= 10):
-      # Perform K-means clustering
-      kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-      cluster_labels = kmeans.fit_predict(all_mus)
-      clusters = cluster_labels.reshape(new_h, new_w)
-      tiff.imwrite(f"{data_dir}/seg/clusters{num_clusters}/seg{test_index}.tif", clusters)
-      num_clusters += 1
+   # while(num_clusters <= 10):
+   #    # Perform K-means clustering
+   #    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+   #    cluster_labels = kmeans.fit_predict(all_mus)
+   #    clusters = cluster_labels.reshape(new_h, new_w)
+   #    tiff.imwrite(f"{data_dir}/seg/clusters{num_clusters}/seg{test_index}.tif", clusters)
+   #    num_clusters += 1
       
