@@ -10,6 +10,7 @@ from skimage.measure import regionprops
 import torch.nn.functional as F
 from torch.distributions import kl_divergence
 from torch.distributions.normal import Normal
+from torch.optim.lr_scheduler import _LRScheduler
 
 
 
@@ -49,21 +50,39 @@ class CropImage(nn.Module):
     def forward(self, x):
         return crop_img_tensor(x, self.size)
 
-class BetaScheduler:
+class BetaScheduler(_LRScheduler):
 
-    def __init__(self, beta_start, beta_end, num_steps):
-        self.beta_start = beta_start
-        self.beta_end = beta_end
-        self.num_steps = num_steps
-        self.step_count = 0
+    def __init__(self, initial_value, end_value, total_epochs, start_stable_epochs, end_stable_epochs):
+        self.initial_value = initial_value
+        self.end_value = end_value
+        self.total_epochs = total_epochs
+        self.start_stable_epochs = start_stable_epochs
+        self.end_stable_epochs = end_stable_epochs
+        self.current_epoch = 0
 
-    def get_weights(self):
-        beta = self.beta_start + (self.beta_end - self.beta_start) * (self.step_count / self.num_steps)
-        return beta
+    def get_value(self):
+        epoch = self.current_epoch
 
-    def step(self):
-        if self.step_count < self.num_steps:
-            self.step_count += 1
+        # If in the initial stable period, return the initial value
+        if epoch < self.start_stable_epochs:
+            return self.initial_value
+        
+        # If in the decreasing period, compute the value based on linear interpolation
+        elif self.start_stable_epochs <= epoch < self.start_stable_epochs + self.total_epochs:
+            progress = (epoch - self.start_stable_epochs) / self.total_epochs
+            current_value = self.initial_value + progress * (self.end_value - self.initial_value)
+            return current_value
+        
+        # If in the final stable period, return the final value
+        elif epoch >= self.start_stable_epochs + self.total_epochs:
+            return self.end_value
+
+    def step(self, epoch=None):
+        if epoch is not None:
+            self.current_epoch = epoch
+        else:
+            self.current_epoch += 1
+
 
 class WeightScheduler:
     def __init__(self, alpha_start, beta_start, alpha_end, beta_end, num_steps):
@@ -407,25 +426,11 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     # --------------
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
-    # normalized_negative_losses = normalize_losses(negative_losses)
-    # alphas = compute_alphas(normalized_negative_losses)
-    # alphas = compute_probability_alphas(negative_losses)
-    alphas = alphas_one(negative_losses)
-    # cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
-    _, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
-    cl_loss = positive_loss
+    alphas = compute_probability_alphas(negative_losses)
+    cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
     return cl_loss, npl_sum, positive_loss, negative_losses, alphas
-    # --------------
-
-    # return contrastive_loss(mus, labels, margin)
-    # return contrastive_kl_loss(mus, logvars, labels)
-
-def alphas_one(negative_losses):
-    alphas = {}
-    for key in negative_losses.keys():
-        alphas[key] = 1.0
-    return alphas
+    
 
 def contrastive_kl_loss(mus, logvars, labels, margin=20.0):
     torch.cuda.empty_cache()
@@ -548,25 +553,10 @@ def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
     
     return positive_loss, negative_losses
 
-def normalize_losses(negative_losses):
-    losses = torch.tensor(list(negative_losses.values()))
-    normalized_losses = (losses - losses.min()) / (losses.max() - losses.min())
-    normalized_dict = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
-    return normalized_dict
-
 def compute_probability_alphas(negative_losses):
     losses = torch.tensor(list(negative_losses.values()))
     normalized_losses = F.softmax(losses, dim=0)
     alphas = {key: normalized_losses[i].item() for i, key in enumerate(negative_losses.keys())}
-    return alphas
-
-def compute_alphas(normalized_losses):
-    alphas = {key: 1.0 - value for key, value in normalized_losses.items()}
-    for key, value in alphas.items():
-        if value == 0:
-            alphas[key] += 0.001
-        if value == 1:
-            alphas[key] -= 0.001
     return alphas
 
 def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta):
@@ -574,9 +564,7 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
-        
-    weighted_negative_loss /= len(negative_losses)
-    
+            
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
     total_contrastive_loss = beta * positive_loss + (1-beta) * weighted_negative_loss
     return total_contrastive_loss, weighted_negative_loss
