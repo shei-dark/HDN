@@ -425,6 +425,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
     # --------------
+    beta = torch.sigmoid(beta)  # Constrain beta between 0 and 1
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
     alphas = compute_probability_alphas(negative_losses)
     cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)

@@ -92,13 +92,13 @@ def train_network(
 
     seconds_last = time.time()
     os.environ["WANDB_START_TIMEOUT"] = "600"
-    beta_scheduler = BetaScheduler(
-    initial_value= beta,            # The initial value of the hyperparameter
-    end_value= 0.3,                # The value after the decay period
-    total_epochs=100,             # Total epochs over which the decay happens
-    start_stable_epochs=10,       # The first 10 epochs where the value remains stable
-    end_stable_epochs=10          # The last 10 epochs where the value remains stable
-    )
+    # beta_scheduler = BetaScheduler(
+    # initial_value= beta,            # The initial value of the hyperparameter
+    # end_value= 0.3,                # The value after the decay period
+    # total_epochs=100,             # Total epochs over which the decay happens
+    # start_stable_epochs=10,       # The first 10 epochs where the value remains stable
+    # end_stable_epochs=10          # The last 10 epochs where the value remains stable
+    # )
 
     wandb.login()
     if debug == False:
@@ -288,8 +288,8 @@ def train_network(
 
                 total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
                 scheduler.step(total_epoch_loss_val)
-                beta_scheduler.step()
-                model.beta = beta_scheduler.get_value()
+                # beta_scheduler.step()
+                # model.beta = beta_scheduler.get_value()
                 # kl_w, cl_w = update_loss_weights(kl_w, cl_w, np.mean(running_kl_loss), np.mean(running_cl_loss), np.mean(running_reconstruction_loss))
 
                 ### Save validation losses
