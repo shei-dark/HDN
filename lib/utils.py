@@ -426,7 +426,7 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     # --------------
     # beta = torch.sigmoid(beta)  # Constrain beta between 0 and 1
-    beta = 0.3 + 0.4 * torch.sigmoid(beta)  # Constrain beta between 0.3 and 0.7
+    # beta = 0.3 + 0.4 * torch.sigmoid(beta)  # Constrain beta between 0.3 and 0.7
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
     alphas = compute_probability_alphas(negative_losses)
     cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
@@ -570,3 +570,18 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
     total_contrastive_loss = beta * positive_loss + (1-beta) * weighted_negative_loss
     return total_contrastive_loss, weighted_negative_loss
+
+def change_prior_variance(epoch):
+
+    cycle_epoch = (epoch - 1) % 60 + 1
+        
+    # Define a dictionary mapping cycle_epoch to logvar values
+    epoch_to_logvar = {
+        10: 1,
+        20: 2,
+        30: 4,
+        40: 2,
+        50: 1,
+        60: 0
+    }
+    return epoch_to_logvar.get(cycle_epoch)

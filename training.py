@@ -7,7 +7,7 @@ from boilerplate import boilerplate
 import wandb
 from tqdm import tqdm
 from lib.logging import log_all_plots
-from lib.utils import BetaScheduler
+from lib.utils import BetaScheduler, change_prior_variance
 
 wandb.require("core")
 
@@ -131,30 +131,11 @@ def train_network(
             running_kl_loss = []
             running_cl_loss = []
 
-            # if epoch == 10:
-            #     for top_down_layer in model.top_down_layers:
-            #         if top_down_layer.is_top_layer:
-            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = 1
-            
-            # if epoch == 20:
-            #     for top_down_layer in model.top_down_layers:
-            #         if top_down_layer.is_top_layer:
-            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = 2
-
-            # if epoch == 30:
-            #     for top_down_layer in model.top_down_layers:
-            #         if top_down_layer.is_top_layer:
-            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = 4
-            
-            # if epoch == 50:
-            #     for top_down_layer in model.top_down_layers:
-            #         if top_down_layer.is_top_layer:
-            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = 2
-
-            # if epoch == 60:
-            #     for top_down_layer in model.top_down_layers:
-            #         if top_down_layer.is_top_layer:
-            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = 1
+            if epoch % 10 == 0:
+                for top_down_layer in model.top_down_layers:
+                    if top_down_layer.is_top_layer:
+                        top_down_layer.top_prior_params.data[:, 32:, :, :] = change_prior_variance(epoch)
+     
 
             for batch_idx, (x, y, _) in enumerate(train_loader):
                 step_counter = batch_idx
@@ -217,7 +198,8 @@ def train_network(
                             "loss": np.mean(running_training_loss),
                             "kl_weight": kl_w,
                             "cl_weight": cl_w,
-                            "beta": model.beta.item(),
+                            # "beta": model.beta.item(),
+                            "beta": beta,
                             "negative pair loss": npl_sum,
                             "positive pair loss": ppl,
                             "margin": model.margin,
