@@ -535,7 +535,7 @@ def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
             
             neg_boolean_matrix = mask_ij.to(device=z.device)
             # negative_loss = torch.sum(neg_boolean_matrix * F.relu(margin - dist))
-            negative_loss = torch.min(neg_boolean_matrix * F.relu(margin - dist))            
+            negative_loss = torch.max(neg_boolean_matrix * F.relu(margin - dist))            
             negative_losses[f'{i}{j}'] = negative_loss
     
     return positive_loss, negative_losses
