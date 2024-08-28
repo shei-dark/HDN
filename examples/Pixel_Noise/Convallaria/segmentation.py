@@ -154,7 +154,7 @@ with torch.no_grad():
 
 test_images = (test_images-data_mean)/data_std
 
-for test_index in tqdm(range(500, len(test_images)), desc='Test data'):
+for test_index in tqdm(range(410, 500), desc='Test data'):
 
    test_slice = test_images[test_index]
    test_slice_lbl = test_ground_truth_image[test_index]

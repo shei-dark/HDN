@@ -131,10 +131,10 @@ def train_network(
             running_kl_loss = []
             running_cl_loss = []
 
-            if epoch % 10 == 0:
-                for top_down_layer in model.top_down_layers:
-                    if top_down_layer.is_top_layer:
-                        top_down_layer.top_prior_params.data[:, 32:, :, :] = change_prior_variance(epoch)
+            # if epoch % 10 == 0:
+            #     for top_down_layer in model.top_down_layers:
+            #         if top_down_layer.is_top_layer:
+            #             top_down_layer.top_prior_params.data[:, 32:, :, :] = change_prior_variance(epoch)
      
 
             for batch_idx, (x, y, _) in enumerate(train_loader):
@@ -198,8 +198,8 @@ def train_network(
                             "loss": np.mean(running_training_loss),
                             "kl_weight": kl_w,
                             "cl_weight": cl_w,
-                            # "beta": model.beta.item(),
-                            "beta": beta,
+                            "beta": model.beta.item(),
+                            # "beta": beta,
                             "negative pair loss": npl_sum,
                             "positive pair loss": ppl,
                             "margin": model.margin,
