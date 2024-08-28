@@ -424,9 +424,6 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     logvars: (hierarchy levels, batch_size, C, H, W) list
     labels: (batch_size, H, W) -> 64/128, 64x64 tensor
     """
-    # --------------
-    # beta = torch.sigmoid(beta)  # Constrain beta between 0 and 1
-    beta = 0.4 + 0.2 * torch.sigmoid(beta)  # Constrain beta between 0.4 and 0.6
     positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
     alphas = compute_probability_alphas(negative_losses)
     cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
@@ -525,14 +522,8 @@ def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
     
     # Compute positive pairs loss
     boolean_matrix = (labels == labels.T).to(device=z.device)
-    positive_loss = torch.sum(boolean_matrix * dist)
-    
-    # Normalize positive loss
-    num_positive_pairs = torch.sum(boolean_matrix) - batch_size
-    if num_positive_pairs == 0:
-        positive_loss = 0
-    else:
-        positive_loss /= num_positive_pairs
+    # positive_loss = torch.sum(boolean_matrix * dist)
+    positive_loss = torch.max(boolean_matrix * dist)
     
     # Compute negative pairs loss per class pair
     negative_losses = {}
@@ -543,14 +534,8 @@ def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
             mask_ij = (mask_i & mask_j.T).squeeze(1)
             
             neg_boolean_matrix = mask_ij.to(device=z.device)
-            negative_loss = torch.sum(neg_boolean_matrix * F.relu(margin - dist))
-            
-            num_negative_pairs = torch.sum(neg_boolean_matrix)
-            if num_negative_pairs == 0:
-                negative_loss = 0
-            else:
-                negative_loss /= num_negative_pairs
-            
+            # negative_loss = torch.sum(neg_boolean_matrix * F.relu(margin - dist))
+            negative_loss = torch.min(neg_boolean_matrix * F.relu(margin - dist))            
             negative_losses[f'{i}{j}'] = negative_loss
     
     return positive_loss, negative_losses
@@ -566,7 +551,7 @@ def compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
     for pair, loss in negative_losses.items():
         weighted_negative_loss += alphas.get(pair, 1.0) * loss
-            
+    
     # Total contrastive loss: minimize positive loss and the deviation of weighted negative loss from target
     total_contrastive_loss = beta * positive_loss + (1-beta) * weighted_negative_loss
     return total_contrastive_loss, weighted_negative_loss

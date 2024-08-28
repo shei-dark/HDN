@@ -67,8 +67,8 @@ class LadderVAE(nn.Module):
         self.use_uncond_mode_at=use_uncond_mode_at
         self._global_step = 0
         self.margin = margin
-        self.beta = nn.Parameter(torch.tensor(beta))
-        # self.beta = beta
+        # self.beta = nn.Parameter(torch.tensor(beta))
+        self.beta = beta
         
         
         assert(self.data_std is not None)
