@@ -51,7 +51,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/v23/"
+directory_path = "/group/jug/Sheida/HVAE/v27/"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
@@ -61,7 +61,7 @@ batch_size=128
 # batch_size=8
 virtual_batch = 64
 lr=3e-4
-max_epochs = 500
+max_epochs = 100
 steps_per_epoch = 2
 test_batch_size=100
 

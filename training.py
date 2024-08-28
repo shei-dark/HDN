@@ -131,11 +131,11 @@ def train_network(
             running_kl_loss = []
             running_cl_loss = []
 
-            if epoch % 10 == 0:
-                for top_down_layer in model.top_down_layers:
-                    if top_down_layer.is_top_layer:
-                        top_down_layer.top_prior_params.data[:, 32:, :, :] = change_prior_variance(epoch)
-     
+            for top_down_layer in model.top_down_layers:
+                if top_down_layer.is_top_layer:
+                    # top_down_layer.top_prior_params.data[:, 32:, :, :] = change_prior_variance(epoch)
+                    top_down_layer.top_prior_params.data[:, 32:, :, :] += 0.08
+                        
 
             for batch_idx, (x, y, _) in enumerate(train_loader):
                 step_counter = batch_idx
