@@ -8,6 +8,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from random import shuffle
+import torch.nn.functional as F
+import random
+
 
 def custom_collate_fn(batch):
     patches, labels = zip(*batch)
@@ -53,11 +56,11 @@ class CustomDataset(Dataset):
                             # with background
                         # -1 is for outside of the cell
                         if len(unique_labels) == 1 and unique_labels[0] != -1:
-                                center_label = unique_labels[0]
-                                if center_label not in patches_by_label:
-                                    patches_by_label[center_label] = []
-                                self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
-                                patches_by_label[center_label].append(len(self.all_patches) - 1)
+                            center_label = unique_labels[0]
+                            if center_label not in patches_by_label:
+                                patches_by_label[center_label] = []
+                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                            patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):
@@ -69,6 +72,94 @@ class CustomDataset(Dataset):
             patch, cls, label = self.all_patches[idx]
             return patch, cls, label
 
+
+class CropAugDataset(CustomDataset):
+    
+    def __init__(self, images, labels, patch_size=64, mask_size=4):
+        self.patch_size = patch_size
+        self.mask_size = mask_size
+        self.all_patches = []
+        self.patches_by_label = self._extract_valid_patches(images, labels)
+
+    def __len__(self):
+
+        return len(self.all_patches)
+    
+    def _extract_valid_patches(self, images, labels):
+
+        patches_by_label = {}
+
+        keys = list(images.keys())
+        for key in keys:
+            for img, lbl in tqdm(zip(images[key], labels[key]), 'Extracting patches from ' + key):
+                found = False
+                height, width = img.shape
+                covered = np.zeros((height, width), dtype=bool)
+                while not found:
+                    y = random.randrange(0, height)
+                    x = random.randrange(0, width)
+                    if y + self.patch_size*2 <= height and x + self.patch_size*2 <= width:
+                        patch = img[y : y + self.patch_size*2, x : x + self.patch_size*2]
+                        patch_label = lbl[y : y + self.patch_size*2, x : x + self.patch_size*2]
+                        blind_spot_area = patch_label[
+                            self.patch_size - self.mask_size : self.patch_size + self.mask_size + 1,
+                            self.patch_size - self.mask_size : self.patch_size + self.mask_size + 1,
+                        ]
+                        unique_labels = np.unique(blind_spot_area)
+                        # -1 is for outside of the cell
+                        if len(unique_labels) == 1 and unique_labels[0] != -1:
+                            center_label = unique_labels[0]
+                            if center_label not in patches_by_label:
+                                patches_by_label[center_label] = []
+                            patch, patch_label = self._downsample(patch, patch_label)
+                            self.all_patches.append((torch.tensor(patch), torch.tensor(center_label), torch.tensor(patch_label)))
+                            patches_by_label[center_label].append(len(self.all_patches) - 1)
+                            covered[y + self.patch_size - self.mask_size : y + self.patch_size + self.mask_size + 1,\
+                                    x + self.patch_size - self.mask_size : x + self.patch_size + self.mask_size + 1,] = True
+
+                
+                for y in range(0, height, self.patch_size):
+                    for x in range(0, width, self.patch_size):
+                        if y + self.patch_size <= height and x + self.patch_size <= width:
+                            if not covered[y + self.patch_size // 2 - self.mask_size // 2 :\
+                                        y + self.patch_size // 2 + self.mask_size // 2 + 1,\
+                                        x + self.patch_size // 2 - self.mask_size // 2 :\
+                                        x + self.patch_size // 2 + self.mask_size // 2 + 1].any():
+                                patch = img[y : y + self.patch_size, x : x + self.patch_size]
+                                patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+                                blind_spot_area = patch_label[
+                                    self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                                    self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                                ]
+                                unique_labels = np.unique(blind_spot_area)
+                                # -1 is for outside of the cell
+                                if len(unique_labels) == 1 and unique_labels[0] != -1:
+                                    center_label = unique_labels[0]
+                                    if center_label not in patches_by_label:
+                                        patches_by_label[center_label] = []
+                                    self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                                    patches_by_label[center_label].append(len(self.all_patches) - 1)
+        return patches_by_label
+
+
+    def _downsample(self, img, lbl):
+        img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0)
+        img_downsampled = F.interpolate(img, size=(self.patch_size, self.patch_size),\
+                                         mode='bilinear', align_corners=False)
+        lbl = torch.from_numpy(lbl).unsqueeze(0).unsqueeze(0)
+        lbl_downsampled = F.interpolate(lbl.float(), size=(self.patch_size, self.patch_size),\
+                                         mode='nearest')
+        return img_downsampled.squeeze(0), lbl_downsampled.squeeze(0)
+    
+    def __getitem__(self, idx):
+        if isinstance(idx, list):
+            patches = [self.all_patches[i] for i in idx]
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+        else:
+            patch, cls, label = self.all_patches[idx]
+            return patch, cls, label
+    
 class CustomTestDataset(Dataset):
 
     def __init__(self, images, labels, patch_size=64, mask_size=4):
