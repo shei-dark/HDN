@@ -25,6 +25,7 @@ class CustomDataset(Dataset):
         self.patch_size = patch_size
         self.mask_size = mask_size
         self.all_patches = []
+        self.name = []
         self.patches_by_label = self._extract_valid_patches(images, labels)
         
 
@@ -38,6 +39,7 @@ class CustomDataset(Dataset):
         
         keys = list(images.keys())
         for key in keys:
+            slice = 0
             for img, lbl in tqdm(zip(images[key], labels[key]), 'Extracting patches from ' + key):
                 height, width = img.shape
                 for i in range(0, height // self.patch_size):
@@ -60,14 +62,17 @@ class CustomDataset(Dataset):
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
                             self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                            self.name.append(key+"_"+str(slice)+"_"+str(y)+"_"+str(x))
                             patches_by_label[center_label].append(len(self.all_patches) - 1)
+                slice += 1
         return patches_by_label
 
     def __getitem__(self, idx):
         if isinstance(idx, list):
             patches = [self.all_patches[i] for i in idx]
+            names = [self.name[i] for i in idx]
             patches, clss, labels = zip(*patches)
-            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+            return torch.stack(patches), names, torch.stack(labels)
         else:
             patch, cls, label = self.all_patches[idx]
             return patch, cls, label
@@ -218,6 +223,52 @@ class CustomTestDataset(Dataset):
 
 class BalancedBatchSampler(Sampler):
 
+    """A custom sampler that generates balanced batches from a dataset by ensuring each batch
+    contains a balanced number of samples from each label class.
+
+    This sampler is useful when training models with imbalanced datasets, as it helps to
+    maintain an equal representation of each class within each batch. The class ensures
+    that samples from each label are included in the batch proportionally and handles
+    scenarios where the number of samples for each label differs significantly.
+
+    Attributes:
+    -----------
+    dataset : Dataset
+        The dataset from which samples are drawn. The dataset should have a `patches_by_label`
+        attribute, which is a dictionary mapping labels to indices of samples belonging to
+        those labels.
+        
+    batch_size : int
+        The total number of samples in each batch.
+
+    label_to_indices : dict
+        A dictionary that maps each label to a list of indices of samples that belong
+        to that label.
+
+    num_labels : int
+        The number of unique labels in the dataset.
+
+    samples_per_label : int
+        The number of samples to include from each label in each batch.
+
+    remaining_samples : int
+        The number of extra samples to distribute across labels to fill the batch.
+
+    max_batch : int
+        The maximum number of batches that can be generated based on the size of the
+        largest class and the number of samples per label.
+
+    Methods:
+    --------
+    __init__(dataset, batch_size)
+        Initializes the sampler with the dataset and batch size.
+
+    __iter__()
+        Returns an iterator that yields balanced batches of indices.
+
+    __len__()
+        Estimates the total number of batches that can be generated.
+       pass"""
     def __init__(self, dataset, batch_size):
         self.dataset = dataset
         self.batch_size = batch_size
