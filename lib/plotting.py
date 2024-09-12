@@ -120,7 +120,7 @@ def plot_w_b(*args, plot_types=None, box_size=3, with_test=False):
             axs[i].imshow(data)
         elif plot_type == 'scatter':
             for scatter_data, label in zip(data, extra):
-                axs[i].scatter(scatter_data[:, 0], scatter_data[:, 1], c=label[0], cmap=cmap, norm=norm, s=label[1], alpha=0.3)
+                axs[i].scatter(scatter_data[:, 0], scatter_data[:, 1], c=label[0], cmap=cmap, norm=norm, s=label[1])
             if with_test:
                 last_data = data[-1]
                 last_label = extra[-1]
