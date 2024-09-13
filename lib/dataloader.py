@@ -187,11 +187,10 @@ class CombinedCustomDataset(CustomDataset):
         
         # Separate labeled and unlabeled patches based on labeled_indices
         self.labeled_indices = labeled_indices
-        self.labeled_patches = [self.all_patches[i] for i in self.labeled_indices]
-        self.unlabeled_patches = []
-        for idx, (patch, _, label) in enumerate(self.all_patches):
-            if idx not in self.labeled_indices:
-                self.unlabeled_patches.append((patch, torch.tensor(-2), label))
+        self.random_patches = []
+        self._get_random_patch(images, labels)
+        self.patches_by_label = self._update_patches_by_label()
+
 
     def __getitem__(self, idx):
         """
@@ -211,12 +210,43 @@ class CombinedCustomDataset(CustomDataset):
         label : torch.Tensor
             The full label map of the patch.
         """
-        patch, cls, label = self.all_patches[idx]
+        
         # Return with label set to -2 if the index is not part of labeled indices
         if idx not in self.labeled_indices:
             cls = torch.tensor(-2)  # -2 is used to indicate unlabeled data for contrastive loss
+            patch, label = self.random_patches[idx]
+        else:
+            patch, cls, label = self.all_patches[idx]
         return patch, cls, label
 
+    def _get_random_patch(self, images, labels):
+        """
+        Retrieves a random patch from the dataset.
+
+        Returns:
+        --------
+        patch : torch.Tensor
+            The random patch.
+        label : torch.Tensor
+            The label map of the random patch.
+        """
+        keys = list(images.keys())
+        for _ in range(len(self.all_patches)):
+            key = random.choice(keys)
+            z = random.randrange(0, len(images[key]))
+            img = images[key][z]
+            lbl = labels[key][z]
+            height, width = img.shape
+            x = random.randrange(0, width - self.patch_size)
+            y = random.randrange(0, height - self.patch_size)
+            patch = img[y : y + self.patch_size, x : x + self.patch_size]
+            patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+            self.random_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(patch_label).unsqueeze(0)))
+        return
+    
+    def _update_patches_by_label(self):
+        for key in self.patches_by_label:
+            self.patches_by_label[key] = [value for value in self.patches_by_label[key] if value in self.labeled_indices]
 
 class CropAugDataset(CustomDataset):
     
@@ -460,7 +490,7 @@ class BalancedBatchSampler(Sampler):
         return (max_class_size * self.num_labels) // self.batch_size
 
 
-class CombinedBatchSampler(BalancedBatchSampler):
+class CombinedBatchSampler(Sampler):
     """
     A custom sampler that generates batches containing 25% balanced labeled samples
     and 75% random samples. Inherits from BalancedBatchSampler.
@@ -480,50 +510,53 @@ class CombinedBatchSampler(BalancedBatchSampler):
         labeled_indices : list
             List of indices of the labeled patches that should be used for contrastive loss.
         """
-        super().__init__(dataset, int(batch_size * labeled_ratio))
-        self.labeled_indices = dataset.labeled_indices
-        self.unlabeled_indices = [i for i in range(len(dataset)) if i not in self.labeled_indices]
+        self.label_to_indices = dataset.patches_by_label
+        self.random_indices = [i for i in range(len(dataset)) if i not in dataset.labeled_indices]
+        for key in self.label_to_indices:
+            shuffle(self.label_to_indices[key])
 
-        # Calculate the number of samples for labeled and unlabeled subsets
-        self.num_labeled = max(1, int(batch_size * labeled_ratio))  # Ensure at least one labeled sample
-        self.num_unlabeled = batch_size - self.num_labeled
+        self.small_batch_size = int(batch_size * labeled_ratio)
+        self.num_labels = len(self.label_to_indices)
+        self.samples_per_label = self.small_batch_size // self.num_labels
+        self.remaining_samples = self.small_batch_size % self.num_labels
+        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
+
 
     def __iter__(self):
-        # max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
         num_batches_generated = 0
 
         while num_batches_generated < self.max_batch:
             # Step 1: Sample 25% of the batch using balanced sampling from labeled indices
             balanced_batch = []
             for label, indices in self.label_to_indices.items():
-                labeled_sample_indices = [i for i in indices if i in self.labeled_indices]
-                if len(labeled_sample_indices) < self.num_labeled // self.num_labels:
-                    labeled_sample_indices = random.choices(labeled_sample_indices, k=max_class_size)
-                selected_indices = random.sample(labeled_sample_indices, min(self.num_labeled // self.num_labels, len(labeled_sample_indices)))
+                if len(indices) < self.samples_per_label:
+                    indices = random.choices(indices, k=max_class_size)
+                selected_indices = random.sample(indices, self.samples_per_label)
                 balanced_batch.extend(selected_indices)
 
             # Fill up if the balanced batch is not full (due to class imbalance or fewer labeled samples)
-            while len(balanced_batch) < self.num_labeled:
-                remaining_labeled = [i for i in self.labeled_indices if i not in balanced_batch]
-                if not remaining_labeled:
-                    break
-                balanced_batch.append(random.choice(remaining_labeled))
+            while len(balanced_batch) < self.small_batch_size:
+                remaining_labeled = []
+                for indices in self.label_to_indices.values():
+                    remaining_labeled.extend(indices)
+                random.shuffle(remaining_labeled)
+                balanced_batch.extend(remaining_labeled[:self.small_batch_size - len(balanced_batch)])
 
             # Step 2: Sample 75% of the batch randomly from unlabeled indices
-            random_unlabeled = random.sample(self.unlabeled_indices, min(self.num_unlabeled, len(self.unlabeled_indices)))
+            random_unlabeled = random.sample(self.random_indices, self.batch_size - self.small_batch_size)
 
             # Combine balanced labeled and random unlabeled samples
             combined_batch = balanced_batch + random_unlabeled
 
             # Ensure the final batch size is correct
             if len(combined_batch) == self.batch_size:
-                random.shuffle(combined_batch)
                 num_batches_generated += 1
                 yield combined_batch
 
     def __len__(self):
-        return (len(self.labeled_indices) * self.num_labels) // self.batch_size
-
+        max_class_size = max(len(indices) for indices in self.label_to_indices.values())
+        return (max_class_size * self.num_labels) // self.small_batch_size
 
 class UnbalancedBatchSampler(Sampler):
 
