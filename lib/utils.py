@@ -418,7 +418,7 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
+def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5, labeled_ratio=1):
     """
     mus: (hierarchy levels, batch_size, C, H, W) list
     logvars: (hierarchy levels, batch_size, C, H, W) list
@@ -426,8 +426,8 @@ def compute_cl_loss(mus, logvars, labels, cl_mode, margin, beta=0.5):
     """
     # --------------
     # beta = torch.sigmoid(beta)  # Constrain beta between 0 and 1
-    beta = 0.4 + 0.2 * torch.sigmoid(beta)  # Constrain beta between 0.4 and 0.6
-    positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin)
+    # beta = 0.4 + 0.2 * torch.sigmoid(beta)  # Constrain beta between 0.4 and 0.6
+    positive_loss, negative_losses = class_wise_contrastive_loss(mus, labels, num_classes=4, margin=margin, labeled_ratio=labeled_ratio)
     alphas = compute_probability_alphas(negative_losses)
     cl_loss, npl_sum = compute_total_contrastive_loss(positive_loss, negative_losses, alphas, beta)
 
@@ -516,19 +516,22 @@ def contrastive_loss(z, labels, margin=20.0):
     loss = positive_loss + negative_loss
     return loss
 
-def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20):
+def class_wise_contrastive_loss(z, labels, num_classes=4, margin=20, labeled_ratio=1):
     # Compute pairwise distances
     batch_size = len(z[0])
+    small_batch_size = int(batch_size * labeled_ratio)
     z = [z[i].reshape(batch_size, -1) for i in range(len(z))]
     z = torch.cat(z, dim=-1).unsqueeze(0)
+    z = z[:, :small_batch_size,:]
     dist = torch.cdist(z, z, p=2).squeeze(0)
     
     # Compute positive pairs loss
+    labels = labels[:, :small_batch_size]
     boolean_matrix = (labels == labels.T).to(device=z.device)
     positive_loss = torch.sum(boolean_matrix * dist)
     
     # Normalize positive loss
-    num_positive_pairs = torch.sum(boolean_matrix) - batch_size
+    num_positive_pairs = torch.sum(boolean_matrix) - small_batch_size
     if num_positive_pairs == 0:
         positive_loss = 0
     else:

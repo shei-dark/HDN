@@ -189,7 +189,7 @@ class CombinedCustomDataset(CustomDataset):
         self.labeled_indices = labeled_indices
         self.random_patches = []
         self._get_random_patch(images, labels)
-        self.patches_by_label = self._update_patches_by_label()
+        self._update_patches_by_label()
 
 
     def __getitem__(self, idx):
@@ -212,12 +212,16 @@ class CombinedCustomDataset(CustomDataset):
         """
         
         # Return with label set to -2 if the index is not part of labeled indices
-        if idx not in self.labeled_indices:
-            cls = torch.tensor(-2)  # -2 is used to indicate unlabeled data for contrastive loss
-            patch, label = self.random_patches[idx]
+        if isinstance(idx, list):
+            patches = [self.all_patches[i] if i in self.labeled_indices else self.random_patches[i] for i in idx]
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
         else:
-            patch, cls, label = self.all_patches[idx]
-        return patch, cls, label
+            if idx in self.labeled_indices:
+                patch, cls, label = self.all_patches[idx]
+            else:
+                patch, cls, label = self.random_patches[idx]
+            return patch, cls, label
 
     def _get_random_patch(self, images, labels):
         """
@@ -241,7 +245,7 @@ class CombinedCustomDataset(CustomDataset):
             y = random.randrange(0, height - self.patch_size)
             patch = img[y : y + self.patch_size, x : x + self.patch_size]
             patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-            self.random_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(patch_label).unsqueeze(0)))
+            self.random_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(-2), torch.tensor(patch_label).unsqueeze(0)))
         return
     
     def _update_patches_by_label(self):
@@ -514,7 +518,7 @@ class CombinedBatchSampler(Sampler):
         self.random_indices = [i for i in range(len(dataset)) if i not in dataset.labeled_indices]
         for key in self.label_to_indices:
             shuffle(self.label_to_indices[key])
-
+        self.batch_size = batch_size
         self.small_batch_size = int(batch_size * labeled_ratio)
         self.num_labels = len(self.label_to_indices)
         self.samples_per_label = self.small_batch_size // self.num_labels

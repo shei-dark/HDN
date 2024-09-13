@@ -41,7 +41,8 @@ class LadderVAE(nn.Module):
                  use_uncond_mode_at=[],
                  margin=50,
                  clip_q=None,
-                 beta=0.5): # unconditional sampling
+                 beta=0.5,
+                 labeled_ratio=1): # unconditional sampling
         super().__init__()
         self.mask_size = mask_size
         self.color_ch = color_ch
@@ -67,8 +68,9 @@ class LadderVAE(nn.Module):
         self.use_uncond_mode_at=use_uncond_mode_at
         self._global_step = 0
         self.margin = margin
-        self.beta = nn.Parameter(torch.tensor(beta))
-        # self.beta = beta
+        # self.beta = nn.Parameter(torch.tensor(beta))
+        self.beta = beta
+        self.labeled_ratio = labeled_ratio
         
         
         assert(self.data_std is not None)
@@ -230,7 +232,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss, npl_sum, ppl, npl, alphas = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin, self.beta)
+            cl_loss, npl_sum, ppl, npl, alphas = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin, self.beta, self.labeled_ratio)
         else:            
             cl_loss = torch.Tensor([0]).to(self.device)
 
