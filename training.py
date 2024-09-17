@@ -198,7 +198,7 @@ def train_network(
                             "loss": np.mean(running_training_loss),
                             "kl_weight": kl_w,
                             "cl_weight": cl_w,
-                            "beta": model.beta.item(),
+                            "beta": model.beta,
                             # "beta": beta,
                             "negative pair loss": npl_sum,
                             "positive pair loss": ppl,

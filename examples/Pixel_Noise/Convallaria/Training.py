@@ -30,9 +30,9 @@ classes = ['uncategorized', 'nucleus', 'granule', 'mitochondria']
 train_labeled_indices = []
 val_labeled_indices = []
 for cls in classes:
-    with open(f'/group/jug/Sheida/pancreatic beta cells/download/train/10_percent_{cls}.pickle', 'rb') as file:
+    with open(f'/group/jug/Sheida/pancreatic beta cells/download/train/0.1_percent_{cls}.pickle', 'rb') as file:
         train_labeled_indices.extend(pickle.load(file))
-    with open(f'/group/jug/Sheida/pancreatic beta cells/download/val/10_percent_{cls}.pickle', 'rb') as file:
+    with open(f'/group/jug/Sheida/pancreatic beta cells/download/val/0.1_percent_{cls}.pickle', 'rb') as file:
         val_labeled_indices.extend(pickle.load(file))
 
 # train data
@@ -82,14 +82,14 @@ val_set = CombinedCustomDataset(val_images, val_labels, val_labeled_indices)
 # test_images = tiff.imread(test_img_path)
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/test/"
+directory_path = "/group/jug/Sheida/HVAE/v31/"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-# batch_size=128
-batch_size=8
+batch_size=128
+# batch_size=8
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
@@ -116,7 +116,7 @@ save_output       = True #[True, False]
 use_non_stochastic = False
 project           = 'HVAE'
 img_shape = (64,64)
-labeled_ratio = 0.5
+labeled_ratio = 0.25
 
 train_sampler = CombinedBatchSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
 train_loader = DataLoader(train_set, sampler=train_sampler)

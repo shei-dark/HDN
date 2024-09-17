@@ -194,7 +194,7 @@ class LadderVAE(nn.Module):
             self.likelihood = NoiseModelLikelihood(n_filters, color_ch, data_mean, 
                                                    data_std, noiseModel)
         else:
-            msg = "Unrecognized likelihood '{}'".format(likelihood_form)
+            msg = "Unrecognized likelihood '{}'".format(self.likelihood_form)
             raise RuntimeError(msg)
             
     def increment_global_step(self):

@@ -381,9 +381,9 @@ class CustomTestDataset(Dataset):
                             center_label = unique_labels[0]
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
-                            if len(patches_by_label[center_label]) < 1000:
-                                self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
-                                patches_by_label[center_label].append(len(self.all_patches) - 1)
+                            # if len(patches_by_label[center_label]) < 1000:
+                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+                            patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):
