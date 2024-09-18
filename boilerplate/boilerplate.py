@@ -538,8 +538,3 @@ def generate_arbitrary_sized_samples(sample_shape, num_samples, model, save_path
     samples_numpy = samples_numpy[:,0,:,:]
     
     return samples_numpy
-
-def _filter_slices(image, label):
-    "Filter slices that are whithin the center cell"
-    valid_indices = ~np.all(label == -1, axis=(1, 2))
-    return image[valid_indices], label[valid_indices]
