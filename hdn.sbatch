@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
-#SBATCH --mem=32GB
+#SBATCH --mem=64GB
 #SBATCH --ntasks=8
 #SBATCH --job-name=hdn
 #SBATCH --time=4-00:00:00
@@ -15,10 +15,4 @@
 
 source $HOME/.bashrc
 conda activate emseg
-
-nvidia-smi
-
-cd examples/Pixel_Noise/Convallaria
-python Training.py
-
-nvidia-smi
+jupyter notebook --no-browser --port=8888 --ip=0.0.0.0 --NotebookApp.token=''
