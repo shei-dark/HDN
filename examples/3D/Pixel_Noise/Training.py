@@ -37,7 +37,7 @@ load_checkpoint = False
 noiseModel = None
 
 # Training-specific
-batch_size = 8
+batch_size = 16
 lr = 3e-4
 max_epochs = 10
 
@@ -54,7 +54,7 @@ gamma = 1e-2
 # contrastive
 mask_size=5
 contrastive_learning=True
-margin=50
+margin=250
 lambda_contrastive=0.5
 labeled_ratio=1.0
 

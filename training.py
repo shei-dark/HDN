@@ -98,6 +98,7 @@ def train_network(model, lr, max_epochs,train_loader, val_loader,
     run.config.update(dict(epochs=max_epochs))
     wandb.run.log_code(("/home/sheida.rahnamai/GIT/HDN/"), include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"))
     
+    global_idx = 0
     for epoch in range(max_epochs):
         print(f'Starting epoch {epoch}')
         running_training_loss = []
@@ -131,15 +132,18 @@ def train_network(model, lr, max_epochs,train_loader, val_loader,
 
             run.log(
                 {   
-                "idx": idx,
-                "IP": inpainting_loss * alpha,
-                "KL": kl_loss * beta,
-                "CL": cl_loss * gamma,
-                "PPL" : cl_pos,
-                "NPL" : cl_neg,                      
-                "Total": loss,
-                }
+                    "global_idx": global_idx,
+                    "idx": idx,
+                    "IP": inpainting_loss * alpha,
+                    "KL": kl_loss * beta,
+                    "CL": cl_loss * gamma,
+                    "PPL" : cl_pos,
+                    "NPL" : cl_neg,                      
+                    "Total": loss,
+                },
+                commit=True
             )
+            global_idx += 1
             
             # Optimization step
 

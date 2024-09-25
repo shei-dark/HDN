@@ -378,9 +378,9 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
     neg_pair_loss_terms = {}
     for i in range(num_classes-1):
         for j in range(i+1, num_classes):
-            mask_i = (labels == i).unsqueeze(1)
-            mask_j = (labels == j).unsqueeze(1)
-            mask_ij = (mask_i & mask_j.T).squeeze(1)
+            mask_i = (labels == i)
+            mask_j = (labels == j)
+            mask_ij = (mask_i & mask_j.T)
 
             neg_bool_matrix = mask_ij.to(device=mus.device)
             neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist))
