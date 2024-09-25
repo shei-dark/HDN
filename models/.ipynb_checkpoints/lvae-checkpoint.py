@@ -233,8 +233,7 @@ class LadderVAE(nn.Module):
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
             kl = kl_sep.mean()
-            cl = compute_cl_loss(mus=td_data['mu'], labels=y, margin=self.margin,
-                                 lambda_contrastive=self.lambda_contrastive, labeled_ratio=self.labeled_ratio)
+            cl = compute_cl_loss(td_data['mu'], y, self.margin, self.lambda_contrastive, self.labeled_ratio)
         else:
             kl_sep = None
             kl_avg_layerwise = None

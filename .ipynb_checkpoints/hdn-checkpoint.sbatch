@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/3d_v01.log
+#SBATCH --output=/group/jug/Sheida/HVAE/v31.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
-#SBATCH --mem=512GB
+#SBATCH --mem=128GB
 #SBATCH --ntasks=8
-#SBATCH --job-name=3d_hvae
-#SBATCH --time=1-00:00:00
+#SBATCH --job-name=hdn
+#SBATCH --time=4-00:00:00
 #SBATCH --no-requeue
 
 

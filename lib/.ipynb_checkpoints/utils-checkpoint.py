@@ -7,7 +7,6 @@ from glob import glob
 from sklearn.feature_extraction import image
 from skimage.util import view_as_windows
 from matplotlib import pyplot as plt
-import torch.nn.functional as F
 
 
 class Interpolate(nn.Module):
@@ -353,19 +352,17 @@ def compute_cl_loss(mus, labels, margin=50, lambda_contrastive=0.5, labeled_rati
     }
     return output
 
-def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
-    
+def pos_neg_loss(mus, labels, margin=50, labeled_ratio=1):
+
     num_classes = torch.unique(labels).size(0)
-    batch_size = len(mus[0])
+    batch_size = mus.size(0)
     small_batch_size = int(batch_size * labeled_ratio)
-
-    labels = labels[:small_batch_size]
-    labels = labels.unsqueeze(0)
-
     mus = [mus[i].view(batch_size, -1) for i in range(len(mus))]
-    mus = torch.cat(mus, dim=-1).unsqueeze(0)
-    mus = mus[:, :small_batch_size]
+    mus = torch.cat(mus, dim=-1).undqueeze(0)
+    mus = mus[:, :small_batch_size,...]
     dist = torch.cdist(mus, mus, p=2).squeeze(0)
+
+    labels = labels[:, :small_batch_size]
     boolean_matrix = (labels == labels.T).to(device=mus.device)
     pos_pair_loss = torch.sum(boolean_matrix * dist)
 

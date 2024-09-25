@@ -107,7 +107,7 @@ def train_network(model, lr, max_epochs,train_loader, val_loader,
         running_cl_pos = []
         running_cl_neg = []
         
-        for idx, (x, y, z) in tqdm(enumerate(train_loader)):
+        for (x, y, z) in tqdm(train_loader):
 
             x = x.squeeze(0)
             y = y.squeeze(0)
@@ -128,27 +128,14 @@ def train_network(model, lr, max_epochs,train_loader, val_loader,
 
             if max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-
-            run.log(
-                {   
-                "idx": idx,
-                "IP": inpainting_loss * alpha,
-                "KL": kl_loss * beta,
-                "CL": cl_loss * gamma,
-                "PPL" : cl_pos,
-                "NPL" : cl_neg,                      
-                "Total": loss,
-                }
-            )
-            
             # Optimization step
 
             running_training_loss.append(loss.item())
             running_inpainting_loss.append(inpainting_loss.item())
             running_kl_loss.append(kl_loss.item())
             running_cl_loss.append(cl_loss.item())
-            running_cl_pos.append(cl_pos)
-            running_cl_neg.append(cl_neg)
+            running_cl_pos.append(cl_pos.item())
+            running_cl_neg.append(cl_neg.item())
             
             optimizer.step()
             

@@ -130,6 +130,7 @@ class NormalStochasticConvBlock(nn.Module):
             'kl_elementwise': kl_elementwise,  # (batch, ch, h, w)
             'kl_samplewise': kl_samplewise,  # (batch, )
             'kl_spatial': kl_spatial_analytical,  # (batch, h, w)
+            'mu': q_mu,
         }
         return out, data
 

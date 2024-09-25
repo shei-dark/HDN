@@ -152,6 +152,7 @@ class CombinedCustom3DDataset(Custom3DDataset):
         
         # Separate labeled and unlabeled patches based on labeled_indices
         self.labeled_indices = labeled_indices
+        self.random_patches = []
         self._get_random_patch(images, labels)
         self._update_patches_by_label()
 
@@ -177,14 +178,14 @@ class CombinedCustom3DDataset(Custom3DDataset):
         
         # Return with label set to -2 if the index is not part of labeled indices
         if isinstance(idx, list):
-            patches = [self.all_patches[i] if i in self.labeled_indices else self.all_patches[i] for i in idx]
+            patches = [self.all_patches[i] if i in self.labeled_indices else self.random_patches[i] for i in idx]
             patches, clss, labels = zip(*patches)
-            return torch.stack(patches).squeeze(0), torch.tensor(clss), torch.stack(labels)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
         else:
             if idx in self.labeled_indices:
                 patch, cls, label = self.all_patches[idx]
             else:
-                patch, cls, label = self.all_patches[idx]
+                patch, cls, label = self.random_patches[idx]
             return patch, cls, label
 
     def _get_random_patch(self, images, labels):
@@ -199,25 +200,24 @@ class CombinedCustom3DDataset(Custom3DDataset):
             The label map of the random 3D patch.
         """
         indices = range(len(images))
-        for i in tqdm(range(len(self.all_patches))):
-            if i not in self.labeled_indices:
-                idx = random.choice(indices)
-                img = images[idx]
-                lbl = labels[idx]
-                depth, height, width = img.shape
+        for _ in tqdm(range(len(self.all_patches))):
+            idx = random.choice(indices)
+            img = images[idx]
+            lbl = labels[idx]
+            depth, height, width = img.shape
 
-                z = random.randrange(0, depth - self.patch_size[0])
-                y = random.randrange(0, height - self.patch_size[1])
-                x = random.randrange(0, width - self.patch_size[2])
+            z = random.randrange(0, depth - self.patch_size[0])
+            y = random.randrange(0, height - self.patch_size[1])
+            x = random.randrange(0, width - self.patch_size[2])
 
-                patch = img[z : z + self.patch_size[0], y : y + self.patch_size[1], x : x + self.patch_size[2]]
-                patch_label = lbl[z : z + self.patch_size[0], y : y + self.patch_size[1], x : x + self.patch_size[2]]
+            patch = img[z : z + self.patch_size[0], y : y + self.patch_size[1], x : x + self.patch_size[2]]
+            patch_label = lbl[z : z + self.patch_size[0], y : y + self.patch_size[1], x : x + self.patch_size[2]]
 
-                self.all_patches[i] = (
-                    torch.tensor(patch).unsqueeze(0),  # Add channel dimension
-                    torch.tensor(-2),  # Label set to -2 for unlabeled
-                    torch.tensor(patch_label).unsqueeze(0)  # Add channel dimension
-                )
+            self.random_patches.append((
+                torch.tensor(patch).unsqueeze(0),  # Add channel dimension
+                torch.tensor(-2),  # Label set to -2 for unlabeled
+                torch.tensor(patch_label).unsqueeze(0)  # Add channel dimension
+            ))
         return
     
     def _update_patches_by_label(self):

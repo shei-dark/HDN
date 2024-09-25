@@ -103,7 +103,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True)-> dict:
     if model.mode_pred is False:
         
         recons_sep = -model_out['ll']
-        inpainting_loss = get_centre(recons_sep, patch_size=x.shape[2], mask_size=model.mask_size).mean()
+        inpainting_loss = get_centre(recons_sep, patch_size=x.shape[2], mask_size=model.mask_size[0]).mean()
         kl_sep = model_out['kl_sep']
         kl = model_out['kl']
         kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
@@ -142,13 +142,13 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True)-> dict:
 def mask_input(x, model):
     x_masked = x.clone()
     patch_size = x.shape[2]
-    mask_size = model.mask_size
+    mask_size = model.mask_size[0]
     begin = (patch_size - mask_size) // 2
     end = begin + mask_size
     x_masked[:, :, begin:end, begin:end, begin:end] = 0
     return x_masked
 
-def get_centre(x, patch_size, mask_size):
+def return_centre(x, patch_size, mask_size):
     begin = (patch_size - mask_size) // 2
     end = begin + mask_size
     return x[:, :, begin:end, begin:end, begin:end]
