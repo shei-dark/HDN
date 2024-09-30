@@ -8,6 +8,7 @@ from sklearn.feature_extraction import image
 from skimage.util import view_as_windows
 from matplotlib import pyplot as plt
 import torch.nn.functional as F
+import math
 
 
 class Interpolate(nn.Module):
@@ -366,12 +367,15 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
     mus = torch.cat(mus, dim=-1).unsqueeze(0)
     mus = mus[:, :small_batch_size]
     dist = torch.cdist(mus, mus, p=2).squeeze(0)
+
+    dist = torch.clamp(dist, min=1e-6, max=1e6)
+
     boolean_matrix = (labels == labels.T).to(device=mus.device)
     pos_pair_loss = torch.sum(boolean_matrix * dist)
 
     num_pos_pairs = torch.sum(boolean_matrix) - small_batch_size
     if num_pos_pairs == 0:
-        pos_pair_loss = 0
+        pos_pair_loss = torch.tensor(0.0, device=mus.device)
     else:
         pos_pair_loss /= num_pos_pairs
 
@@ -383,11 +387,13 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
             mask_ij = (mask_i & mask_j.T)
 
             neg_bool_matrix = mask_ij.to(device=mus.device)
-            neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist))
+            # neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist))
+            neg_loss = torch.sum(neg_bool_matrix * F.smooth_l1_loss(dist, torch.full_like(dist, margin), reduction='none'))
+
 
             num_neg_pairs = torch.sum(neg_bool_matrix)
             if num_neg_pairs == 0:
-                neg_loss = 0
+                neg_loss = torch.tensor(0.0, device=mus.device)
             else:
                 neg_loss /= num_neg_pairs
 
@@ -399,7 +405,10 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
 def get_thetas(neg_pair_loss_terms):
 
     losses = torch.tensor(list(neg_pair_loss_terms.values()))
-    normalized_losses = F.softmax(losses, dim=0)
+    if torch.all(losses == 0):
+        normalized_losses = torch.ones_like(losses) / len(losses)  # Distribute uniformly
+    else:
+        normalized_losses = F.softmax(losses, dim=0)
     thetas = {key: normalized_losses[i].item() for i, key in enumerate(neg_pair_loss_terms.keys())}
     return thetas
 
@@ -407,8 +416,10 @@ def get_thetas(neg_pair_loss_terms):
 def compute_weighted_neg(neg_pair_loss_terms, neg_thetas):
 
     weighted_neg = 0
-
     for pair, loss in neg_pair_loss_terms.items():
-        weighted_neg += neg_thetas.get(pair, 1.0) * loss
+        weight = neg_thetas.get(pair, 1.0)
+        if math.isnan(weight) or weight == 0:
+            weight = 1e-6
+        weighted_neg += weight * loss
 
     return weighted_neg

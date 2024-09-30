@@ -98,6 +98,8 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True)-> dict:
     
     x_masked = mask_input(x, model)
     x_masked = x_masked.to(device, non_blocking=True)
+    assert not torch.isnan(x_masked).any(), "Input contains NaNs!"
+    assert not torch.isinf(x_masked).any(), "Input contains Infs!"
     with autocast(enabled=amp):
         model_out = model(x=x_masked, y=y, x_orig=x)
     if model.mode_pred is False:

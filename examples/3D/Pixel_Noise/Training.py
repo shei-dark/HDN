@@ -32,16 +32,16 @@ gaussian_noise_std = None
 
 
 model_name = "3D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/3D/v01"
-load_checkpoint = False
+directory_path = "/group/jug/Sheida/HVAE/3D/v08/"
 noiseModel = None
 
 # Training-specific
 batch_size = 16
 lr = 3e-4
-max_epochs = 10
+max_epochs = 500
 
 # Model-specific
+load_checkpoint = False
 num_latents = 3
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
@@ -57,6 +57,8 @@ contrastive_learning=True
 margin=250
 lambda_contrastive=0.5
 labeled_ratio=1.0
+
+use_wandb = True
 
 classes = ['uncategorized', 'nucleus', 'granule', 'mitochondria']
 train_labeled_indices = []
@@ -98,25 +100,26 @@ for idx in tqdm(range(len(train_images)), 'Normalizing train data'):
 for idx in tqdm(range(len(val_images)), 'Normalizing validation data'):
    val_images[idx] = (val_images[idx] - data_mean) / data_std
 
-# train_set = dataloader.CombinedCustom3DDataset(train_images, train_labels, train_labeled_indices)
-# val_set = dataloader.CombinedCustom3DDataset(val_images, val_labels, val_labeled_indices)
+train_set = dataloader.CombinedCustom3DDataset(train_images, train_labels, train_labeled_indices)
+val_set = dataloader.CombinedCustom3DDataset(val_images, val_labels, val_labeled_indices)
 
-train_set = dataloader.Custom3DDataset(train_images, train_labels)
-val_set = dataloader.Custom3DDataset(val_images, val_labels)
+# train_set = dataloader.Custom3DDataset(train_images, train_labels)
+# val_set = dataloader.Custom3DDataset(val_images, val_labels)
 
-# train_sampler = dataloader.CombinedBatchSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
-train_sampler = dataloader.BalancedBatchSampler(train_set, batch_size)
+train_sampler = dataloader.CombinedBatchSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
+# train_sampler = dataloader.BalancedBatchSampler(train_set, batch_size)
 
 train_loader = DataLoader(train_set, sampler=train_sampler)
 
-# val_sampler = dataloader.CombinedBatchSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
-val_sampler = dataloader.BalancedBatchSampler(val_set, batch_size)
+val_sampler = dataloader.CombinedBatchSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+# val_sampler = dataloader.BalancedBatchSampler(val_set, batch_size)
 
 val_loader = DataLoader(val_set, sampler=val_sampler)
 
 img_shape = (64,64,64)
+
 if load_checkpoint:
-    model = torch.load("./Trained_model/model/mouse_last_vae.net")
+    model = torch.load("")
 else:
     model = LadderVAE(
         z_dims=z_dims,
@@ -135,7 +138,7 @@ else:
         margin=margin,
         lambda_contrastive=lambda_contrastive,
         labeled_ratio=labeled_ratio
-        ).cuda()
+    ).cuda()
 
 model.train() # Model set in training mode
 
@@ -153,5 +156,6 @@ training.train_network(
     gaussian_noise_std=gaussian_noise_std,
     model_name=model_name,
     nrows=2,
-    gradient_scale=8192
+    gradient_scale=256,
+    use_wandb=use_wandb
     )
