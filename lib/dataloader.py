@@ -10,6 +10,7 @@ from tqdm import tqdm
 from random import shuffle
 import torch.nn.functional as F
 import random
+from skimage.measure import regionprops
 
 
 def custom_collate_fn(batch):
@@ -117,6 +118,25 @@ class CustomDataset(Dataset):
         for key in keys:
             for img, lbl in tqdm(zip(images[key], labels[key]), f'Extracting patches from {key}'):
                 height, width = img.shape
+                # Assuming 'mask' is the binary segmentation mask for the object
+                props = regionprops(lbl)
+
+                # Get bounding box (min_row, min_col, max_row, max_col)
+                for prop in props:
+                    bbox = prop.bbox
+
+                    center_x = (bbox[0] + bbox[2]) // 2
+                    center_y = (bbox[1] + bbox[3]) // 2
+                    patch_size = 64  # Define your patch size
+                    half_size = patch_size // 2
+
+                    # Ensure the patch doesn't go out of image bounds
+                    x_start = max(0, center_x - half_size)
+                    x_end = min(img.shape[0], center_x + half_size)
+                    y_start = max(0, center_y - half_size)
+                    y_end = min(img.shape[1], center_y + half_size)
+
+                    patch = img[x_start:x_end, y_start:y_end]
                 for i in range(0, height // self.patch_size):
                     for j in range(0, width // self.patch_size):
                         x = j * self.patch_size
