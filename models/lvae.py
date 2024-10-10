@@ -221,6 +221,7 @@ class LadderVAE(nn.Module):
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
 
+        cl = None
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -244,6 +245,7 @@ class LadderVAE(nn.Module):
         output = {
             'll': ll,
             'z': td_data['z'],
+            'mu': td_data['mu'],
             'kl': kl,
             'kl_sep': kl_sep,
             'kl_avg_layerwise': kl_avg_layerwise,
