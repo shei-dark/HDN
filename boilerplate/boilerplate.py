@@ -112,84 +112,64 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     return optimizer, scheduler
         
 def forward_pass(x, y, device, model, gaussian_noise_std)-> dict:
-    if y is None:
-        y = x
-    patch_size = x.shape[2]
-    mask_size = int(model.mask_size)
-    masked_coord = int((patch_size-mask_size)/2)
+    
+    x_masked = mask_input(x, model)
+    x_masked = x_masked.to(device, non_blocking=True)
+    assert not torch.isnan(x_masked).any(), "Input contains NaNs!"
+    assert not torch.isinf(x_masked).any(), "Input contains Infs!"
+    model_out = model(x=x_masked, y=y, x_orig=x,model_layers=[0,1,2])
 
-    x_mask = x.clone()  # Create a copy of x
-    x_mask[:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size] = 0
-    x = x.to(device, non_blocking=True)
-    x_mask = x_mask.to(device, non_blocking=True)
-    model_out = model(x_mask,y,x_orig=x,model_layers=[0,1,2])
     if model.mode_pred is False:
+        
+        recons_sep = -model_out['ll']
+        inpainting_loss = get_centre(recons_sep, patch_size=x.shape[2], mask_size=model.mask_size).mean()
+        kl_sep = model_out['kl_sep']
+        kl = model_out['kl']
+        kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
         cl_loss = model_out['cl_loss']
-        npl = model_out['npl']
-        ppl = model_out['ppl']
-        npl_sum = model_out['npl_sum']
-        alphas = model_out['alphas']
-        recons_sep = -model_out['ll'][:,:,masked_coord:masked_coord+mask_size,masked_coord:masked_coord+mask_size]
-
-        if model.use_non_stochastic:
-            
-            if gaussian_noise_std is None:
-                recons_loss = recons_sep.mean()
-            else:
-                recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
-            
-            output = {
-                    'recons_loss': recons_loss,
-                    'kl_loss': None,
-                    'cl_loss': cl_loss,
-                    'npl': npl,
-                    'ppl': ppl,
-                    'npl_sum': npl_sum,
-                    'alphas': alphas,
-                    'out_mean': model_out['out_mean'],
-                    'out_sample': model_out['out_sample'],
-                    'mu': model_out['mu'],
-                    'logvar': model_out['logvar']
-                }
-        else:
-            kl_sep = model_out['kl_sep']
-            kl = model_out['kl']
-            kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
-            
-            if gaussian_noise_std is None:
-                recons_loss = recons_sep.mean()
-            else:
-                recons_loss = recons_sep.mean()/ ((gaussian_noise_std/model.data_std)**2)
-                
-            output = {
-                    'recons_loss': recons_loss,
-                    'kl_loss': kl_loss,
-                    'cl_loss': cl_loss,
-                    'npl': npl,
-                    'ppl': ppl,
-                    'npl_sum': npl_sum,
-                    'alphas': alphas,
-                    'out_mean': model_out['out_mean'],
-                    'out_sample': model_out['out_sample'],
-                    'mu': model_out['mu'],
-                    'logvar': model_out['logvar']
-                }
-
+        cl_pos = model_out['cl_pos']
+        cl_neg = model_out['cl_neg']
+        cl_neg_terms = model_out['cl_neg_terms']
+        thetas = model_out['thetas']
+        
+        output = {
+                'inpainting_loss': inpainting_loss,
+                'kl_loss': kl_loss,
+                'cl_loss': cl_loss,
+                'cl_pos': cl_pos,
+                'cl_neg': cl_neg,
+                'cl_neg_terms': cl_neg_terms,
+                'thetas': thetas,
+                'out_mean': model_out['out_mean'],
+                'out_sample': model_out['out_sample']
+            }
     else:
         output = {
-                'recons_loss': None,
+                'inpainting_loss': None,
                 'kl_loss': None,
                 'cl_loss': None,
                 'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample'],
-                'mu': model_out['mu'],
-                'logvar': model_out['logvar']
+                'out_sample': model_out['out_sample']
             }
         
     if 'kl_avg_layerwise' in model_out:
         output['kl_avg_layerwise'] = model_out['kl_avg_layerwise']
         
     return output
+
+def mask_input(x, model):
+    x_masked = x.clone()
+    patch_size = x.shape[2]
+    mask_size = model.mask_size
+    begin = (patch_size - mask_size) // 2
+    end = begin + mask_size
+    x_masked[:, :, begin:end, begin:end, begin:end] = 0
+    return x_masked
+
+def get_centre(x, patch_size, mask_size):
+    begin = (patch_size - mask_size) // 2
+    end = begin + mask_size
+    return x[:, :, begin:end, begin:end, begin:end]
     
 def img_grid_pad_value(imgs, thresh = .2) -> float:
     """Returns padding value (black or white) for a grid of images.

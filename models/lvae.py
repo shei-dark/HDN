@@ -2,52 +2,56 @@ import numpy as np
 import torch
 from torch import nn
 
-from lib.likelihoods import (GaussianLikelihood,
-                             NoiseModelLikelihood)
-from lib.utils import (crop_img_tensor, pad_img_tensor, Interpolate, free_bits_kl, compute_cl_loss)
-from .lvae_layers import (TopDownLayer, BottomUpLayer,
-                          TopDownDeterministicResBlock,
-                          BottomUpDeterministicResBlock)
+from lib.likelihoods import GaussianLikelihood, NoiseModelLikelihood
+from lib.utils import (
+    crop_img_tensor,
+    pad_img_tensor,
+    Interpolate,
+    free_bits_kl,
+    compute_cl_loss,
+)
+from .lvae_layers import (
+    TopDownLayer,
+    BottomUpLayer,
+    TopDownDeterministicResBlock,
+    BottomUpDeterministicResBlock,
+)
 
 
 class LadderVAE(nn.Module):
 
-    def __init__(self,
-                 z_dims,
-                 device,                 
-                 data_mean,
-                 data_std,
-                 color_ch=1,
-                 noiseModel=None,
-                 blocks_per_layer=5,
-                 nonlin='elu',
-                 merge_type='residual',
-                 batchnorm=True,
-                 stochastic_skip=True,
-                 n_filters=64,
-                 dropout=0.2,
-                 free_bits=0.0,
-                 mask_size=4,
-                 learn_top_prior=True,
-                 img_shape=None,
-                 res_block_type='bacdbacd',
-                 gated=True,
-                 no_initial_downscaling=True,
-                 analytical_kl=True,
-                 mode_pred=False,
-                 use_non_stochastic=False,
-                 contrastive_learning=False,
-                 cl_mode = 'cosine similarity',
-                 use_uncond_mode_at=[],
-                 margin=50,
-                 clip_q=None,
-                 beta=0.5,
-                 labeled_ratio=1): # unconditional sampling
+    def __init__(
+        self,
+        z_dims,
+        device,
+        data_mean,
+        data_std,
+        color_ch=1,
+        noiseModel=None,
+        blocks_per_layer=5,
+        nonlin="elu",
+        merge_type="residual",
+        batchnorm=True,
+        stochastic_skip=True,
+        n_filters=64,
+        dropout=0.2,
+        free_bits=0.0,
+        learn_top_prior=True,
+        img_shape=None,
+        res_block_type="bacdbacd",
+        gated=True,
+        no_initial_downscaling=True,
+        analytical_kl=True,
+        mode_pred=False,
+        use_uncond_mode_at=[],
+        mask_size=5,
+        contrastive_learning=True,
+        margin=50,
+        lambda_contrastive=0.5,
+        labeled_ratio=1,
+    ):
         super().__init__()
-        self.mask_size = mask_size
         self.color_ch = color_ch
-        self.contrastive_learning = contrastive_learning
-        self.cl_mode = cl_mode
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
         self.n_layers = len(self.z_dims)
@@ -63,24 +67,21 @@ class LadderVAE(nn.Module):
         self.data_mean = torch.Tensor([data_mean]).to(self.device)
         self.data_std = torch.Tensor([data_std]).to(self.device)
         self.noiseModel = noiseModel
-        self.mode_pred=mode_pred
-        self.use_non_stochastic=use_non_stochastic
-        self.use_uncond_mode_at=use_uncond_mode_at
+        self.mode_pred = mode_pred
+        self.use_uncond_mode_at = use_uncond_mode_at
         self._global_step = 0
         self.margin = margin
-        # self.beta = nn.Parameter(torch.tensor(beta))
-        self.beta = beta
+        self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
-        
-        
-        assert(self.data_std is not None)
-        assert(self.data_mean is not None)
+
+        assert self.data_std is not None
+        assert self.data_mean is not None
         if self.noiseModel is None:
             self.likelihood_form = "gaussian"
         else:
             self.likelihood_form = "noise_model"
-        
-        self.downsample = [1]*self.n_layers
+
+        self.downsample = [1] * self.n_layers
 
         # Downsample by a factor of 2 at each downsampling operation
         self.overall_downscale_factor = np.power(2, sum(self.downsample))
@@ -92,10 +93,10 @@ class LadderVAE(nn.Module):
 
         # Get class of nonlinear activation from string description
         nonlin = {
-            'relu': nn.ReLU,
-            'leakyrelu': nn.LeakyReLU,
-            'elu': nn.ELU,
-            'selu': nn.SELU,
+            "relu": nn.ReLU,
+            "leakyrelu": nn.LeakyReLU,
+            "elu": nn.ELU,
+            "selu": nn.SELU,
         }[nonlin]
 
         # First bottom-up layer: change num channels + downsample by factor 2
@@ -111,7 +112,8 @@ class LadderVAE(nn.Module):
                 batchnorm=batchnorm,
                 dropout=dropout,
                 res_block_type=res_block_type,
-            ))
+            ),
+        )
 
         # Init lists of layers
         self.top_down_layers = nn.ModuleList([])
@@ -135,7 +137,8 @@ class LadderVAE(nn.Module):
                     dropout=dropout,
                     res_block_type=res_block_type,
                     gated=gated,
-                ))
+                )
+            )
 
             # Add top-down stochastic layer at level i.
             # The architecture when doing inference is roughly as follows:
@@ -167,8 +170,9 @@ class LadderVAE(nn.Module):
                     gated=gated,
                     analytical_kl=analytical_kl,
                     use_non_stochastic=use_non_stochastic,
-                    clip_q=clip_q
-                ))
+                    clip_q=clip_q,
+                )
+            )
 
         # Final top-down layer
         modules = list()
@@ -184,30 +188,32 @@ class LadderVAE(nn.Module):
                     dropout=dropout,
                     res_block_type=res_block_type,
                     gated=gated,
-                ))
+                )
+            )
         self.final_top_down = nn.Sequential(*modules)
 
         # Define likelihood
-        if self.likelihood_form == 'gaussian':
+        if self.likelihood_form == "gaussian":
             self.likelihood = GaussianLikelihood(n_filters, color_ch)
-        elif self.likelihood_form == 'noise_model':
-            self.likelihood = NoiseModelLikelihood(n_filters, color_ch, data_mean, 
-                                                   data_std, noiseModel)
+        elif self.likelihood_form == "noise_model":
+            self.likelihood = NoiseModelLikelihood(
+                n_filters, color_ch, data_mean, data_std, noiseModel
+            )
         else:
             msg = "Unrecognized likelihood '{}'".format(self.likelihood_form)
             raise RuntimeError(msg)
-            
+
     def increment_global_step(self):
         """Increments global step by 1."""
         self._global_step += 1
-        
+
     @property
     def global_step(self) -> int:
         """Global step."""
         return self._global_step
 
     # def forward(self, x, y, x_orig=None, model_layers=None):
-    def forward(self, x, y=None, x_orig=None, model_layers=[0,1,2]):
+    def forward(self, x, y=None, x_orig=None, model_layers=[0, 1, 2]):
         # x = x.squeeze(0)
         if x_orig is None:
             x_orig = x
@@ -232,23 +238,27 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x)
 
         if self.contrastive_learning and not self.mode_pred:
-            cl_loss, npl_sum, ppl, npl, alphas = compute_cl_loss(td_data['mu'], td_data['logvar'], y, self.cl_mode, self.margin, self.beta, self.labeled_ratio)
-        else:            
+            cl_loss, npl_sum, ppl, npl, alphas = compute_cl_loss(
+                mus=td_data["mu"],
+                labels=y,
+                margin=self.margin,
+                lambda_contrastive=self.lambda_contrastive,
+                labeled_ratio=self.labeled_ratio,
+            )
+        else:
             cl_loss = torch.Tensor([0]).to(self.device)
 
         if self.mode_pred is False and self.use_non_stochastic is False:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
-            kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data['kl']],
-                           dim=1)
+            kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
 
             kl_sep = kl.sum(1)
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
             kl = kl_sep.mean()
         elif self.mode_pred:
-            kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data['kl']],
-                           dim=1)
+            kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
             kl_sep = kl.sum(1)
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
@@ -259,29 +269,29 @@ class LadderVAE(nn.Module):
             kl_avg_layerwise = None
             kl_loss = None
             kl = None
-            
+
         output = {
-            'll': ll,
-            'z': td_data['z'],
-            'kl': kl,
-            'kl_sep': kl_sep,
-            'kl_avg_layerwise': kl_avg_layerwise,
-            'kl_spatial': td_data['kl_spatial'],
-            'kl_loss': kl_loss,
-            'cl_loss': cl_loss,
-            'logp': td_data['logprob_p'],
-            'out_mean': likelihood_info['mean'],
-            'out_mode': likelihood_info['mode'],
-            'out_sample': likelihood_info['sample'],
-            'likelihood_params': likelihood_info['params'],
-            'mu':td_data['mu'],
-            'logvar':td_data['logvar'],
+            "ll": ll,
+            "z": td_data["z"],
+            "kl": kl,
+            "kl_sep": kl_sep,
+            "kl_avg_layerwise": kl_avg_layerwise,
+            "kl_spatial": td_data["kl_spatial"],
+            "kl_loss": kl_loss,
+            "cl_loss": cl_loss,
+            "logp": td_data["logprob_p"],
+            "out_mean": likelihood_info["mean"],
+            "out_mode": likelihood_info["mode"],
+            "out_sample": likelihood_info["sample"],
+            "likelihood_params": likelihood_info["params"],
+            "mu": td_data["mu"],
+            "logvar": td_data["logvar"],
         }
         if not self.mode_pred:
-            output['ppl'] = ppl
-            output['npl'] = npl
-            output['npl_sum'] = npl_sum
-            output['alphas'] = alphas
+            output["ppl"] = ppl
+            output["npl"] = npl
+            output["npl_sum"] = npl_sum
+            output["alphas"] = alphas
         return output
 
     def bottomup_pass(self, x):
@@ -297,12 +307,14 @@ class LadderVAE(nn.Module):
 
         return bu_values
 
-    def topdown_pass(self,
-                     bu_values=None,
-                     n_img_prior=None,
-                     model_layers=None,
-                     constant_layers=None,
-                     forced_latent=None):
+    def topdown_pass(
+        self,
+        bu_values=None,
+        n_img_prior=None,
+        model_layers=None,
+        constant_layers=None,
+        forced_latent=None,
+    ):
 
         # Default: no layer is sampled from the distribution's mode
         if model_layers is None:
@@ -317,8 +329,10 @@ class LadderVAE(nn.Module):
 
         # Check consistency of arguments
         if inference_mode != (n_img_prior is None):
-            msg = ("Number of images for top-down generation has to be given "
-                   "if and only if we're not doing inference")
+            msg = (
+                "Number of images for top-down generation has to be given "
+                "if and only if we're not doing inference"
+            )
             raise RuntimeError(msg)
         # if inference_mode and prior_experiment:
         #     msg = ("Prior experiments (e.g. sampling from mode) are not"
@@ -341,7 +355,7 @@ class LadderVAE(nn.Module):
             forced_latent = [None] * self.n_layers
 
         # log p(z) where z is the sample in the topdown pass
-        logprob_p = 0.
+        logprob_p = 0.0
 
         # Top-down inference/generation loop
         out = out_pre_residual = None
@@ -372,28 +386,27 @@ class LadderVAE(nn.Module):
                 force_constant_output=constant_out,
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
-                use_uncond_mode=use_uncond_mode
+                use_uncond_mode=use_uncond_mode,
             )
-            z[i] = aux['z']  # sampled variable at this layer (batch, ch, h, w)
-            kl[i] = aux['kl_samplewise']  # (batch, )
-            kl_spatial[i] = aux['kl_spatial']  # (batch, h, w)
-            mu[i] = aux['mu']
-            logvar[i] = aux['logvar']
+            z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
+            kl[i] = aux["kl_samplewise"]  # (batch, )
+            kl_spatial[i] = aux["kl_spatial"]  # (batch, h, w)
+            mu[i] = aux["mu"]
+            logvar[i] = aux["logvar"]
             if self.mode_pred is False and self.use_non_stochastic is False:
-                logprob_p += aux['logprob_p'].mean()  # mean over batch
+                logprob_p += aux["logprob_p"].mean()  # mean over batch
             else:
                 logprob_p = None
         # Final top-down layer
         out = self.final_top_down(out)
 
         data = {
-            'z': z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
-            'kl': kl,  # list of tensors with shape (batch, )
-            'kl_spatial':
-                kl_spatial,  # list of tensors w shape (batch, h[i], w[i])
-            'logprob_p': logprob_p,  # scalar, mean over batch,
-            'mu': mu,
-            'logvar': logvar,
+            "z": z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
+            "kl": kl,  # list of tensors with shape (batch, )
+            "kl_spatial": kl_spatial,  # list of tensors w shape (batch, h[i], w[i])
+            "logprob_p": logprob_p,  # scalar, mean over batch,
+            "mu": mu,
+            "logvar": logvar,
         }
         return out, data
 
@@ -422,8 +435,10 @@ class LadderVAE(nn.Module):
         if len(size) == 4:
             size = size[2:]
         if len(size) != 2:
-            msg = ("input size must be either (N, C, H, W) or (H, W), but it "
-                   "has length {} (size={})".format(len(size), size))
+            msg = (
+                "input size must be either (N, C, H, W) or (H, W), but it "
+                "has length {} (size={})".format(len(size), size)
+            )
             raise RuntimeError(msg)
 
         # Output smallest powers of 2 that are larger than current sizes
@@ -434,15 +449,17 @@ class LadderVAE(nn.Module):
     def sample_prior(self, n_imgs, model_layers, constant_layers=None):
 
         # Generate from prior
-        out, _ = self.topdown_pass(n_img_prior=n_imgs,
-                                   model_layers=model_layers,
-                                   constant_layers=constant_layers)
+        out, _ = self.topdown_pass(
+            n_img_prior=n_imgs,
+            model_layers=model_layers,
+            constant_layers=constant_layers,
+        )
         out = crop_img_tensor(out, self.img_shape)
 
         # Log likelihood and other info (per data point)
         _, likelihood_data = self.likelihood(out, None)
 
-        return likelihood_data['sample']
+        return likelihood_data["sample"]
 
     def get_top_prior_param_shape(self, n_imgs=1):
         # TODO num channels depends on random variable we're using
