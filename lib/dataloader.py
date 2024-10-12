@@ -20,27 +20,137 @@ def custom_collate_fn(batch):
     return patches, labels
 
 
-# class CustomDataset(Dataset):
+class CustomDataset(Dataset):
+
+    def __init__(self, images, labels, patch_size=64, mask_size=5, label_size=5):
+        self.patch_size = patch_size
+        self.mask_size = mask_size
+        self.label_size = label_size
+        self.all_patches = []
+        self.patches_by_label = self._extract_valid_patches(images, labels)
+
+    def __len__(self):
+
+        return len(self.all_patches)
+
+    def _extract_valid_patches(self, images, labels):
+
+        patches_by_label = {}
+
+        keys = list(images.keys())
+        for key in keys:
+            for img, lbl in tqdm(
+                zip(images[key], labels[key]), "Extracting patches from " + key
+            ):
+                height, width = img.shape
+                for i in range(0, height // self.patch_size):
+                    for j in range(0, width // self.patch_size):
+                        x = j * self.patch_size
+                        y = i * self.patch_size
+                        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+                        patch_label = lbl[
+                            y : y + self.patch_size, x : x + self.patch_size
+                        ]
+                        start = (self.patch_size - self.label_size) // 2
+                        unique_label_area = patch_label[
+                            start : start + self.label_size,
+                            start : start + self.label_size,
+                        ]
+                        unique_labels = np.unique(unique_label_area)
+                        if len(unique_labels) == 1 and unique_labels[0] != -1:
+                            center_label = unique_labels[0]
+                            if center_label not in patches_by_label:
+                                patches_by_label[center_label] = []
+                            self.all_patches.append(
+                                (
+                                    torch.tensor(patch).unsqueeze(0),
+                                    torch.tensor(center_label),
+                                    torch.tensor(patch_label).unsqueeze(0),
+                                )
+                            )
+                            patches_by_label[center_label].append(
+                                len(self.all_patches) - 1
+                            )
+        return patches_by_label
+
+    def __getitem__(self, idx):
+        if isinstance(idx, list):
+            patches = [self.all_patches[i] for i in idx]
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+        else:
+            patch, cls, label = self.all_patches[idx]
+            return patch, cls, label
+
+
+# class CustomDataset(Dataset): # Masking one instance
+#     """
+#     A custom dataset that extracts patches from images and organizes them based on their labels.
+#     """
 
 #     def __init__(self, images, labels, patch_size=64, mask_size=4):
+#         """
+#         Initialize the CustomDataset by extracting valid patches.
+
+#         Parameters:
+#         -----------
+#         images : dict
+#             A dictionary of images.
+#         labels : dict
+#             A dictionary of corresponding labels for the images.
+#         patch_size : int
+#             Size of the patches (default is 64).
+#         mask_size : int
+#             Size of the masked area (default is 4).
+#         """
 #         self.patch_size = patch_size
 #         self.mask_size = mask_size
-#         self.all_patches = []
+#         self.all_patches = []  # List to store all patches (with different labels)
 #         self.patches_by_label = self._extract_valid_patches(images, labels)
-        
 
 #     def __len__(self):
-
 #         return len(self.all_patches)
 
 #     def _extract_valid_patches(self, images, labels):
+#         """
+#         Extracts valid patches from the given images based on the provided labels.
 
+#         Parameters:
+#         -----------
+#         images : dict
+#             A dictionary of images.
+#         labels : dict
+#             A dictionary of corresponding labels for the images.
+
+#         Returns:
+#         --------
+#         patches_by_label : dict
+#             A dictionary mapping labels to indices of patches.
+#         """
 #         patches_by_label = {}
-        
 #         keys = list(images.keys())
 #         for key in keys:
-#             for img, lbl in tqdm(zip(images[key], labels[key]), 'Extracting patches from ' + key):
+#             for img, lbl in tqdm(zip(images[key], labels[key]), f'Extracting patches from {key}'):
 #                 height, width = img.shape
+#                 # Assuming 'mask' is the binary segmentation mask for the object
+#                 props = regionprops(lbl)
+
+#                 # Get bounding box (min_row, min_col, max_row, max_col)
+#                 for prop in props:
+#                     bbox = prop.bbox
+
+#                     center_x = (bbox[0] + bbox[2]) // 2
+#                     center_y = (bbox[1] + bbox[3]) // 2
+#                     patch_size = 64  # Define your patch size
+#                     half_size = patch_size // 2
+
+#                     # Ensure the patch doesn't go out of image bounds
+#                     x_start = max(0, center_x - half_size)
+#                     x_end = min(img.shape[0], center_x + half_size)
+#                     y_start = max(0, center_y - half_size)
+#                     y_end = min(img.shape[1], center_y + half_size)
+
+#                     patch = img[x_start:x_end, y_start:y_end]
 #                 for i in range(0, height // self.patch_size):
 #                     for j in range(0, width // self.patch_size):
 #                         x = j * self.patch_size
@@ -56,133 +166,37 @@ def custom_collate_fn(batch):
 #                             center_label = unique_labels[0]
 #                             if center_label not in patches_by_label:
 #                                 patches_by_label[center_label] = []
-#                             self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
+#                             self.all_patches.append(
+#                                 (torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0))
+#                             )
 #                             patches_by_label[center_label].append(len(self.all_patches) - 1)
 #         return patches_by_label
 
 #     def __getitem__(self, idx):
-#         if isinstance(idx, list):
-#             patches = [self.all_patches[i] for i in idx]
-#             patches, clss, labels = zip(*patches)
-#             return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
-#         else:
-#             patch, cls, label = self.all_patches[idx]
-#             return patch, cls, label
+#         """
+#         Retrieves the patch, its class, and the label map.
 
-class CustomDataset(Dataset):
-    """
-    A custom dataset that extracts patches from images and organizes them based on their labels.
-    """
+#         Parameters:
+#         -----------
+#         idx : int
+#             Index of the patch.
 
-    def __init__(self, images, labels, patch_size=64, mask_size=4):
-        """
-        Initialize the CustomDataset by extracting valid patches.
-
-        Parameters:
-        -----------
-        images : dict
-            A dictionary of images.
-        labels : dict
-            A dictionary of corresponding labels for the images.
-        patch_size : int
-            Size of the patches (default is 64).
-        mask_size : int
-            Size of the masked area (default is 4).
-        """
-        self.patch_size = patch_size
-        self.mask_size = mask_size
-        self.all_patches = []  # List to store all patches (with different labels)
-        self.patches_by_label = self._extract_valid_patches(images, labels)
-
-    def __len__(self):
-        return len(self.all_patches)
-
-    def _extract_valid_patches(self, images, labels):
-        """
-        Extracts valid patches from the given images based on the provided labels.
-
-        Parameters:
-        -----------
-        images : dict
-            A dictionary of images.
-        labels : dict
-            A dictionary of corresponding labels for the images.
-
-        Returns:
-        --------
-        patches_by_label : dict
-            A dictionary mapping labels to indices of patches.
-        """
-        patches_by_label = {}
-        keys = list(images.keys())
-        for key in keys:
-            for img, lbl in tqdm(zip(images[key], labels[key]), f'Extracting patches from {key}'):
-                height, width = img.shape
-                # Assuming 'mask' is the binary segmentation mask for the object
-                props = regionprops(lbl)
-
-                # Get bounding box (min_row, min_col, max_row, max_col)
-                for prop in props:
-                    bbox = prop.bbox
-
-                    center_x = (bbox[0] + bbox[2]) // 2
-                    center_y = (bbox[1] + bbox[3]) // 2
-                    patch_size = 64  # Define your patch size
-                    half_size = patch_size // 2
-
-                    # Ensure the patch doesn't go out of image bounds
-                    x_start = max(0, center_x - half_size)
-                    x_end = min(img.shape[0], center_x + half_size)
-                    y_start = max(0, center_y - half_size)
-                    y_end = min(img.shape[1], center_y + half_size)
-
-                    patch = img[x_start:x_end, y_start:y_end]
-                for i in range(0, height // self.patch_size):
-                    for j in range(0, width // self.patch_size):
-                        x = j * self.patch_size
-                        y = i * self.patch_size
-                        patch = img[y : y + self.patch_size, x : x + self.patch_size]
-                        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-                        blind_spot_area = patch_label[
-                            self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                            self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                        ]
-                        unique_labels = np.unique(blind_spot_area)
-                        if len(unique_labels) == 1 and unique_labels[0] != -1:
-                            center_label = unique_labels[0]
-                            if center_label not in patches_by_label:
-                                patches_by_label[center_label] = []
-                            self.all_patches.append(
-                                (torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0))
-                            )
-                            patches_by_label[center_label].append(len(self.all_patches) - 1)
-        return patches_by_label
-
-    def __getitem__(self, idx):
-        """
-        Retrieves the patch, its class, and the label map.
-
-        Parameters:
-        -----------
-        idx : int
-            Index of the patch.
-
-        Returns:
-        --------
-        patch : torch.Tensor
-            The patch extracted from the image.
-        cls : torch.Tensor
-            The label of the patch's center.
-        label : torch.Tensor
-            The full label map of the patch.
-        """
-        patch, cls, label = self.all_patches[idx]
-        return patch, cls, label
+#         Returns:
+#         --------
+#         patch : torch.Tensor
+#             The patch extracted from the image.
+#         cls : torch.Tensor
+#             The label of the patch's center.
+#         label : torch.Tensor
+#             The full label map of the patch.
+#         """
+#         patch, cls, label = self.all_patches[idx]
+#         return patch, cls, label
 
 
 class CombinedCustomDataset(CustomDataset):
     """
-    A combined dataset class that handles labeled and unlabeled data for training with 
+    A combined dataset class that handles labeled and unlabeled data for training with
     contrastive loss and other unsupervised losses.
     """
 
@@ -204,13 +218,12 @@ class CombinedCustomDataset(CustomDataset):
             Size of the masked area (default is 4).
         """
         super().__init__(images, labels, patch_size, mask_size)
-        
+
         # Separate labeled and unlabeled patches based on labeled_indices
         self.labeled_indices = labeled_indices
         self.random_patches = []
         self._get_random_patch(images, labels)
         self._update_patches_by_label()
-
 
     def __getitem__(self, idx):
         """
@@ -230,10 +243,17 @@ class CombinedCustomDataset(CustomDataset):
         label : torch.Tensor
             The full label map of the patch.
         """
-        
+
         # Return with label set to -2 if the index is not part of labeled indices
         if isinstance(idx, list):
-            patches = [self.all_patches[i] if i in self.labeled_indices else self.random_patches[i] for i in idx]
+            patches = [
+                (
+                    self.all_patches[i]
+                    if i in self.labeled_indices
+                    else self.random_patches[i]
+                )
+                for i in idx
+            ]
             patches, clss, labels = zip(*patches)
             return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
         else:
@@ -265,15 +285,26 @@ class CombinedCustomDataset(CustomDataset):
             y = random.randrange(0, height - self.patch_size)
             patch = img[y : y + self.patch_size, x : x + self.patch_size]
             patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-            self.random_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(-2), torch.tensor(patch_label).unsqueeze(0)))
+            self.random_patches.append(
+                (
+                    torch.tensor(patch).unsqueeze(0),
+                    torch.tensor(-2),
+                    torch.tensor(patch_label).unsqueeze(0),
+                )
+            )
         return
-    
+
     def _update_patches_by_label(self):
         for key in self.patches_by_label:
-            self.patches_by_label[key] = [value for value in self.patches_by_label[key] if value in self.labeled_indices]
+            self.patches_by_label[key] = [
+                value
+                for value in self.patches_by_label[key]
+                if value in self.labeled_indices
+            ]
+
 
 class CropAugDataset(CustomDataset):
-    
+
     def __init__(self, images, labels, patch_size=64, mask_size=4):
         self.patch_size = patch_size
         self.mask_size = mask_size
@@ -283,26 +314,41 @@ class CropAugDataset(CustomDataset):
     def __len__(self):
 
         return len(self.all_patches)
-    
+
     def _extract_valid_patches(self, images, labels):
 
         patches_by_label = {}
 
         keys = list(images.keys())
         for key in keys:
-            for img, lbl in tqdm(zip(images[key], labels[key]), 'Extracting patches from ' + key):
+            for img, lbl in tqdm(
+                zip(images[key], labels[key]), "Extracting patches from " + key
+            ):
                 found = False
                 height, width = img.shape
                 covered = np.zeros((height, width), dtype=bool)
                 while not found:
                     y = random.randrange(0, height)
                     x = random.randrange(0, width)
-                    if y + self.patch_size*2 <= height and x + self.patch_size*2 <= width:
-                        patch = img[y : y + self.patch_size*2, x : x + self.patch_size*2]
-                        patch_label = lbl[y : y + self.patch_size*2, x : x + self.patch_size*2]
+                    if (
+                        y + self.patch_size * 2 <= height
+                        and x + self.patch_size * 2 <= width
+                    ):
+                        patch = img[
+                            y : y + self.patch_size * 2, x : x + self.patch_size * 2
+                        ]
+                        patch_label = lbl[
+                            y : y + self.patch_size * 2, x : x + self.patch_size * 2
+                        ]
                         blind_spot_area = patch_label[
-                            self.patch_size - self.mask_size : self.patch_size + self.mask_size + 1,
-                            self.patch_size - self.mask_size : self.patch_size + self.mask_size + 1,
+                            self.patch_size
+                            - self.mask_size : self.patch_size
+                            + self.mask_size
+                            + 1,
+                            self.patch_size
+                            - self.mask_size : self.patch_size
+                            + self.mask_size
+                            + 1,
                         ]
                         unique_labels = np.unique(blind_spot_area)
                         # -1 is for outside of the cell
@@ -311,24 +357,66 @@ class CropAugDataset(CustomDataset):
                             if center_label not in patches_by_label:
                                 patches_by_label[center_label] = []
                             patch, patch_label = self._downsample(patch, patch_label)
-                            self.all_patches.append((torch.tensor(patch), torch.tensor(center_label), torch.tensor(patch_label)))
-                            patches_by_label[center_label].append(len(self.all_patches) - 1)
-                            covered[y + self.patch_size - self.mask_size : y + self.patch_size + self.mask_size + 1,\
-                                    x + self.patch_size - self.mask_size : x + self.patch_size + self.mask_size + 1,] = True
+                            self.all_patches.append(
+                                (
+                                    torch.tensor(patch),
+                                    torch.tensor(center_label),
+                                    torch.tensor(patch_label),
+                                )
+                            )
+                            patches_by_label[center_label].append(
+                                len(self.all_patches) - 1
+                            )
+                            covered[
+                                y
+                                + self.patch_size
+                                - self.mask_size : y
+                                + self.patch_size
+                                + self.mask_size
+                                + 1,
+                                x
+                                + self.patch_size
+                                - self.mask_size : x
+                                + self.patch_size
+                                + self.mask_size
+                                + 1,
+                            ] = True
 
-                
                 for y in range(0, height, self.patch_size):
                     for x in range(0, width, self.patch_size):
-                        if y + self.patch_size <= height and x + self.patch_size <= width:
-                            if not covered[y + self.patch_size // 2 - self.mask_size // 2 :\
-                                        y + self.patch_size // 2 + self.mask_size // 2 + 1,\
-                                        x + self.patch_size // 2 - self.mask_size // 2 :\
-                                        x + self.patch_size // 2 + self.mask_size // 2 + 1].any():
-                                patch = img[y : y + self.patch_size, x : x + self.patch_size]
-                                patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+                        if (
+                            y + self.patch_size <= height
+                            and x + self.patch_size <= width
+                        ):
+                            if not covered[
+                                y
+                                + self.patch_size // 2
+                                - self.mask_size // 2 : y
+                                + self.patch_size // 2
+                                + self.mask_size // 2
+                                + 1,
+                                x
+                                + self.patch_size // 2
+                                - self.mask_size // 2 : x
+                                + self.patch_size // 2
+                                + self.mask_size // 2
+                                + 1,
+                            ].any():
+                                patch = img[
+                                    y : y + self.patch_size, x : x + self.patch_size
+                                ]
+                                patch_label = lbl[
+                                    y : y + self.patch_size, x : x + self.patch_size
+                                ]
                                 blind_spot_area = patch_label[
-                                    self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                                    self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                                    self.patch_size // 2
+                                    - self.mask_size // 2 : self.patch_size // 2
+                                    + self.mask_size // 2
+                                    + 1,
+                                    self.patch_size // 2
+                                    - self.mask_size // 2 : self.patch_size // 2
+                                    + self.mask_size // 2
+                                    + 1,
                                 ]
                                 unique_labels = np.unique(blind_spot_area)
                                 # -1 is for outside of the cell
@@ -336,20 +424,32 @@ class CropAugDataset(CustomDataset):
                                     center_label = unique_labels[0]
                                     if center_label not in patches_by_label:
                                         patches_by_label[center_label] = []
-                                    self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
-                                    patches_by_label[center_label].append(len(self.all_patches) - 1)
+                                    self.all_patches.append(
+                                        (
+                                            torch.tensor(patch).unsqueeze(0),
+                                            torch.tensor(center_label),
+                                            torch.tensor(patch_label).unsqueeze(0),
+                                        )
+                                    )
+                                    patches_by_label[center_label].append(
+                                        len(self.all_patches) - 1
+                                    )
         return patches_by_label
-
 
     def _downsample(self, img, lbl):
         img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0)
-        img_downsampled = F.interpolate(img, size=(self.patch_size, self.patch_size),\
-                                         mode='bilinear', align_corners=False)
+        img_downsampled = F.interpolate(
+            img,
+            size=(self.patch_size, self.patch_size),
+            mode="bilinear",
+            align_corners=False,
+        )
         lbl = torch.from_numpy(lbl).unsqueeze(0).unsqueeze(0)
-        lbl_downsampled = F.interpolate(lbl.float(), size=(self.patch_size, self.patch_size),\
-                                         mode='nearest')
+        lbl_downsampled = F.interpolate(
+            lbl.float(), size=(self.patch_size, self.patch_size), mode="nearest"
+        )
         return img_downsampled.squeeze(0), lbl_downsampled.squeeze(0)
-    
+
     def __getitem__(self, idx):
         if isinstance(idx, list):
             patches = [self.all_patches[i] for i in idx]
@@ -358,7 +458,7 @@ class CropAugDataset(CustomDataset):
         else:
             patch, cls, label = self.all_patches[idx]
             return patch, cls, label
-    
+
 
 class CustomTestDataset(Dataset):
 
@@ -367,7 +467,6 @@ class CustomTestDataset(Dataset):
         self.mask_size = mask_size
         self.all_patches = []
         self.patches_by_label = self._extract_valid_patches(images, labels)
-        
 
     def __len__(self):
 
@@ -376,9 +475,8 @@ class CustomTestDataset(Dataset):
     def _extract_valid_patches(self, images, labels):
 
         patches_by_label = {}
-        
-        
-        for idx in tqdm(range(len(images)), 'Extracting patches from high_c4'):
+
+        for idx in tqdm(range(len(images)), "Extracting patches from high_c4"):
             img = images[idx]
             lbl = labels[idx]
             height, width = img.shape
@@ -389,21 +487,33 @@ class CustomTestDataset(Dataset):
                     patch = img[y : y + self.patch_size, x : x + self.patch_size]
                     patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
                     blind_spot_area = patch_label[
-                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
-                        self.patch_size // 2 - self.mask_size // 2 : self.patch_size // 2 + self.mask_size // 2 + 1,
+                        self.patch_size // 2
+                        - self.mask_size // 2 : self.patch_size // 2
+                        + self.mask_size // 2
+                        + 1,
+                        self.patch_size // 2
+                        - self.mask_size // 2 : self.patch_size // 2
+                        + self.mask_size // 2
+                        + 1,
                     ]
                     unique_labels = np.unique(blind_spot_area)
-                        # without background
+                    # without background
                     # if len(unique_labels) == 1 and unique_labels[0] != 0:
-                        # with background
+                    # with background
                     # -1 is for outside of the cell
                     if len(unique_labels) == 1 and unique_labels[0] != -1:
-                            center_label = unique_labels[0]
-                            if center_label not in patches_by_label:
-                                patches_by_label[center_label] = []
-                            # if len(patches_by_label[center_label]) < 1000:
-                            self.all_patches.append((torch.tensor(patch).unsqueeze(0), torch.tensor(center_label), torch.tensor(patch_label).unsqueeze(0)))
-                            patches_by_label[center_label].append(len(self.all_patches) - 1)
+                        center_label = unique_labels[0]
+                        if center_label not in patches_by_label:
+                            patches_by_label[center_label] = []
+                        # if len(patches_by_label[center_label]) < 1000:
+                        self.all_patches.append(
+                            (
+                                torch.tensor(patch).unsqueeze(0),
+                                torch.tensor(center_label),
+                                torch.tensor(patch_label).unsqueeze(0),
+                            )
+                        )
+                        patches_by_label[center_label].append(len(self.all_patches) - 1)
         return patches_by_label
 
     def __getitem__(self, idx):
@@ -414,10 +524,9 @@ class CustomTestDataset(Dataset):
         else:
             patch, cls, label = self.all_patches[idx]
             return patch, cls, label
-        
+
 
 class BalancedBatchSampler(Sampler):
-
     """
     A custom sampler that generates balanced batches from a dataset by ensuring each batch
     contains a balanced number of samples from each label class.
@@ -433,7 +542,7 @@ class BalancedBatchSampler(Sampler):
         The dataset from which samples are drawn. The dataset should have a `patches_by_label`
         attribute, which is a dictionary mapping labels to indices of samples belonging to
         those labels.
-        
+
     batch_size : int
         The total number of samples in each batch.
 
@@ -475,12 +584,15 @@ class BalancedBatchSampler(Sampler):
         self.label_to_indices = dataset.patches_by_label
         for key in self.label_to_indices:
             shuffle(self.label_to_indices[key])
-    
+
         # Determine number of labels
         self.num_labels = len(self.label_to_indices)
         self.samples_per_label = self.batch_size // self.num_labels
-        self.remaining_samples = self.batch_size % self.num_labels  
-        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
+        self.remaining_samples = self.batch_size % self.num_labels
+        self.max_batch = (
+            max(len(indices) for indices in self.label_to_indices.values())
+            // self.samples_per_label
+        )
 
     def __iter__(self):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
@@ -493,20 +605,20 @@ class BalancedBatchSampler(Sampler):
                     indices = random.choices(indices, k=max_class_size)  # Oversample
                 selected_indices = random.sample(indices, self.samples_per_label)
                 batch.extend(selected_indices)
-            
+
             if len(batch) < self.batch_size:
                 # Handle any remaining spots in the batch
                 remaining_indices = []
                 for indices in self.label_to_indices.values():
                     remaining_indices.extend(indices)
                 random.shuffle(remaining_indices)
-                batch.extend(remaining_indices[:self.batch_size - len(batch)])
+                batch.extend(remaining_indices[: self.batch_size - len(batch)])
 
             if len(batch) == self.batch_size:
                 random.shuffle(batch)
                 num_batches_generated += 1
-                yield batch 
-             # Return the batch and pause execution until the next batch is requested
+                yield batch
+            # Return the batch and pause execution until the next batch is requested
 
     def __len__(self):
         # Estimate the length based on the largest class
@@ -535,7 +647,9 @@ class CombinedBatchSampler(Sampler):
             List of indices of the labeled patches that should be used for contrastive loss.
         """
         self.label_to_indices = dataset.patches_by_label
-        self.random_indices = [i for i in range(len(dataset)) if i not in dataset.labeled_indices]
+        self.random_indices = [
+            i for i in range(len(dataset)) if i not in dataset.labeled_indices
+        ]
         for key in self.label_to_indices:
             shuffle(self.label_to_indices[key])
         self.batch_size = batch_size
@@ -543,8 +657,10 @@ class CombinedBatchSampler(Sampler):
         self.num_labels = len(self.label_to_indices)
         self.samples_per_label = self.small_batch_size // self.num_labels
         self.remaining_samples = self.small_batch_size % self.num_labels
-        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
-
+        self.max_batch = (
+            max(len(indices) for indices in self.label_to_indices.values())
+            // self.samples_per_label
+        )
 
     def __iter__(self):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
@@ -565,10 +681,14 @@ class CombinedBatchSampler(Sampler):
                 for indices in self.label_to_indices.values():
                     remaining_labeled.extend(indices)
                 random.shuffle(remaining_labeled)
-                balanced_batch.extend(remaining_labeled[:self.small_batch_size - len(balanced_batch)])
+                balanced_batch.extend(
+                    remaining_labeled[: self.small_batch_size - len(balanced_batch)]
+                )
 
             # Step 2: Sample 75% of the batch randomly from unlabeled indices
-            random_unlabeled = random.sample(self.random_indices, self.batch_size - self.small_batch_size)
+            random_unlabeled = random.sample(
+                self.random_indices, self.batch_size - self.small_batch_size
+            )
 
             # Combine balanced labeled and random unlabeled samples
             combined_batch = balanced_batch + random_unlabeled
@@ -582,6 +702,7 @@ class CombinedBatchSampler(Sampler):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
         return (max_class_size * self.num_labels) // self.small_batch_size
 
+
 class UnbalancedBatchSampler(Sampler):
 
     def __init__(self, dataset, batch_size):
@@ -590,12 +711,20 @@ class UnbalancedBatchSampler(Sampler):
 
         # dictionary mapping labels to indices
         self.label_to_indices = dataset.patches_by_label
-    
+
         # Determine number of labels
         self.num_labels = len(self.label_to_indices)
-        self.samples_per_label = [self.batch_size // 3, self.batch_size // 6, self.batch_size // 3, self.batch_size // 6]
+        self.samples_per_label = [
+            self.batch_size // 3,
+            self.batch_size // 6,
+            self.batch_size // 3,
+            self.batch_size // 6,
+        ]
         self.remaining_samples = self.batch_size - np.sum(self.samples_per_label)
-        self.max_batch = max(len(indices) for indices in self.label_to_indices.values()) // self.samples_per_label
+        self.max_batch = (
+            max(len(indices) for indices in self.label_to_indices.values())
+            // self.samples_per_label
+        )
 
     def __iter__(self):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
@@ -608,20 +737,20 @@ class UnbalancedBatchSampler(Sampler):
                     indices = random.choices(indices, k=max_class_size)  # Oversample
                 selected_indices = random.sample(indices, self.samples_per_label)
                 batch.extend(selected_indices)
-            
+
             if len(batch) < self.batch_size:
                 # Handle any remaining spots in the batch
                 remaining_indices = []
                 for indices in self.label_to_indices.values():
                     remaining_indices.extend(indices)
                 random.shuffle(remaining_indices)
-                batch.extend(remaining_indices[:self.batch_size - len(batch)])
+                batch.extend(remaining_indices[: self.batch_size - len(batch)])
 
             if len(batch) == self.batch_size:
                 random.shuffle(batch)
                 num_batches_generated += 1
-                yield batch 
-             # Return the batch and pause execution until the next batch is requested
+                yield batch
+            # Return the batch and pause execution until the next batch is requested
 
     def __len__(self):
         # Estimate the length based on the largest class

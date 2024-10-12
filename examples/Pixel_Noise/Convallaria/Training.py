@@ -6,7 +6,7 @@ import torch
 import pickle
 import numpy as np
 from tqdm import tqdm
-from lib.dataloader import CombinedCustomDataset, CombinedBatchSampler
+from lib.dataloader import CustomDataset, CombinedCustomDataset, BalancedBatchSampler, CombinedBatchSampler
 from torch.utils.data import DataLoader
 import tifffile as tiff
 from sklearn.utils import shuffle
@@ -19,21 +19,23 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 patch_size = 64
-sample_size = 350
-centre_size = 4
+mask_size = 5
+label_size = 5
+# sample_size = 350
+centre_size = 5
 n_channel = 32
 hierarchy_level = 3
 pad_size = (patch_size - centre_size) // 2
 
 
-classes = ['uncategorized', 'nucleus', 'granule', 'mitochondria']
-train_labeled_indices = []
-val_labeled_indices = []
-for cls in classes:
-    with open(f'/group/jug/Sheida/pancreatic beta cells/download/train/0.1_percent_{cls}.pickle', 'rb') as file:
-        train_labeled_indices.extend(pickle.load(file))
-    with open(f'/group/jug/Sheida/pancreatic beta cells/download/val/0.1_percent_{cls}.pickle', 'rb') as file:
-        val_labeled_indices.extend(pickle.load(file))
+# classes = ['uncategorized', 'nucleus', 'granule', 'mitochondria']
+# train_labeled_indices = []
+# val_labeled_indices = []
+# for cls in classes:
+#     with open(f'/group/jug/Sheida/pancreatic beta cells/download/train/0.1_percent_{cls}.pickle', 'rb') as file:
+#         train_labeled_indices.extend(pickle.load(file))
+#     with open(f'/group/jug/Sheida/pancreatic beta cells/download/val/0.1_percent_{cls}.pickle', 'rb') as file:
+#         val_labeled_indices.extend(pickle.load(file))
 
 # train data
 
@@ -72,8 +74,10 @@ for key in tqdm(keys, 'Normalizing data'):
    train_images[key] = (train_images[key] - data_mean) / data_std
    val_images[key] = (val_images[key] - data_mean) / data_std
 
-train_set = CombinedCustomDataset(train_images, train_labels, train_labeled_indices)
-val_set = CombinedCustomDataset(val_images, val_labels, val_labeled_indices)
+# train_set = CombinedCustomDataset(train_images, train_labels, train_labeled_indices)
+# val_set = CombinedCustomDataset(val_images, val_labels, val_labeled_indices)
+train_set = CustomDataset(train_images, train_labels, label_size=label_size)
+val_set = CustomDataset(val_images, val_labels, label_size=label_size)
 
 # One_test_image = ['high_c4']
 
@@ -82,45 +86,44 @@ val_set = CombinedCustomDataset(val_images, val_labels, val_labeled_indices)
 # test_images = tiff.imread(test_img_path)
 
 model_name = "HVAE"
-directory_path = "/group/jug/Sheida/HVAE/v31/"
+directory_path = "/group/jug/Sheida/HVAE/2D/5x5_full"
 # directory_path = "./test/"
 # Data-specific
 gaussian_noise_std = None
 noiseModel = None 
 # Training-specific
-batch_size=128
-# batch_size=8
+# batch_size=128
+batch_size=8
 virtual_batch = 64
 lr=3e-4
 max_epochs = 500
 steps_per_epoch = 2
-test_batch_size=100
+# test_batch_size=100
 
 # Model-specific
 num_latents = 3
 z_dims = [32]*int(num_latents)
 blocks_per_layer = 5
-mask_size = 4
 margin = 50
 beta = 0.5
 batchnorm = True
 free_bits = 0.0 # if KLD is less than 1 then the loss won't be calculated
 contrastive_learning = True
-cl_mode = 'min max'
-clip_q = 20
-eval_on_test = False
+
 learn_top_prior = True
 
 debug             = False #[True, False]
 save_output       = True #[True, False]
 use_non_stochastic = False
-project           = 'HVAE'
+project           = '2D_HVAE'
 img_shape = (64,64)
 labeled_ratio = 0.25
 
-train_sampler = CombinedBatchSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
+# train_sampler = CombinedBatchSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
+train_sampler = BalancedBatchSampler(train_set, batch_size)
 train_loader = DataLoader(train_set, sampler=train_sampler)
-val_sampler = CombinedBatchSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+# val_sampler = CombinedBatchSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+val_sampler = BalancedBatchSampler(val_set, batch_size)
 val_loader = DataLoader(val_set, sampler=val_sampler)
     
 test_set = None
@@ -134,7 +137,7 @@ feature_dim = 96
 # label of the patch of shape (1, batch_size, channel, patch_size, patch_size)
 
 model = LadderVAE(z_dims=z_dims,blocks_per_layer=blocks_per_layer,data_mean=data_mean,data_std=data_std,noiseModel=noiseModel,
-                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=learn_top_prior, margin=margin, clip_q=clip_q, beta=beta, labeled_ratio=labeled_ratio).cuda()
+                  device=device,batchnorm=batchnorm,free_bits=free_bits,img_shape=img_shape,contrastive_learning=contrastive_learning,cl_mode=cl_mode,mask_size=mask_size, use_non_stochastic=use_non_stochastic, learn_top_prior=learn_top_prior, margin=margin, beta=beta, labeled_ratio=labeled_ratio).cuda()
 
 model.train() # Model set in training mode
 

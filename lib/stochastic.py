@@ -46,17 +46,17 @@ class NormalStochasticBlock2d(nn.Module):
 
         # Define p(z)
         p_mu, p_lv = p_params.chunk(2, dim=1)
-        try:
-            p = Normal(p_mu, (p_lv / 2).exp())
-        except ValueError:
-            print(p_mu.max(), (p_lv / 2).exp().max())
+        p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
+        p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
+        p = Normal(p_mu, (p_lv / 2).exp())
+        
         q_mu, q_lv = None, None
         if q_params is not None:
             # Define q(z)
             q_params = self.conv_in_q(q_params)
             q_mu, q_lv = q_params.chunk(2, dim=1)
-            if self.clip_q is not None:
-                q_lv = torch.clip(q_lv, max=self.clip_q)
+            q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
+            q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
             q = Normal(q_mu, (q_lv / 2).exp())
 
             # Sample from q(z)
