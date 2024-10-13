@@ -129,7 +129,7 @@ def train_network(
         running_cl_pos = []
         running_cl_neg = []
 
-        for idx, (x, y, z) in enumerate(train_loader):
+        for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
 
             x = x.squeeze(0)
             y = y.squeeze(0)
@@ -234,7 +234,7 @@ def train_network(
         running_validation_loss = []
         model.eval()
         with torch.no_grad():
-            for i, (x, y, z) in enumerate(val_loader):
+            for i, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
                 x = x.squeeze(0)
                 y = y.squeeze(0)
                 z = z.squeeze(0)

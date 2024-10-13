@@ -21,12 +21,13 @@ from models.lvae import LadderVAE
 import lib.utils as utils
 
 
-def _make_datamanager(train_images, val_images, test_images, batch_size, test_batch_size):
-    
+def _make_datamanager(
+    train_images, val_images, test_images, batch_size, test_batch_size
+):
     """Create data loaders for training, validation and test sets during training.
-    The test set will simply be used for plotting and comparing generated images 
-    from the learned denoised posterior during training phase. 
-    No evaluation will be done on the test set during training. 
+    The test set will simply be used for plotting and comparing generated images
+    from the learned denoised posterior during training phase.
+    No evaluation will be done on the test set during training.
     Args:
         train_images (np array): A 3d array
         val_images (np array): A 3d array
@@ -40,39 +41,51 @@ def _make_datamanager(train_images, val_images, test_images, batch_size, test_ba
         data_mean: mean of train data and validation data combined
         data_std: std of train data and validation data combined
     """
-    
+
     np.random.shuffle(train_images)
     train_images = train_images
     np.random.shuffle(val_images)
     val_images = val_images
-    
+
     combined_data = np.concatenate((train_images, val_images), axis=0)
     data_mean = np.mean(combined_data)
     data_std = np.std(combined_data)
-    train_images = (train_images-data_mean)/data_std
+    train_images = (train_images - data_mean) / data_std
     train_images = torch.from_numpy(train_images)
-    train_labels = torch.zeros(len(train_images),).fill_(float('nan'))
+    train_labels = torch.zeros(
+        len(train_images),
+    ).fill_(float("nan"))
     train_set = TensorDataset(train_images, train_labels)
 
-    # TODO add normal dataloader 
-    
-    val_images = (val_images-data_mean)/data_std
+    # TODO add normal dataloader
+
+    val_images = (val_images - data_mean) / data_std
     val_images = torch.from_numpy(val_images)
-    val_labels = torch.zeros(len(val_images),).fill_(float('nan'))
+    val_labels = torch.zeros(
+        len(val_images),
+    ).fill_(float("nan"))
     val_set = TensorDataset(val_images, val_labels)
-    
+
     np.random.shuffle(test_images)
     test_images = torch.from_numpy(test_images)
-    test_images = (test_images-data_mean)/data_std
-    test_labels = torch.zeros(len(test_images),).fill_(float('nan'))
+    test_images = (test_images - data_mean) / data_std
+    test_labels = torch.zeros(
+        len(test_images),
+    ).fill_(float("nan"))
     test_set = TensorDataset(test_images, test_labels)
-    
+
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=test_batch_size, shuffle=True)
-    
+
     return train_loader, val_loader, test_loader, data_mean, data_std
-    
+
+
+def _filter_slices(image, label):
+    # 23, 53, 13 number of slices for c1, c2 and c3 respectively are invalid
+    valid_indices = ~np.all(label == -1, axis=(1, 2))
+    return image[valid_indices], label[valid_indices]
+
 
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     """
@@ -82,20 +95,15 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
         lr (float): learning rate
         weight_decay (float): weight decay
     """
-    optimizer = optim.Adamax(model.parameters(),
-                             lr=lr,
-                             weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                     'min',
-                                                      patience=10,
-                                                      factor=0.5,
-                                                      min_lr=1e-12,
-                                                      verbose=True)
+    optimizer = optim.Adamax(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, "min", patience=10, factor=0.5, min_lr=1e-12, verbose=True
+    )
     return optimizer, scheduler
-        
 
-def forward_pass(x, y, device, model, gaussian_noise_std, amp=True)-> dict:
-    
+
+def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
+
     x_masked = mask_input(x, model)
     x_masked = x_masked.to(device, non_blocking=True)
     assert not torch.isnan(x_masked).any(), "Input contains NaNs!"
@@ -103,59 +111,70 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True)-> dict:
     with autocast(enabled=amp):
         model_out = model(x=x_masked, y=y, x_orig=x)
     if model.mode_pred is False:
-        
-        recons_sep = -model_out['ll']
-        inpainting_loss = get_centre(recons_sep, patch_size=x.shape[2], mask_size=model.mask_size).mean()
-        kl_sep = model_out['kl_sep']
-        kl = model_out['kl']
-        kl_loss = model_out['kl_loss']/float(x.shape[2]*x.shape[3])
-        cl_loss = model_out['cl_loss']
-        cl_pos = model_out['cl_pos']
-        cl_neg = model_out['cl_neg']
-        cl_neg_terms = model_out['cl_neg_terms']
-        thetas = model_out['thetas']
-        
+
+        recons_sep = -model_out["ll"]
+        inpainting_loss = get_centre(
+            recons_sep, patch_size=x.shape[-1], mask_size=model.mask_size, conv=model.conv_mult
+        ).mean()
+        kl_sep = model_out["kl_sep"]
+        kl = model_out["kl"]
+        kl_loss = model_out["kl_loss"] / float(x.shape[2] * x.shape[3])
+        cl_loss = model_out["cl_loss"]
+        cl_pos = model_out["cl_pos"]
+        cl_neg = model_out["cl_neg"]
+        cl_neg_terms = model_out["cl_neg_terms"]
+        thetas = model_out["thetas"]
+
         output = {
-                'inpainting_loss': inpainting_loss,
-                'kl_loss': kl_loss,
-                'cl_loss': cl_loss,
-                'cl_pos': cl_pos,
-                'cl_neg': cl_neg,
-                'cl_neg_terms': cl_neg_terms,
-                'thetas': thetas,
-                'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample']
-            }
+            "inpainting_loss": inpainting_loss,
+            "kl_loss": kl_loss,
+            "cl_loss": cl_loss,
+            "cl_pos": cl_pos,
+            "cl_neg": cl_neg,
+            "cl_neg_terms": cl_neg_terms,
+            "thetas": thetas,
+            "out_mean": model_out["out_mean"],
+            "out_sample": model_out["out_sample"],
+        }
 
     else:
         output = {
-                'inpainting_loss': None,
-                'kl_loss': None,
-                'cl_loss': None,
-                'out_mean': model_out['out_mean'],
-                'out_sample': model_out['out_sample']
-            }
-        
-    if 'kl_avg_layerwise' in model_out:
-        output['kl_avg_layerwise'] = model_out['kl_avg_layerwise']
-        
+            "inpainting_loss": None,
+            "kl_loss": None,
+            "cl_loss": None,
+            "out_mean": model_out["out_mean"],
+            "out_sample": model_out["out_sample"],
+        }
+
+    if "kl_avg_layerwise" in model_out:
+        output["kl_avg_layerwise"] = model_out["kl_avg_layerwise"]
+
     return output
-    
+
+
 def mask_input(x, model):
     x_masked = x.clone()
-    patch_size = x.shape[2]
+    patch_size = x.shape[-1]
     mask_size = model.mask_size
     begin = (patch_size - mask_size) // 2
     end = begin + mask_size
-    x_masked[:, :, begin:end, begin:end, begin:end] = 0
+    if model.conv_mult == 2:
+        x_masked[:, :, begin:end, begin:end] = 0
+    elif model.conv_mult == 3:
+        x_masked[:, :, begin:end, begin:end, begin:end] = 0
     return x_masked
 
-def get_centre(x, patch_size, mask_size):
+
+def get_centre(x, patch_size, mask_size, conv):
     begin = (patch_size - mask_size) // 2
     end = begin + mask_size
-    return x[:, :, begin:end, begin:end, begin:end]
+    if conv == 2:
+        return x[:, :, begin:end, begin:end]
+    elif conv == 3:
+        return x[:, :, begin:end, begin:end, begin:end]
 
-def img_grid_pad_value(imgs, thresh = .2) -> float:
+
+def img_grid_pad_value(imgs, thresh=0.2) -> float:
     """Returns padding value (black or white) for a grid of images.
     Hack to visualize boundaries between images with torchvision's
     save_image(). If the median border value of all images is below the
@@ -167,8 +186,8 @@ def img_grid_pad_value(imgs, thresh = .2) -> float:
         pad_value (float): The padding value
     """
     assert imgs.dim() == 4
-    imgs = imgs.clamp(min=0., max=1.)
-    assert 0. < thresh < 1.
+    imgs = imgs.clamp(min=0.0, max=1.0)
+    assert 0.0 < thresh < 1.0
 
     imgs = imgs.mean(1)  # reduce to 1 channel
     h = imgs.size(1)
@@ -176,15 +195,15 @@ def img_grid_pad_value(imgs, thresh = .2) -> float:
     borders = list()
     borders.append(imgs[:, 0].flatten())
     borders.append(imgs[:, h - 1].flatten())
-    borders.append(imgs[:, 1:h - 1, 0].flatten())
-    borders.append(imgs[:, 1:h - 1, w - 1].flatten())
+    borders.append(imgs[:, 1 : h - 1, 0].flatten())
+    borders.append(imgs[:, 1 : h - 1, w - 1].flatten())
     borders = torch.cat(borders)
     if torch.median(borders) < thresh:
         return 1.0
     return 0.0
-    
 
-def save_image_grid(images,filename,nrows):
+
+def save_image_grid(images, filename, nrows):
     """Saves images on disk.
     Args:
         images (torch.Tensor): A 4d tensor
@@ -193,15 +212,15 @@ def save_image_grid(images,filename,nrows):
     """
     pad = img_grid_pad_value(images)
     save_image(images, filename, nrow=nrows, pad_value=pad, normalize=True)
-    
+
 
 def generate_and_save_samples(model, filename, nrows=4, amp=True) -> None:
     """Save generated images at intermediate training steps.
-       Args:
-           model: instance of LadderVAE class
-           filename (str): filename where to save denoised images
-           nrows (int): Number of rows in which to arrange denoised/generated images.
-           
+    Args:
+        model: instance of LadderVAE class
+        filename (str): filename where to save denoised images
+        nrows (int): Number of rows in which to arrange denoised/generated images.
+
     """
     with autocast(enabled=amp):
         samples = model.sample_prior(nrows**2)
@@ -209,9 +228,9 @@ def generate_and_save_samples(model, filename, nrows=4, amp=True) -> None:
         samples = samples[0, ...].permute(1, 0, 2, 3)
     save_image_grid(samples, filename, nrows=nrows)
     return samples
-    
 
-def save_image_grid_reconstructions(inputs,recons,filename):
+
+def save_image_grid_reconstructions(inputs, recons, filename):
     assert inputs.shape == recons.shape
     n_img = inputs.shape[0]
     n = int(np.sqrt(2 * n_img))
@@ -221,24 +240,28 @@ def save_image_grid_reconstructions(inputs,recons,filename):
     if imgs.dim() == 5:
         imgs = imgs[0, ...].permute(1, 0, 2, 3)
     save_image_grid(imgs, filename, nrows=n)
-    
 
-def generate_and_save_reconstructions(x,filename,device,model,gaussian_noise_std,data_std,nrows, amp=True) -> None:
+
+def generate_and_save_reconstructions(
+    x, filename, device, model, gaussian_noise_std, data_std, nrows, amp=True
+) -> None:
     """Save denoised images at intermediate training steps.
-       Args:
-           x (Torch.tensor): Batch of images from test set
-           filename (str): filename where to save denoised images
-           device: cuda device
-           model: instance of LadderVAE class
-           gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
-           data_std (float): std of combined train and validation data.
-           nrows (int): Number of rows in which to arrange denoised/generated images.
-           
+    Args:
+        x (Torch.tensor): Batch of images from test set
+        filename (str): filename where to save denoised images
+        device: cuda device
+        model: instance of LadderVAE class
+        gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
+        data_std (float): std of combined train and validation data.
+        nrows (int): Number of rows in which to arrange denoised/generated images.
+
     """
     n_img = nrows**2 // 2
     if x.shape[0] < n_img:
-        msg = ("{} data points required, but given batch has size {}. "
-               "Please use a larger batch.".format(n_img, x.shape[0]))
+        msg = (
+            "{} data points required, but given batch has size {}. "
+            "Please use a larger batch.".format(n_img, x.shape[0])
+        )
         raise RuntimeError(msg)
     # x = x.to(device)
 
@@ -246,7 +269,7 @@ def generate_and_save_reconstructions(x,filename,device,model,gaussian_noise_std
 
     # Try to get reconstruction from different sources in order
     recons = None
-    possible_recons_names = ['out_recons', 'out_mean', 'out_sample']
+    possible_recons_names = ["out_recons", "out_mean", "out_sample"]
     for key in possible_recons_names:
         try:
             recons = outputs[key]
@@ -255,8 +278,10 @@ def generate_and_save_reconstructions(x,filename,device,model,gaussian_noise_std
         except KeyError:
             pass
     if recons is None:
-        msg = ("Couldn't find reconstruction in the output dictionary. "
-               "Tried keys: {}".format(possible_recons_names))
+        msg = (
+            "Couldn't find reconstruction in the output dictionary. "
+            "Tried keys: {}".format(possible_recons_names)
+        )
         raise RuntimeError(msg)
 
     # Pick required number of images
@@ -266,24 +291,33 @@ def generate_and_save_reconstructions(x,filename,device,model,gaussian_noise_std
 
     # Save inputs and reconstructions in a grid
     save_image_grid_reconstructions(x, recons, filename)
-    
 
-def save_images(img_folder, device, model,  test_loader, gaussian_noise_std, data_std, nrows, amp=True) -> None:
+
+def save_images(
+    img_folder,
+    device,
+    model,
+    test_loader,
+    gaussian_noise_std,
+    data_std,
+    nrows,
+    amp=True,
+) -> None:
     """Save generated images and denoised images at intermediate training steps.
-       Args:
-           img_folder (str): Folder where to save images
-           device: cuda device
-           model: instance of LadderVAE class
-           test_loader: Test loader used to denoise during intermediate traing steps.
-           gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
-           data_std (float): std of combined train and validation data.
-           nrows (int): Number of rows in which to arrange denoised/generated images.
-           
+    Args:
+        img_folder (str): Folder where to save images
+        device: cuda device
+        model: instance of LadderVAE class
+        test_loader: Test loader used to denoise during intermediate traing steps.
+        gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
+        data_std (float): std of combined train and validation data.
+        nrows (int): Number of rows in which to arrange denoised/generated images.
+
     """
     step = model.global_step
 
     # Save model samples
-    fname = os.path.join(img_folder, 'sample_' + str(step) + '.png')
+    fname = os.path.join(img_folder, "sample_" + str(step) + ".png")
     generate_and_save_samples(model, fname, nrows)
 
     # Get first test batch
@@ -293,32 +327,46 @@ def save_images(img_folder, device, model,  test_loader, gaussian_noise_std, dat
     x = x.to(device=device, dtype=torch.float)
 
     # Save model original/reconstructions
-    fname = os.path.join(img_folder, 'reconstruction_' + str(step) + '.png')
+    fname = os.path.join(img_folder, "reconstruction_" + str(step) + ".png")
 
-    generate_and_save_reconstructions(x, fname, device, model, gaussian_noise_std, data_std, nrows, amp)
-    
+    generate_and_save_reconstructions(
+        x, fname, device, model, gaussian_noise_std, data_std, nrows, amp
+    )
 
-def _test(epoch, img_folder, device, model,  test_loader, gaussian_noise_std, data_std, nrows, amp=True):
+
+def _test(
+    epoch,
+    img_folder,
+    device,
+    model,
+    test_loader,
+    gaussian_noise_std,
+    data_std,
+    nrows,
+    amp=True,
+):
     """Perform a test step at intermediate training steps.
-       Args:
-           epoch (int): Current training epoch
-           img_folder (str): Folder where to save images
-           device: cuda device
-           model: instance of LadderVAE class
-           test_loader: Test loader used to denoise during intermediate traing steps.
-           gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
-           data_std (float): std of combined train and validation data.
-           nrows (int): Number of rows in which to arrange denoised/generated images.
-           
+    Args:
+        epoch (int): Current training epoch
+        img_folder (str): Folder where to save images
+        device: cuda device
+        model: instance of LadderVAE class
+        test_loader: Test loader used to denoise during intermediate traing steps.
+        gaussian_noise_std (float or None): Noise std if data is corrupted with Gaussian noise, else None.
+        data_std (float): std of combined train and validation data.
+        nrows (int): Number of rows in which to arrange denoised/generated images.
+
     """
     # Evaluation mode
     model.eval()
     # Save images
-    save_images(img_folder, device, model, test_loader, gaussian_noise_std, data_std, nrows, amp)
-    
+    save_images(
+        img_folder, device, model, test_loader, gaussian_noise_std, data_std, nrows, amp
+    )
 
-def get_normalized_tensor(img,model,device):
-    '''
+
+def get_normalized_tensor(img, model, device):
+    """
     Normalizes tensor with mean and std.
     Parameters
     ----------
@@ -326,15 +374,24 @@ def get_normalized_tensor(img,model,device):
         Image.
     model: Hierarchical DivNoising model
     device: GPU device.
-    '''
+    """
     test_images = torch.from_numpy(img.copy()).to(device)
     data_mean = model.data_mean
     data_std = model.data_std
-    test_images = (test_images-data_mean)/data_std
+    test_images = (test_images - data_mean) / data_std
     return test_images
 
 
-def predcit_tiled(img, model, device, patch_size, overlap=0, num_samples=10, tta=False, gaussian_noise_std=None) -> np.ndarray:
+def predcit_tiled(
+    img,
+    model,
+    device,
+    patch_size,
+    overlap=0,
+    num_samples=10,
+    tta=False,
+    gaussian_noise_std=None,
+) -> np.ndarray:
     """
     Predicts image using tiled prediction.
     Parameters
@@ -355,9 +412,11 @@ def predcit_tiled(img, model, device, patch_size, overlap=0, num_samples=10, tta
         std of Gaussian noise used to corrupt the data. For intrinsically noisy data, set to None.
     """
 
-    #TODO: refactor/rewrite ?
+    # TODO: refactor/rewrite ?
 
-    assert patch_size > overlap, f'Patch size {patch_size} must be larger than overlap {overlap}.'
+    assert (
+        patch_size > overlap
+    ), f"Patch size {patch_size} must be larger than overlap {overlap}."
 
     zmin = 0
     xmin = 0
@@ -375,30 +434,32 @@ def predcit_tiled(img, model, device, patch_size, overlap=0, num_samples=10, tta
             ymin_ = min(img.shape[0], ymax) - patch_size
             xmin_ = min(img.shape[1], xmax) - patch_size
             lastPatchShiftY = ymin - ymin_
-            lastPatchShiftX = xmin - xmin_  
+            lastPatchShiftX = xmin - xmin_
             if ((ymin_, ymax), (xmin_, xmax)) not in coords:
                 coords.append(((ymin_, ymax), (xmin_, xmax)))
-                img_mmse, samples = boilerplate.predict(img[ymin_:ymax,xmin_:xmax], 
-                                                    num_samples,
-                                                    model,
-                                                    gaussian_noise_std,
-                                                    device,
-                                                    tta)
+                img_mmse, samples = boilerplate.predict(
+                    img[ymin_:ymax, xmin_:xmax],
+                    num_samples,
+                    model,
+                    gaussian_noise_std,
+                    device,
+                    tta,
+                )
 
                 # preticted_tile = img_mmse[lastPatchShiftY:,lastPatchShiftX:][ovTop:,ovLeft:]
-                pred[ymin:ymax,xmin:xmax][ovTop:,ovLeft:] = img_mmse[lastPatchShiftY:,lastPatchShiftX:][ovTop:,ovLeft:]
+                pred[ymin:ymax, xmin:xmax][ovTop:, ovLeft:] = img_mmse[
+                    lastPatchShiftY:, lastPatchShiftX:
+                ][ovTop:, ovLeft:]
 
-            ymin = ymin-overlap + patch_size
+            ymin = ymin - overlap + patch_size
             ymax = min(img.shape[0], ymin + patch_size)
-            ovTop = overlap//2
+            ovTop = overlap // 2
 
         ymin = 0
         ymax = patch_size
-        xmin = xmin-overlap + patch_size
+        xmin = xmin - overlap + patch_size
         xmax = min(img.shape[1], xmin + patch_size)
-        ovLeft = overlap//2
-
-
+        ovLeft = overlap // 2
 
     return pred
 
@@ -417,14 +478,16 @@ def predict_sample(img, model, gaussian_noise_std, device):
     device: GPU device
     """
     outputs = forward_pass(img, img, device, model, gaussian_noise_std)
-    recon = outputs['out_mean']
-    recon_denormalized = recon*model.data_std+model.data_mean
+    recon = outputs["out_mean"]
+    recon_denormalized = recon * model.data_std + model.data_mean
     recon_cpu = recon_denormalized.cpu()
     recon_numpy = recon_cpu.detach().numpy()
     return recon_numpy
 
 
-def predict_mmse(img_n, num_samples, model, gaussian_noise_std, device, return_samples=False):
+def predict_mmse(
+    img_n, num_samples, model, gaussian_noise_std, device, return_samples=False
+):
     """
     Predicts desired number of samples and computes MMSE estimate.
     Parameters
@@ -439,16 +502,16 @@ def predict_mmse(img_n, num_samples, model, gaussian_noise_std, device, return_s
         std of Gaussian noise used to corrupty data. For intrinsically noisy data, set to None.
     device: GPU device
     """
-    img_t = get_normalized_tensor(img_n,model,device)
+    img_t = get_normalized_tensor(img_n, model, device)
     image_sample = img_t.view(1, 1, *img_n.shape)
     image_sample = image_sample.to(device=device, dtype=torch.float)
     samples = []
-        
+
     for j in range(num_samples):
         sample = predict_sample(image_sample, model, gaussian_noise_std, device=device)
         samples.append(np.squeeze(sample))
-    
-    img_mmse = np.mean(np.array(samples),axis=0)
+
+    img_mmse = np.mean(np.array(samples), axis=0)
     if return_samples:
         return img_mmse, samples
     else:
@@ -474,22 +537,40 @@ def predict(img, num_samples, model, gaussian_noise_std, device, tta):
     """
     if tta:
         aug_imgs = tta_forward(img)
-        mmse_aug=[]
+        mmse_aug = []
         for j in range(len(aug_imgs)):
-            if(j==0):
-                img_mmse,samples = predict_mmse(aug_imgs[j], num_samples, model, gaussian_noise_std, 
-                                                device=device, return_samples=True)
+            if j == 0:
+                img_mmse, samples = predict_mmse(
+                    aug_imgs[j],
+                    num_samples,
+                    model,
+                    gaussian_noise_std,
+                    device=device,
+                    return_samples=True,
+                )
             else:
-                img_mmse = predict_mmse(aug_imgs[j], num_samples, model, gaussian_noise_std, 
-                                    device=device, return_samples=False)
+                img_mmse = predict_mmse(
+                    aug_imgs[j],
+                    num_samples,
+                    model,
+                    gaussian_noise_std,
+                    device=device,
+                    return_samples=False,
+                )
             mmse_aug.append(img_mmse)
 
         mmse_back_transformed = tta_backward(mmse_aug)
         return mmse_back_transformed, samples
     else:
-        img_mmse,samples = predict_mmse(img, num_samples, model, gaussian_noise_std, 
-                                                device=device, return_samples=True)
-       
+        img_mmse, samples = predict_mmse(
+            img,
+            num_samples,
+            model,
+            gaussian_noise_std,
+            device=device,
+            return_samples=True,
+        )
+
         return img_mmse, samples
 
 
@@ -520,44 +601,59 @@ def tta_backward(x_aug):
     -------
     average of de-augmented x_aug.
     """
-    x_deaug = [x_aug[0], 
-               np.rot90(x_aug[1], -1), 
-               np.rot90(x_aug[2], -2), 
-               np.rot90(x_aug[3], -3),
-               np.fliplr(x_aug[4]), 
-               np.rot90(np.fliplr(x_aug[5]), -1), 
-               np.rot90(np.fliplr(x_aug[6]), -2), 
-               np.rot90(np.fliplr(x_aug[7]), -3)]
+    x_deaug = [
+        x_aug[0],
+        np.rot90(x_aug[1], -1),
+        np.rot90(x_aug[2], -2),
+        np.rot90(x_aug[3], -3),
+        np.fliplr(x_aug[4]),
+        np.rot90(np.fliplr(x_aug[5]), -1),
+        np.rot90(np.fliplr(x_aug[6]), -2),
+        np.rot90(np.fliplr(x_aug[7]), -3),
+    ]
     return np.mean(x_deaug, 0)
-       
+
 
 def generate_arbitrary_sized_samples(sample_shape, num_samples, model, save_path):
-    assert isinstance(sample_shape [0], int) and isinstance(sample_shape [1], int)
+    assert isinstance(sample_shape[0], int) and isinstance(sample_shape[1], int)
     torch.set_grad_enabled(False)
     n = num_samples
     model.eval()
     orig_model_img_shape = model.img_shape
-    fname = os.path.join(save_path, "samples_"+str(sample_shape[0])+"x"+str(sample_shape[1])+".png")
-    
-    if sample_shape[0]<orig_model_img_shape[0] or sample_shape[1]<orig_model_img_shape[1]:
-        raise RuntimeError('Cannot generate samples of this size, too small, network has too many down/upsamplings') from error
+    fname = os.path.join(
+        save_path,
+        "samples_" + str(sample_shape[0]) + "x" + str(sample_shape[1]) + ".png",
+    )
+
+    if (
+        sample_shape[0] < orig_model_img_shape[0]
+        or sample_shape[1] < orig_model_img_shape[1]
+    ):
+        raise RuntimeError(
+            "Cannot generate samples of this size, too small, network has too many down/upsamplings"
+        ) from error
         return
-    
+
     if orig_model_img_shape == sample_shape:
         samples = generate_and_save_samples(model, fname, nrows=n)
-    
+
     if orig_model_img_shape != sample_shape:
         model.img_shape = sample_shape
-        change_original_prior_shape = (int(sample_shape[0]/orig_model_img_shape[0]), int(sample_shape[0]/orig_model_img_shape[0]))
+        change_original_prior_shape = (
+            int(sample_shape[0] / orig_model_img_shape[0]),
+            int(sample_shape[0] / orig_model_img_shape[0]),
+        )
         top_layer = model.top_down_layers[-1]
         assert top_layer.is_top_layer
         orig_top_prior_params = top_layer.top_prior_params
-        modified_top_prior_params = orig_top_prior_params.repeat(1, 1, change_original_prior_shape[0], change_original_prior_shape[1])
+        modified_top_prior_params = orig_top_prior_params.repeat(
+            1, 1, change_original_prior_shape[0], change_original_prior_shape[1]
+        )
         top_layer.top_prior_params = torch.nn.Parameter(modified_top_prior_params)
         samples = generate_and_save_samples(model, fname, nrows=n)
-        
-    samples_denormalized = (samples*model.data_std)+model.data_mean
+
+    samples_denormalized = (samples * model.data_std) + model.data_mean
     samples_numpy = samples_denormalized.detach().cpu().numpy()
-    samples_numpy = samples_numpy[:,0,:,:]
-    
+    samples_numpy = samples_numpy[:, 0, :, :]
+
     return samples_numpy

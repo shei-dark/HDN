@@ -12,6 +12,127 @@ import torch.nn.functional as F
 import random
 
 
+class Custom2DDataset(Dataset):
+
+    def __init__(
+        self,
+        images,
+        labels,
+        patch_size=64,
+        mask_size=5,
+        label_size=5,
+        labeled_indices=None,
+    ):
+        self.patch_size = patch_size
+        self.mask_size = mask_size
+        self.label_size = label_size
+        self.all_patches = []
+        self.patches_by_label = self._extract_valid_patches(images, labels)
+        self.semi_supervised = False
+        if labeled_indices is not None:
+            self.labeled_indices = labeled_indices
+            self.semi_supervised = True
+            self.images = images
+            self.labels = labels
+            self._update_patches_by_label()
+
+    def __len__(self):
+
+        return len(self.all_patches)
+
+    def _extract_valid_patches(self, images, labels):
+
+        patches_by_label = {}
+
+        keys = list(images.keys())
+        for key in keys:
+            for img, lbl in tqdm(
+                zip(images[key], labels[key]), "Extracting patches from " + key
+            ):
+                height, width = img.shape
+                for i in range(0, height // self.patch_size):
+                    for j in range(0, width // self.patch_size):
+                        x = j * self.patch_size
+                        y = i * self.patch_size
+                        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+                        patch_label = lbl[
+                            y : y + self.patch_size, x : x + self.patch_size
+                        ]
+                        start = (self.patch_size - self.label_size) // 2
+                        unique_label_area = patch_label[
+                            start : start + self.label_size,
+                            start : start + self.label_size,
+                        ]
+                        unique_labels = np.unique(unique_label_area)
+                        if len(unique_labels) == 1 and unique_labels[0] != -1:
+                            center_label = unique_labels[0]
+                            if center_label not in patches_by_label:
+                                patches_by_label[center_label] = []
+                            self.all_patches.append(
+                                (
+                                    torch.tensor(patch).unsqueeze(0),
+                                    torch.tensor(center_label),
+                                    torch.tensor(patch_label).unsqueeze(0),
+                                )
+                            )
+                            patches_by_label[center_label].append(
+                                len(self.all_patches) - 1
+                            )
+        return patches_by_label
+
+    def _get_random_patch(self):
+
+        keys = list(self.images.keys())
+        key = random.choice(keys)
+        z = random.randrange(0, len(self.images[key]))
+        img = self.images[key][z]
+        lbl = self.labels[key][z]
+        height, width = img.shape
+        x = random.randrange(0, width - self.patch_size)
+        y = random.randrange(0, height - self.patch_size)
+        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+        return (
+            torch.tensor(patch).unsqueeze(0),
+            torch.tensor(-2),
+            torch.tensor(patch_label).unsqueeze(0),
+        )
+
+    def _update_patches_by_label(self):
+        for key in self.patches_by_label:
+            self.patches_by_label[key] = [
+                value
+                for value in self.patches_by_label[key]
+                if value in self.labeled_indices
+            ]
+
+    def __getitem__(self, idx):
+
+        if isinstance(idx, list):
+            if self.semi_supervised:
+                patches = [
+                    (
+                        self.all_patches[i]
+                        if i in self.labeled_indices
+                        else self._get_random_patch()
+                    )
+                    for i in idx
+                ]
+            else:
+                patches = [self.all_patches[i] for i in idx]
+            patches, clss, labels = zip(*patches)
+            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+        else:
+            if self.semi_supervised:
+                if idx in self.labeled_indices:
+                    patch, cls, label = self.all_patches[idx]
+                else:
+                    patch, cls, label = self._get_random_patch()
+            else:
+                patch, cls, label = self.all_patches[idx]
+            return patch, cls, label
+
+
 class Custom3DDataset(Dataset):
     """
     A custom dataset that extracts patches from 3D images and extract them based on their labels.
