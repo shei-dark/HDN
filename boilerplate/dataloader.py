@@ -257,9 +257,9 @@ class Custom3DDataset(Dataset):
         return patch, cls, label
 
 
-class Custom3DTestDataset(Dataset):
+class CustomTestDataset(Dataset):
 
-    def __init__(self, image, patch_size=(64, 64, 64), index=32, stride=1):
+    def __init__(self, image, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
 
         self.image = image
         self.patch_size = patch_size
@@ -269,6 +269,7 @@ class Custom3DTestDataset(Dataset):
         self.depth = index - (patch_size[0] // 2)
         self.num_patches_y = (self.height - patch_size[1]) // stride + 1
         self.num_patches_x = (self.width - patch_size[2]) // stride + 1
+        self.model = model
 
     def __len__(self):
         # return len(self.all_patches)
@@ -288,7 +289,8 @@ class Custom3DTestDataset(Dataset):
 
         # Add a channel dimension to the patch (if needed)
         patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dimension
-
+        if self.model == "2D":
+            patch_tensor = patch_tensor.squeeze(0)
         return patch_tensor
 
 

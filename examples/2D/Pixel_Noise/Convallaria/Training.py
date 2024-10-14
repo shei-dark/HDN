@@ -36,16 +36,17 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/test/"
+directory_path = "/group/jug/Sheida/HVAE/2D/1p_semi_5x5_5x5/"
 noiseModel = None
 
 # Training-specific
-batch_size = 16
+batch_size = 512
 lr = 3e-4
 max_epochs = 500
 
 # Model-specific
-load_checkpoint = False
+load_checkpoint = True
+checkpoint = "/group/jug/Sheida/HVAE/2D/1p_semi_5x5_5x5/model1/2D_HVAE_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -62,12 +63,13 @@ mode = "5x5"
 contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
-labeled_ratio = 1  # 1 if supervised, 0.5 if semi-supervised
 
 use_wandb = True
 
 semi_supervised = True
-percent_labeled = "10_percent"
+labeled_ratio = 1
+
+percent_labeled = "1_percent"
 
 train_labeled_indices = None
 val_labeled_indices = None
@@ -161,7 +163,7 @@ val_loader = DataLoader(val_set, sampler=val_sampler)
 img_shape = (64, 64)
 
 if load_checkpoint:
-    model = torch.load("")
+    model = torch.load(checkpoint)
 else:
     model = LadderVAE(
         z_dims=z_dims,
