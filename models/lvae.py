@@ -234,7 +234,7 @@ class LadderVAE(nn.Module):
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
             kl = kl_sep.mean()
-            cl = compute_cl_loss(mus=td_data['mu'], labels=y, margin=self.margin,
+            cl = compute_cl_loss(mus=td_data['mu'], logvars=td_data['logvar'], labels=y, margin=self.margin,
                                  lambda_contrastive=self.lambda_contrastive, labeled_ratio=self.labeled_ratio)
         else:
             kl_sep = None
@@ -315,6 +315,7 @@ class LadderVAE(nn.Module):
         kl_spatial = [None] * self.n_layers
 
         mu = [None] * self.n_layers
+        logvar = [None] * self.n_layers
 
         if forced_latent is None:
             forced_latent = [None] * self.n_layers
@@ -357,6 +358,7 @@ class LadderVAE(nn.Module):
             kl[i] = aux['kl_samplewise']  # (batch, )
             kl_spatial[i] = aux['kl_spatial']  # (batch, h, w)
             mu[i] = aux['mu']  
+            logvar[i] = aux['logvar']
             if self.mode_pred is False:
                 logprob_p += aux['logprob_p'].mean()  # mean over batch
             else:
@@ -370,7 +372,8 @@ class LadderVAE(nn.Module):
             'kl_spatial':
                 kl_spatial,  # list of tensors w shape (batch, h[i], w[i])
             'logprob_p': logprob_p,  # scalar, mean over batch
-            'mu': mu
+            'mu': mu,
+            'logvar': logvar
         }
         return out, data
 

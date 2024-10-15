@@ -9,6 +9,9 @@ from skimage.util import view_as_windows
 from matplotlib import pyplot as plt
 import torch.nn.functional as F
 import math
+from torch.distributions import kl_divergence
+from torch.distributions.normal import Normal
+
 
 
 class Interpolate(nn.Module):
@@ -337,10 +340,11 @@ def get_normalized_tensor(img,model,device):
     test_images = (test_images-data_mean)/data_std
     return test_images
 
-def compute_cl_loss(mus, labels, margin=50, lambda_contrastive=0.5, labeled_ratio=1):
+def compute_cl_loss(mus, logvars, labels, margin=50, lambda_contrastive=0.5, labeled_ratio=1):
 
     output = {}
     pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(mus, labels, margin, labeled_ratio)
+    # pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(mus, logvars, labels, margin, labeled_ratio)
     neg_thetas = get_thetas(neg_pair_loss_terms)
     weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)
     contrastive_loss = lambda_contrastive * pos_pair_loss + (1-lambda_contrastive) * weighted_neg
@@ -354,6 +358,68 @@ def compute_cl_loss(mus, labels, margin=50, lambda_contrastive=0.5, labeled_rati
     }
     return output
 
+
+def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):
+    
+    dist = 0
+    num_classes = torch.unique(labels).size(0)
+    batch_size = len(mus[0])
+    small_batch_size = int(batch_size * labeled_ratio)
+
+    labels = labels[:small_batch_size]
+    labels = labels.unsqueeze(0)
+
+    mus = [mus[i].view(batch_size, -1) for i in range(len(mus))]
+    mus = torch.cat(mus, dim=-1).unsqueeze(0)
+    mus = mus[:, :small_batch_size]
+    
+    logvars = [logvars[i].view(batch_size, -1) for i in range(len(logvars))]
+    logvars = torch.cat(logvars, dim=-1).unsqueeze(0)
+    logvars = logvars[:, :small_batch_size]
+    
+    temp_mus = mus.permute(1, 0, 2)
+    temp_logvars = logvars.permute(1, 0, 2)
+    
+    kl_matrix = kl_divergence(Normal(mus, (logvars / 2).exp()), Normal(temp_mus, (temp_logvars / 2).exp()))
+    dist += kl_matrix.sum(-1)
+    
+    # dist = torch.cdist(mus, mus, p=2).squeeze(0)
+
+    # dist = torch.clamp(dist, min=1e-6, max=1e6)
+
+    boolean_matrix = (labels == labels.T).to(device=mus.device)
+    pos_pair_loss = torch.sum(boolean_matrix * dist)
+
+    num_pos_pairs = torch.sum(boolean_matrix) - small_batch_size
+    if num_pos_pairs == 0:
+        pos_pair_loss = torch.tensor(0.0, device=mus.device)
+    else:
+        pos_pair_loss /= num_pos_pairs
+
+    neg_pair_loss_terms = {}
+    for i in range(num_classes-1):
+        for j in range(i+1, num_classes):
+            mask_i = (labels == i)
+            mask_j = (labels == j)
+            mask_ij = (mask_i & mask_j.T)
+
+            neg_bool_matrix = mask_ij.to(device=mus.device)
+            # neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist))
+            neg_loss = torch.sum(neg_bool_matrix * F.smooth_l1_loss(dist, torch.full_like(dist, margin), reduction='none'))
+
+
+            num_neg_pairs = torch.sum(neg_bool_matrix)
+            if num_neg_pairs == 0:
+                neg_loss = torch.tensor(0.0, device=mus.device)
+            else:
+                neg_loss /= num_neg_pairs
+
+            neg_pair_loss_terms[f'{i}{j}'] = neg_loss
+
+    return pos_pair_loss, neg_pair_loss_terms
+
+
+
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
     
     num_classes = torch.unique(labels).size(0)
@@ -366,6 +432,7 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
     mus = [mus[i].view(batch_size, -1) for i in range(len(mus))]
     mus = torch.cat(mus, dim=-1).unsqueeze(0)
     mus = mus[:, :small_batch_size]
+    
     dist = torch.cdist(mus, mus, p=2).squeeze(0)
 
     dist = torch.clamp(dist, min=1e-6, max=1e6)
