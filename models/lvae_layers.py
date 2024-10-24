@@ -3,7 +3,7 @@ from torch import nn
 from typing import Type, Union
 
 from lib.nn import ResidualBlock, ResidualGatedBlock
-from lib.stochastic import NormalStochasticConvBlock
+from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
 
 
 class TopDownLayer(nn.Module):
@@ -44,7 +44,10 @@ class TopDownLayer(nn.Module):
                  grad_checkpoint=False,
                  learn_top_prior=False,
                  top_prior_param_shape=None,
-                 analytical_kl=False):
+                 analytical_kl=False,
+                 stochastic_block_type='normal',  # 'normal' or 'mixture'
+                 n_components=4  # Used only for Mixture block
+                 ):
 
         super().__init__()
 
@@ -53,6 +56,8 @@ class TopDownLayer(nn.Module):
         self.stochastic_skip = stochastic_skip
         self.learn_top_prior = learn_top_prior
         self.analytical_kl = analytical_kl
+        self.stochastic_block_type = stochastic_block_type
+        self.n_components = n_components
 
         # Define top layer prior parameters, possibly learnable
         if is_top_layer:
@@ -88,13 +93,28 @@ class TopDownLayer(nn.Module):
         self.deterministic_block = nn.Sequential(*block_list)
 
         # Define stochastic block with convolutions
-        self.stochastic = NormalStochasticConvBlock(
-            c_in=n_filters,
-            c_vars=z_dim,
-            c_out=n_filters,
-            conv_mult=conv_mult,
-            transform_p_params=(not is_top_layer),
-        )
+        
+        # Select stochastic block based on the argument
+        if self.stochastic_block_type == 'normal':
+            self.stochastic = NormalStochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                transform_p_params=(not is_top_layer),
+            )
+        elif self.stochastic_block_type == 'mixture':
+            self.stochastic = MixtureStochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                n_components=self.n_components,
+                transform_p_params=(not is_top_layer),
+            )
+        else:
+            raise ValueError(f"Unsupported stochastic block type: {stochastic_block_type}")
+        
 
         if not is_top_layer:
 
@@ -188,7 +208,7 @@ class TopDownLayer(nn.Module):
         # Last top-down block (sequence of residual blocks)
         x = self.deterministic_block(x)
 
-        keys = ['z', 'kl_samplewise', 'kl_spatial', 'logprob_p', 'logprob_q', 'mu', 'logvar']
+        keys = ['z', 'kl_samplewise', 'kl_spatial', 'logprob_p', 'logprob_q', 'mu', 'logvar', 'pi']
         data = {k: data_stoch[k] for k in keys}
         return x, x_pre_residual, data
 

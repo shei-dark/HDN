@@ -36,17 +36,17 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/supervised_1x1_with_5x5_data/"
+directory_path = "/group/jug/Sheida/HVAE/2D/mixture/"
 noiseModel = None
 
 # Training-specific
-batch_size = 256
+batch_size = 8
 lr = 3e-4
 max_epochs = 500
 
 # Model-specific
 load_checkpoint = False
-checkpoint = ""
+checkpoint = directory_path + "model0/2D_HVAE_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -57,17 +57,20 @@ alpha = 1
 beta = 1e-1
 gamma = 1e-2
 # contrastive
-mask_size = 5
-label_size = 5
+mask_size = 1
+label_size = 1
 mode = "1x1"
 contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
 semi_supervised = False
 labeled_ratio = 1
+
+stochastic_block_type='mixture'  # 'normal' or 'mixture'
+n_components=4  # Used only for Mixture block
 
 percent_labeled = "1_percent"
 
@@ -160,13 +163,6 @@ else:
 train_loader = DataLoader(train_set, sampler=train_sampler)
 val_loader = DataLoader(val_set, sampler=val_sampler)
 
-train_set.mask_size = 1
-val_set.mask_size = 1
-train_set.label_size = 1
-val_set.label_size = 1
-mask_size = 1
-label_size = 1
-
 img_shape = (64, 64)
 
 if load_checkpoint:
@@ -189,6 +185,8 @@ else:
         margin=margin,
         lambda_contrastive=lambda_contrastive,
         labeled_ratio=labeled_ratio,
+        stochastic_block_type=stochastic_block_type,
+        n_components=n_components,
     ).cuda()
 
 model.train()  # Model set in training mode
