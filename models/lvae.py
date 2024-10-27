@@ -87,7 +87,7 @@ class LadderVAE(nn.Module):
         self.use_uncond_mode_at = use_uncond_mode_at
         self._global_step = 0
         self.mask_size = mask_size
-        self.conntrastive_learning = contrastive_learning
+        self.contrastive_learning = contrastive_learning
         self.margin = margin
         self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
@@ -257,7 +257,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
             ll, likelihood_info = self.likelihood(out, x)
-        if self.mode_pred is False and self.conntrastive_learning:
+        if self.mode_pred is False and self.contrastive_learning:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
@@ -398,7 +398,6 @@ class LadderVAE(nn.Module):
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
                 use_uncond_mode=use_uncond_mode,
-                
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl_samplewise"]  # (batch, )
@@ -476,7 +475,7 @@ class LadderVAE(nn.Module):
         # TODO num channels depends on random variable we're using
         dwnsc = self.overall_downscale_factor
         sz = self.get_padded_size(self.input_array_shape, dim)
-        c = self.z_dims[-1] * 2  # mu and logvar
+        c = self.n_filters #z_dims[-1] * 2  # mu and logvar
         if self.conv_mult == 2:
             h = sz[0] // dwnsc
             w = sz[1] // dwnsc

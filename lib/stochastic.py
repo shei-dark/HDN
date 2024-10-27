@@ -157,13 +157,13 @@ class MixtureStochasticConvBlock(nn.Module):
         c_out,
         conv_mult,
         kernel=3,
-        num_components=4,
+        n_components=4,
         transform_p_params=True,
     ):
         super().__init__()
         assert kernel % 2 == 1
         pad = kernel // 2
-        self.num_components = num_components
+        self.n_components = n_components
         self.c_in = c_in
         self.c_out = c_out
         self.c_vars = c_vars
@@ -174,10 +174,10 @@ class MixtureStochasticConvBlock(nn.Module):
         # Transform p_params to get pi logits, mu, and logvar for each component
         if transform_p_params:
             self.conv_in_p = conv_type(
-                c_in, 2 * c_vars * num_components, kernel, padding=pad
+                c_in, 3 * c_vars * n_components, kernel, padding=pad
             )
         self.conv_in_q = conv_type(
-            c_in, 2 * c_vars * num_components, kernel, padding=pad
+            c_in, 3 * c_vars * n_components, kernel, padding=pad
         )
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
@@ -199,20 +199,24 @@ class MixtureStochasticConvBlock(nn.Module):
             p_params = self.conv_in_p(p_params)
 
         # Split p_params and q_params into pi, mu, and logvar for each component
-        p_pi, p_mu_lv = torch.chunk(
-            p_params, self.num_components + 2 * self.c_vars * self.num_components, dim=1
+        p_pi, p_mu_lv = torch.split(
+            p_params, [self.c_vars * self.n_components, 2 * self.c_vars * self.n_components], dim=1
         )
         p_pi = torch.softmax(
             p_pi, dim=1
         )  # Get the mixture probabilities for each component
-
+        p_pi = p_pi.view(
+            p_pi.size(0), self.n_components, self.c_vars, *p_pi.shape[2:]
+        )
+        p_pi = p_pi.permute(0, *range(2, p_pi.ndim), 1)
+        
         # Separate mu and logvar for each component
         p_mu, p_lv = torch.chunk(p_mu_lv, 2, dim=1)
         p_mu = p_mu.view(
-            p_mu.size(0), self.num_components, self.c_vars, *p_mu.shape[2:]
+            p_mu.size(0), self.n_components, self.c_vars, *p_mu.shape[2:]
         )
         p_lv = p_lv.view(
-            p_lv.size(0), self.num_components, self.c_vars, *p_lv.shape[2:]
+            p_lv.size(0), self.n_components, self.c_vars, *p_lv.shape[2:]
         )
         p_std = (p_lv / 2).exp()
 
@@ -220,19 +224,21 @@ class MixtureStochasticConvBlock(nn.Module):
 
         if q_params is not None:
             q_params = self.conv_in_q(q_params)
-            q_pi, q_mu_lv = torch.chunk(
-                q_params,
-                self.num_components + 2 * self.c_vars * self.num_components,
-                dim=1,
+            q_pi, q_mu_lv = torch.split(
+                q_params, [self.c_vars * self.n_components, 2 * self.c_vars * self.n_components], dim=1
             )
             q_pi = torch.softmax(q_pi, dim=1)  # Mixture probabilities for q
+            q_pi = q_pi.view(
+                q_pi.size(0), self.n_components, self.c_vars, *q_pi.shape[2:]
+            )
+            q_pi = q_pi.permute(0, *range(2, q_pi.ndim), 1)
 
             q_mu, q_lv = torch.chunk(q_mu_lv, 2, dim=1)
             q_mu = q_mu.view(
-                q_mu.size(0), self.num_components, self.c_vars, *q_mu.shape[2:]
+                q_mu.size(0), self.n_components, self.c_vars, *q_mu.shape[2:]
             )
             q_lv = q_lv.view(
-                q_lv.size(0), self.num_components, self.c_vars, *q_lv.shape[2:]
+                q_lv.size(0), self.n_components, self.c_vars, *q_lv.shape[2:]
             )
             q_std = (q_lv / 2).exp()
 
@@ -255,11 +261,11 @@ class MixtureStochasticConvBlock(nn.Module):
             Categorical(p_pi) if q_params is None else Categorical(q_pi)
         )
         selected_component = component_distribution.sample()
-        z_selected = z.gather(1, selected_component.unsqueeze(-1).expand_as(z))
+        z_selected = z.gather(1, selected_component.unsqueeze(1)).squeeze(1)
 
         # Get the output from the latent variable
         out = self.conv_out(z_selected)
-
+        
         # Compute log p(z) and log q(z)
         logprob_p = (
             p_components.log_prob(z_selected).sum(list(range(1, z_selected.dim())))

@@ -48,7 +48,8 @@ max_epochs = 500
 load_checkpoint = False
 checkpoint = directory_path + "model0/2D_HVAE_best_vae.net"
 num_latents = 3
-z_dims = [32] * int(num_latents)
+z_dims = [8] * int(num_latents)
+n_filters = 96
 blocks_per_layer = 5
 batchnorm = True
 free_bits = 0.0
@@ -60,11 +61,11 @@ gamma = 1e-2
 mask_size = 1
 label_size = 1
 mode = "1x1"
-contrastive_learning = True
+contrastive_learning = False
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = False
+use_wandb = True
 
 semi_supervised = False
 labeled_ratio = 1
@@ -187,8 +188,9 @@ else:
         labeled_ratio=labeled_ratio,
         stochastic_block_type=stochastic_block_type,
         n_components=n_components,
+        n_filters=n_filters,
     ).cuda()
-
+print(model)
 model.train()  # Model set in training mode
 
 training.train_network(
