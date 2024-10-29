@@ -27,27 +27,28 @@ class TopDownLayer(nn.Module):
     (while they are usually taken from the previous layer), and can be learned.
     """
 
-    def __init__(self,
-                 z_dim,
-                 n_res_blocks,
-                 n_filters,
-                 is_top_layer=False,
-                 downsampling_steps=None,
-                 conv_mult=2,
-                 nonlin=None,
-                 merge_type=None,
-                 batchnorm=True,
-                 dropout=None,
-                 stochastic_skip=False,
-                 res_block_type=None,
-                 gated=None,
-                 grad_checkpoint=False,
-                 learn_top_prior=False,
-                 top_prior_param_shape=None,
-                 analytical_kl=False,
-                 stochastic_block_type='normal',  # 'normal' or 'mixture'
-                 n_components=4  # Used only for Mixture block
-                 ):
+    def __init__(
+        self,
+        z_dim,
+        n_res_blocks,
+        n_filters,
+        is_top_layer=False,
+        downsampling_steps=None,
+        conv_mult=2,
+        nonlin=None,
+        merge_type=None,
+        batchnorm=True,
+        dropout=None,
+        stochastic_skip=False,
+        res_block_type=None,
+        gated=None,
+        grad_checkpoint=False,
+        learn_top_prior=False,
+        top_prior_param_shape=None,
+        analytical_kl=False,
+        stochastic_block_type="normal",  # 'normal' or 'mixture'
+        n_components=4,  # Used only for Mixture block
+    ):
 
         super().__init__()
 
@@ -62,8 +63,8 @@ class TopDownLayer(nn.Module):
         # Define top layer prior parameters, possibly learnable
         if is_top_layer:
             self.top_prior_params = nn.Parameter(
-                torch.zeros(top_prior_param_shape),
-                requires_grad=learn_top_prior)
+                torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
+            )
 
         # Downsampling steps left to do in this layer
         dws_left = downsampling_steps
@@ -88,14 +89,15 @@ class TopDownLayer(nn.Module):
                     dropout=dropout,
                     res_block_type=res_block_type,
                     gated=gated,
-                    grad_checkpoint=grad_checkpoint
-                ))
+                    grad_checkpoint=grad_checkpoint,
+                )
+            )
         self.deterministic_block = nn.Sequential(*block_list)
 
         # Define stochastic block with convolutions
-        
+
         # Select stochastic block based on the argument
-        if is_top_layer and stochastic_block_type == 'mixture':
+        if is_top_layer and stochastic_block_type == "mixture":
             self.stochastic = MixtureStochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,
@@ -111,8 +113,6 @@ class TopDownLayer(nn.Module):
                 conv_mult=conv_mult,
                 transform_p_params=(not is_top_layer),
             )
-        
-        
 
         if not is_top_layer:
 
@@ -126,7 +126,7 @@ class TopDownLayer(nn.Module):
                 batchnorm=batchnorm,
                 dropout=dropout,
                 res_block_type=res_block_type,
-                grad_checkpoint=grad_checkpoint
+                grad_checkpoint=grad_checkpoint,
             )
 
             # Skip connection that goes around the stochastic top-down layer
@@ -138,20 +138,22 @@ class TopDownLayer(nn.Module):
                     batchnorm=batchnorm,
                     dropout=dropout,
                     res_block_type=res_block_type,
-                    grad_checkpoint=grad_checkpoint
+                    grad_checkpoint=grad_checkpoint,
                 )
 
-    def forward(self,
-                input_=None,
-                skip_connection_input=None,
-                inference_mode=False,
-                bu_value=None,
-                n_img_prior=None,
-                forced_latent=None,
-                use_mode=False,
-                force_constant_output=False,
-                mode_pred=False,
-                use_uncond_mode=False):
+    def forward(
+        self,
+        input_=None,
+        skip_connection_input=None,
+        inference_mode=False,
+        bu_value=None,
+        n_img_prior=None,
+        forced_latent=None,
+        use_mode=False,
+        force_constant_output=False,
+        mode_pred=False,
+        use_uncond_mode=False,
+    ):
 
         # Check consistency of arguments
         inputs_none = input_ is None and skip_connection_input is None
@@ -162,7 +164,9 @@ class TopDownLayer(nn.Module):
             p_params = self.top_prior_params
             # Sample specific number of images by expanding the prior
             if n_img_prior is not None:
-                p_params = p_params.expand(n_img_prior, *[-1]*len(p_params.shape[1:])) # TODO check dims!
+                p_params = p_params.expand(
+                    n_img_prior, *[-1] * len(p_params.shape[1:])
+                )  # TODO check dims!
 
         # Else the input from the layer above is the prior parameters
         else:
@@ -192,7 +196,7 @@ class TopDownLayer(nn.Module):
             force_constant_output=force_constant_output,
             analytical_kl=self.analytical_kl,
             mode_pred=mode_pred,
-            use_uncond_mode=use_uncond_mode
+            use_uncond_mode=use_uncond_mode,
         )
 
         # Skip connection from previous layer
@@ -205,8 +209,17 @@ class TopDownLayer(nn.Module):
 
         # Last top-down block (sequence of residual blocks)
         x = self.deterministic_block(x)
-
-        keys = ['z', 'kl_samplewise', 'kl_spatial', 'logprob_p', 'logprob_q', 'mu', 'logvar', 'pi']
+        keys = [
+            "z",
+            "kl_samplewise",
+            "kl_spatial",
+            "wasserstein_distance",
+            "logprob_p",
+            "logprob_q",
+            "mu",
+            "logvar",
+            "pi",
+        ]
         data = {k: data_stoch[k] for k in keys}
         return x, x_pre_residual, data
 
@@ -218,17 +231,19 @@ class BottomUpLayer(nn.Module):
     bottom-up deterministic residual blocks with downsampling.
     """
 
-    def __init__(self,
-                 n_res_blocks,
-                 n_filters,
-                 downsampling_steps=0,
-                 conv_mult=2,
-                 nonlin=None,
-                 batchnorm=True,
-                 dropout=None,
-                 res_block_type=None,
-                 gated=None,
-                 grad_checkpoint=False):
+    def __init__(
+        self,
+        n_res_blocks,
+        n_filters,
+        downsampling_steps=0,
+        conv_mult=2,
+        nonlin=None,
+        batchnorm=True,
+        dropout=None,
+        res_block_type=None,
+        gated=None,
+        grad_checkpoint=False,
+    ):
         super().__init__()
 
         bu_blocks = []
@@ -249,8 +264,9 @@ class BottomUpLayer(nn.Module):
                     dropout=dropout,
                     res_block_type=res_block_type,
                     gated=gated,
-                    grad_checkpoint=grad_checkpoint
-                ))
+                    grad_checkpoint=grad_checkpoint,
+                )
+            )
         self.net = nn.Sequential(*bu_blocks)
 
     def forward(self, x):
@@ -276,48 +292,56 @@ class ResBlockWithResampling(nn.Module):
     residual block structures to choose from.
     """
 
-    def __init__(self,
-                 mode,
-                 c_in,
-                 c_out,
-                 conv_mult=2,
-                 nonlin=nn.LeakyReLU,
-                 resample=False,
-                 res_block_kernel=None,
-                 groups=1,
-                 batchnorm=True,
-                 res_block_type=None,
-                 dropout=None,
-                 min_inner_channels=None,
-                 gated=None,
-                 grad_checkpoint=False):
+    def __init__(
+        self,
+        mode,
+        c_in,
+        c_out,
+        conv_mult=2,
+        nonlin=nn.LeakyReLU,
+        resample=False,
+        res_block_kernel=None,
+        groups=1,
+        batchnorm=True,
+        res_block_type=None,
+        dropout=None,
+        min_inner_channels=None,
+        gated=None,
+        grad_checkpoint=False,
+    ):
 
         super().__init__()
-        assert mode in ['top-down', 'bottom-up']
+        assert mode in ["top-down", "bottom-up"]
         if min_inner_channels is None:
             min_inner_channels = 0
         inner_filters = max(c_out, min_inner_channels)
 
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f'Conv{conv_mult}d')
-        upsample_conv: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = getattr(nn, f'ConvTranspose{conv_mult}d')
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        upsample_conv: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = getattr(
+            nn, f"ConvTranspose{conv_mult}d"
+        )
 
         # Define first conv layer to change channels and/or up/downsample
         if resample:
-            if mode == 'bottom-up':  # downsample
-                self.pre_conv = conv_type(in_channels=c_in,
-                                          out_channels=inner_filters,
-                                          kernel_size=3,
-                                          padding=1,
-                                          stride=2,
-                                          groups=groups)
-            elif mode == 'top-down':  # upsample
-                self.pre_conv = upsample_conv(in_channels=c_in,
-                                              out_channels=inner_filters,
-                                              kernel_size=3,
-                                              padding=1,
-                                              stride=2,
-                                              groups=groups,
-                                              output_padding=1)
+            if mode == "bottom-up":  # downsample
+                self.pre_conv = conv_type(
+                    in_channels=c_in,
+                    out_channels=inner_filters,
+                    kernel_size=3,
+                    padding=1,
+                    stride=2,
+                    groups=groups,
+                )
+            elif mode == "top-down":  # upsample
+                self.pre_conv = upsample_conv(
+                    in_channels=c_in,
+                    out_channels=inner_filters,
+                    kernel_size=3,
+                    padding=1,
+                    stride=2,
+                    groups=groups,
+                    output_padding=1,
+                )
         elif c_in != inner_filters:
             self.pre_conv = conv_type(c_in, inner_filters, 1, groups=groups)
         else:
@@ -334,7 +358,7 @@ class ResBlockWithResampling(nn.Module):
             dropout=dropout,
             gated=gated,
             block_type=res_block_type,
-            grad_checkpoint=grad_checkpoint
+            grad_checkpoint=grad_checkpoint,
         )
 
         # Define last conv layer to get correct num output channels
@@ -355,15 +379,15 @@ class ResBlockWithResampling(nn.Module):
 class TopDownDeterministicResBlock(ResBlockWithResampling):
 
     def __init__(self, *args, upsample=False, **kwargs):
-        kwargs['resample'] = upsample
-        super().__init__('top-down', *args, **kwargs)
+        kwargs["resample"] = upsample
+        super().__init__("top-down", *args, **kwargs)
 
 
 class BottomUpDeterministicResBlock(ResBlockWithResampling):
 
     def __init__(self, *args, downsample=False, **kwargs):
-        kwargs['resample'] = downsample
-        super().__init__('bottom-up', *args, **kwargs)
+        kwargs["resample"] = downsample
+        super().__init__("bottom-up", *args, **kwargs)
 
 
 class MergeLayer(nn.Module):
@@ -372,15 +396,17 @@ class MergeLayer(nn.Module):
     result through 1) a convolutional 1x1 layer, or 2) a residual block
     """
 
-    def __init__(self,
-                 channels,
-                 merge_type,
-                 conv_mult=2,
-                 nonlin=nn.LeakyReLU,
-                 batchnorm=True,
-                 dropout=None,
-                 res_block_type=None,
-                 grad_checkpoint=False):
+    def __init__(
+        self,
+        channels,
+        merge_type,
+        conv_mult=2,
+        nonlin=nn.LeakyReLU,
+        batchnorm=True,
+        dropout=None,
+        res_block_type=None,
+        grad_checkpoint=False,
+    ):
         super().__init__()
         try:
             iter(channels)
@@ -391,20 +417,22 @@ class MergeLayer(nn.Module):
                 channels = [channels[0]] * 3
         assert len(channels) == 3
 
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f'Conv{conv_mult}d')
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-        if merge_type == 'linear':
+        if merge_type == "linear":
             self.layer = conv_type(channels[0] + channels[1], channels[2], 1)
-        elif merge_type == 'residual':
+        elif merge_type == "residual":
             self.layer = nn.Sequential(
                 conv_type(channels[0] + channels[1], channels[2], 1, padding=0),
-                ResidualGatedBlock(channels[2],
-                                   conv_mult,
-                                   nonlin,
-                                   batchnorm=batchnorm,
-                                   dropout=dropout,
-                                   block_type=res_block_type,
-                                   grad_checkpoint=grad_checkpoint),
+                ResidualGatedBlock(
+                    channels[2],
+                    conv_mult,
+                    nonlin,
+                    batchnorm=batchnorm,
+                    dropout=dropout,
+                    block_type=res_block_type,
+                    grad_checkpoint=grad_checkpoint,
+                ),
             )
 
     def forward(self, x, y):
@@ -417,14 +445,25 @@ class SkipConnectionMerger(MergeLayer):
     By default for now simply a merge layer.
     """
 
-    merge_type = 'residual'
+    merge_type = "residual"
 
-    def __init__(self, channels, conv_mult, nonlin, batchnorm, dropout, res_block_type, grad_checkpoint=False):
-        super().__init__(channels,
-                         self.merge_type,
-                         conv_mult,
-                         nonlin,
-                         batchnorm,
-                         dropout=dropout,
-                         res_block_type=res_block_type,
-                         grad_checkpoint=grad_checkpoint)
+    def __init__(
+        self,
+        channels,
+        conv_mult,
+        nonlin,
+        batchnorm,
+        dropout,
+        res_block_type,
+        grad_checkpoint=False,
+    ):
+        super().__init__(
+            channels,
+            self.merge_type,
+            conv_mult,
+            nonlin,
+            batchnorm,
+            dropout=dropout,
+            res_block_type=res_block_type,
+            grad_checkpoint=grad_checkpoint,
+        )

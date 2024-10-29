@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/NG_without_CL/"
+directory_path = "/group/jug/Sheida/HVAE/2D/GMM_without_CL/"
 noiseModel = None
 
 # Training-specific
@@ -54,7 +54,7 @@ batchnorm = True
 free_bits = 0.0
 
 alpha = 1
-beta = 1e-1
+beta = 1e-2
 gamma = 1e-1
 # contrastive
 mask_size = 1
@@ -69,8 +69,8 @@ use_wandb = True
 semi_supervised = False
 labeled_ratio = 1
 
-stochastic_block_type='mixture'  # 'normal' or 'mixture'
-n_components=4  # Used only for Mixture block
+stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+n_components = 4  # Used only for Mixture block
 
 percent_labeled = "1_percent"
 
@@ -207,4 +207,5 @@ training.train_network(
     nrows=2,
     gradient_scale=256,
     use_wandb=use_wandb,
+    max_grad_norm=1,
 )

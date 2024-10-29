@@ -114,11 +114,15 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
 
         recons_sep = -model_out["ll"]
         inpainting_loss = get_centre(
-            recons_sep, patch_size=x.shape[-1], mask_size=model.mask_size, conv=model.conv_mult
+            recons_sep,
+            patch_size=x.shape[-1],
+            mask_size=model.mask_size,
+            conv=model.conv_mult,
         ).mean()
         kl_sep = model_out["kl_sep"]
         kl = model_out["kl"]
-        kl_loss = model_out["kl_loss"] / float(x.shape[2] * x.shape[3])
+        # kl_loss = model_out["kl_loss"] / float(x.shape[2] * x.shape[3])
+        earth_mover_loss = model_out["wasserstein_distance"]
         cl_loss = model_out["cl_loss"]
         cl_pos = model_out["cl_pos"]
         cl_neg = model_out["cl_neg"]
@@ -127,7 +131,8 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
 
         output = {
             "inpainting_loss": inpainting_loss,
-            "kl_loss": kl_loss,
+            # "kl_loss": kl_loss,
+            "wasserstein_distance": earth_mover_loss,
             "cl_loss": cl_loss,
             "cl_pos": cl_pos,
             "cl_neg": cl_neg,

@@ -38,25 +38,23 @@ class LikelihoodModule(nn.Module):
         else:
             ll = self.log_likelihood(x, distr_params)
         dct = {
-            'mean': mean,
-            'mode': mode,
-            'sample': sample,
-            'params': distr_params,
+            "mean": mean,
+            "mode": mode,
+            "sample": sample,
+            "params": distr_params,
         }
         return ll, dct
-    
+
 
 class NoiseModelLikelihood(LikelihoodModule):
 
-    def __init__(self, ch_in, color_channels, conv_mult,
-                 data_mean, data_std, noiseModel):
+    def __init__(
+        self, ch_in, color_channels, conv_mult, data_mean, data_std, noiseModel
+    ):
         super().__init__()
 
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f'Conv{conv_mult}d')
-        self.parameter_net = conv_type(ch_in,
-                                       color_channels,
-                                       kernel_size=3,
-                                       padding=1)
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        self.parameter_net = conv_type(ch_in, color_channels, kernel_size=3, padding=1)
         self.data_mean = data_mean
         self.data_std = data_std
         self.noiseModel = noiseModel
@@ -67,51 +65,48 @@ class NoiseModelLikelihood(LikelihoodModule):
         mean = x
         lv = None
         params = {
-            'mean': mean,
-            'logvar': lv,
+            "mean": mean,
+            "logvar": lv,
         }
         return params
 
     @staticmethod
     def mean(params):
-        return params['mean']
+        return params["mean"]
 
     @staticmethod
     def mode(params):
-        return params['mean']
+        return params["mean"]
 
     @staticmethod
     def sample(params):
         # p = Normal(params['mean'], (params['logvar'] / 2).exp())
         # return p.rsample()
-        return params['mean']
+        return params["mean"]
 
     def log_likelihood(self, x, params):
-        predicted_s_denormalized = params['mean'] * self.data_std + self.data_mean
+        predicted_s_denormalized = params["mean"] * self.data_std + self.data_mean
         x_denormalized = x * self.data_std + self.data_mean
         predicted_s_cloned = predicted_s_denormalized
-        predicted_s_reduced = predicted_s_cloned.permute(1,0,2,3)
+        predicted_s_reduced = predicted_s_cloned.permute(1, 0, 2, 3)
 
         x_cloned = x_denormalized
-        #TODO fix dims
-        x_cloned = x_cloned.permute(1,0,2,3)
-        x_reduced = x_cloned[0,...]
+        # TODO fix dims
+        x_cloned = x_cloned.permute(1, 0, 2, 3)
+        x_reduced = x_cloned[0, ...]
 
-        likelihoods=self.noiseModel.likelihood(x_reduced,predicted_s_reduced)
-        logprob=torch.log(likelihoods)
+        likelihoods = self.noiseModel.likelihood(x_reduced, predicted_s_reduced)
+        logprob = torch.log(likelihoods)
         return logprob
-    
-    
+
+
 class GaussianLikelihood(LikelihoodModule):
 
     def __init__(self, ch_in, color_channels, conv_mult=2):
         super().__init__()
 
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f'Conv{conv_mult}d')
-        self.parameter_net = conv_type(ch_in,
-                                       color_channels,
-                                       kernel_size=3,
-                                       padding=1)
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        self.parameter_net = conv_type(ch_in, color_channels, kernel_size=3, padding=1)
 
     def distr_params(self, x):
         x = self.parameter_net(x)
@@ -119,32 +114,32 @@ class GaussianLikelihood(LikelihoodModule):
         mean = x
         lv = None
         params = {
-            'mean': mean,
-            'logvar': lv,
+            "mean": mean,
+            "logvar": lv,
         }
         return params
 
     @staticmethod
     def mean(params):
-        return params['mean']
+        return params["mean"]
 
     @staticmethod
     def mode(params):
-        return params['mean']
+        return params["mean"]
 
     @staticmethod
     def sample(params):
         # p = Normal(params['mean'], (params['logvar'] / 2).exp())
         # return p.rsample()
-        return params['mean']
+        return params["mean"]
 
     def log_likelihood(self, x, params):
-        logprob = -0.5 *(params['mean']-x)**2
-#         logprob = log_normal(x, params['mean'], params['logvar'], reduce='none')
+        logprob = -0.5 * (params["mean"] - x) ** 2
+        #         logprob = log_normal(x, params['mean'], params['logvar'], reduce='none')
         return logprob
 
 
-def log_normal(x, mean, logvar, reduce='mean'):
+def log_normal(x, mean, logvar, reduce="mean"):
     """
     Log of the probability density of the values x untder the Normal
     distribution with parameters mean and logvar. The sum is taken over all
@@ -161,7 +156,8 @@ def log_normal(x, mean, logvar, reduce='mean'):
 
     logvar = _input_check(x, mean, logvar, reduce)
     var = torch.exp(logvar)
-    log_prob = -0.5 * ((
-        (x - mean)**2) / var + logvar + torch.tensor(2 * math.pi).log())
+    log_prob = -0.5 * (
+        ((x - mean) ** 2) / var + logvar + torch.tensor(2 * math.pi).log()
+    )
     log_prob = log_prob.sum((1, 2, 3))
     return _reduce(log_prob, reduce)

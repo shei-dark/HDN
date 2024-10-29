@@ -92,6 +92,7 @@ class LadderVAE(nn.Module):
         self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
         self.prior_type = stochastic_block_type
+        self.n_components = n_components
 
         assert self.data_std is not None, "Data std is not specified"
         assert self.data_mean is not None, "Data mean is not specified"
@@ -258,20 +259,20 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
             ll, likelihood_info = self.likelihood(out, x)
-        if self.mode_pred is False:
-            # kl[i] for each i has length batch_size
-            # resulting kl shape: (batch_size, layers)
-            kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
-            kl_sep = kl.sum(1)
-            kl_avg_layerwise = kl.mean(0)
-            kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
-            kl = kl_sep.mean()
-        else:
-            kl_sep = None
-            kl_avg_layerwise = None
-            kl_loss = None
-            kl = None
-        
+        # if self.mode_pred is False:
+        #     # kl[i] for each i has length batch_size
+        #     # resulting kl shape: (batch_size, layers)
+        #     kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
+        #     kl_sep = kl.sum(1)
+        #     kl_avg_layerwise = kl.mean(0)
+        #     kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
+        #     kl = kl_sep.mean()
+        # else:
+        kl_sep = None
+        kl_avg_layerwise = None
+        kl_loss = None
+        kl = None
+
         if self.contrastive_learning:
             cl = compute_cl_loss(
                 mus=td_data["mu"],
@@ -292,6 +293,7 @@ class LadderVAE(nn.Module):
             "kl_avg_layerwise": kl_avg_layerwise,
             "kl_spatial": td_data["kl_spatial"],
             "kl_loss": kl_loss,
+            "wasserstein_distance": td_data["wasserstein_distance"],
             "cl_loss": cl["cl_loss"] if cl is not None else None,
             "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
             "cl_neg": cl["neg_pair_loss"] if cl is not None else None,
@@ -361,6 +363,8 @@ class LadderVAE(nn.Module):
         # Spatial map of KL divergence for each layer
         kl_spatial = [None] * self.n_layers
 
+        earth_mover_distance = [None] * self.n_layers
+
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
         pi = [None] * self.n_layers
@@ -405,6 +409,7 @@ class LadderVAE(nn.Module):
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl_samplewise"]  # (batch, )
             kl_spatial[i] = aux["kl_spatial"]  # (batch, h, w)
+            earth_mover_distance[i] = aux["wasserstein_distance"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
@@ -419,6 +424,7 @@ class LadderVAE(nn.Module):
             "z": z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
             "kl": kl,  # list of tensors with shape (batch, )
             "kl_spatial": kl_spatial,  # list of tensors w shape (batch, h[i], w[i])
+            "wasserstein_distance": earth_mover_distance,
             "logprob_p": logprob_p,  # scalar, mean over batch
             "mu": mu,
             "logvar": logvar,

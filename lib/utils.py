@@ -382,16 +382,19 @@ def compute_cl_loss(
 
     if None not in pis:
         ### Mixture Model
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_pi(pis, labels, margin, labeled_ratio)
+        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_pi(
+            pis, labels, margin, labeled_ratio
+        )
     else:
         if logvars is not None:
             ### KL based contrastive loss
-            pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(mus, logvars, labels, margin, labeled_ratio)
+            pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(
+                mus, logvars, labels, margin, labeled_ratio
+            )
         else:
             pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
                 mus, labels, margin, labeled_ratio
-            ) # Euclidean distance based contrastive loss
-
+            )  # Euclidean distance based contrastive loss
 
     neg_thetas = get_thetas(neg_pair_loss_terms)
     weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)
@@ -408,6 +411,7 @@ def compute_cl_loss(
     }
     return output
 
+
 def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
     """
     Compute positive and negative pair losses using pi assignments.
@@ -418,7 +422,7 @@ def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
         margin: Margin for contrastive loss.
         labeled_ratio: Ratio of labeled samples to use in the contrastive loss.
     """
-    
+
     num_classes = torch.unique(labels).size(0)
     batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
@@ -441,11 +445,11 @@ def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
 
     # Negative pair loss: Ensure samples from different classes are assigned to different components
     neg_pair_loss_terms = {}
-    for i in range(num_classes-1):
-        for j in range(i+1, num_classes):
-            mask_i = (labels == i)
-            mask_j = (labels == j)
-            mask_ij = (mask_i & mask_j.T)
+    for i in range(num_classes - 1):
+        for j in range(i + 1, num_classes):
+            mask_i = labels == i
+            mask_j = labels == j
+            mask_ij = mask_i & mask_j.T
 
             neg_bool_matrix = mask_ij.to(device=pis.device)
             neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist_pis))
@@ -456,9 +460,10 @@ def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
             else:
                 neg_loss /= num_neg_pairs
 
-            neg_pair_loss_terms[f'{i}{j}'] = neg_loss
+            neg_pair_loss_terms[f"{i}{j}"] = neg_loss
 
     return pos_pair_loss, neg_pair_loss_terms
+
 
 def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):
 

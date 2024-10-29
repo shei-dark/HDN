@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.distributions import kl_divergence, Categorical
+from torch.distributions import kl_divergence, Categorical, MultivariateNormal
 from torch.distributions.normal import Normal
 from typing import Type, Union
 
@@ -138,6 +138,7 @@ class NormalStochasticConvBlock(nn.Module):
             "kl_elementwise": kl_elementwise,  # (batch, ch, h, w)
             "kl_samplewise": kl_samplewise,  # (batch, )
             "kl_spatial": kl_spatial_analytical,  # (batch, h, w)
+            "wasserstein_distance": 0,
             "mu": q_mu,
             "logvar": q_lv,
             "pi": None,
@@ -159,7 +160,6 @@ class MixtureStochasticConvBlock(nn.Module):
         conv_mult,
         kernel=3,
         n_components=4,
-        transform_p_params=False,
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -175,8 +175,9 @@ class MixtureStochasticConvBlock(nn.Module):
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
         # Define mixture coefficients for p and q as learnable 1D tensors
-        self.p_pi = nn.Parameter(torch.randn(n_components), requires_grad=True)
-        self.q_pi = nn.Parameter(torch.randn(n_components), requires_grad=True)
+        self.p_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
+        self.q_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
+
 
     def forward(
         self,
@@ -192,16 +193,12 @@ class MixtureStochasticConvBlock(nn.Module):
 
         assert (forced_latent is None) or (not use_mode)
 
-        if self.transform_p_params:
-            p_params = self.conv_in_p(p_params)
-
-        p_pi = torch.softmax(
-            self.p_pi, dim=1
-        )  # Get the mixture probabilities for each component
+        p_pi = torch.softmax(torch.clamp(self.p_pi, min=-10, max=10), dim=0)
 
         # Separate mu and logvar for each component
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
-
+        p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
+        p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
         p_std = (p_lv / 2).exp()
 
         p_mu_chunks = p_mu.chunk(self.n_components, dim=1)
@@ -211,24 +208,16 @@ class MixtureStochasticConvBlock(nn.Module):
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(
-                Normal(mu_chunk, std_chunk)
+                MultivariateNormal(mu_chunk, torch.diag_embed(std_chunk))
             )  # Create Gaussian components for p
 
         if q_params is not None:
             q_params = self.conv_in_q(q_params)
-            q_pi, q_mu_lv = torch.split(
-                q_params,
-                [self.c_vars * self.n_components, 2 * self.c_vars * self.n_components],
-                dim=1,
-            )
-            q_pi = torch.softmax(q_pi, dim=1)  # Mixture probabilities for q
-            q_pi = q_pi.view(
-                q_pi.size(0), self.n_components, self.c_vars, *q_pi.shape[2:]
-            )
-            q_pi = q_pi.permute(0, *range(2, q_pi.ndim), 1)
+            q_pi = torch.softmax(torch.clamp(self.q_pi, min=-10, max=10), dim=0)
 
-            q_mu, q_lv = torch.chunk(q_mu_lv, 2, dim=1)
-
+            q_mu, q_lv = torch.chunk(q_params, 2, dim=1)
+            q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
+            q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
             q_std = (q_lv / 2).exp()
 
             q_mu_chunks = q_mu.chunk(self.n_components, dim=1)
@@ -238,7 +227,7 @@ class MixtureStochasticConvBlock(nn.Module):
 
             for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
                 q_components.append(
-                    Normal(mu_chunk, std_chunk)
+                    MultivariateNormal(mu_chunk, torch.diag_embed(std_chunk))
                 )  # Create Gaussian components for q
 
             sampling_distrib = q_components
@@ -249,13 +238,24 @@ class MixtureStochasticConvBlock(nn.Module):
         component_distribution = (
             Categorical(p_pi) if q_params is None else Categorical(q_pi)
         )
-        selected_component = component_distribution.sample()
+        # Adjust the sampling based on q_params or p_params
+        batch_size = q_params.size(0) if q_params is not None else 1
+        selected_component = component_distribution.sample(
+            (batch_size,)
+        )  # Sample a component for each batch entry
 
+        # Create z samples based on selected components
         z_samples = []
         for i, component in enumerate(sampling_distrib):
-            mask = (selected_component == i).float().unsqueeze(1)
+            # Reshape mask to match component's dimensions
+            mask = (
+                (selected_component == i)
+                .float()
+                .view(batch_size, *[1] * (p_mu.ndim - 1))
+            )
             z_samples.append(component.sample() * mask)
 
+        # Combine samples from all components based on selection
         z = torch.sum(torch.stack(z_samples), dim=0)
 
         # Get the output from the latent variable
@@ -263,12 +263,21 @@ class MixtureStochasticConvBlock(nn.Module):
 
         # Compute log p(z) and log q(z)
         log_probs_p = torch.stack([component.log_prob(z) for component in p_components])
-        weighted_log_probs = log_probs_p + torch.log(p_pi.unsqueeze(-1))
-        log_prob_p_z = torch.logsumexp(weighted_log_probs, dim=0)
+        weighted_log_probs_p = log_probs_p + torch.log(p_pi).view(
+            -1, *[1] * (log_probs_p.dim() - 1)
+        )
+        log_prob_p_z = torch.logsumexp(weighted_log_probs_p, dim=0)
 
-        log_probs_q = torch.stack([component.log_prob(z) for component in q_components])
-        weighted_log_probs = log_probs_q + torch.log(q_pi.unsqueeze(-1))
-        log_prob_q_z = torch.logsumexp(weighted_log_probs, dim=0)
+        if q_params is not None:
+            log_probs_q = torch.stack(
+                [component.log_prob(z) for component in q_components]
+            )
+            weighted_log_probs_q = log_probs_q + torch.log(q_pi).view(
+                -1, *[1] * (log_probs_p.dim() - 1)
+            )
+            log_prob_q_z = torch.logsumexp(weighted_log_probs_q, dim=0)
+        else:
+            log_prob_q_z = None
 
         # Compute the Wasserstein distance
         wasserstein_dist = wasserstein_distance_gmm(
@@ -281,6 +290,9 @@ class MixtureStochasticConvBlock(nn.Module):
             "q_params": q_params,
             "logprob_p": log_prob_p_z,
             "logprob_q": log_prob_q_z,
+            "kl_elementwise": 0,
+            "kl_samplewise": 0,
+            "kl_spatial": 0,
             "wasserstein_distance": wasserstein_dist,
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
@@ -311,23 +323,42 @@ def kl_normal_mc(z, p_mulv, q_mulv):
 
 
 def wasserstein_distance_gmm(p_components, q_components, p_pi, q_pi):
-    # Compute pairwise Wasserstein distances between components
+    # Determine the number of components in p and q
     num_components_p = len(p_components)
     num_components_q = len(q_components)
-    pairwise_distances = torch.zeros(num_components_p, num_components_q)
+
+    # Initialize pairwise distances tensor to store Wasserstein distances between each pair of components
+    pairwise_distances = torch.zeros(
+        num_components_p, num_components_q, device=p_pi.device
+    )
 
     for i, p_comp in enumerate(p_components):
         for j, q_comp in enumerate(q_components):
-            mean_diff = p_comp.mean - q_comp.mean
-            cov_p = p_comp.covariance_matrix
-            cov_q = q_comp.covariance_matrix
-            cov_mean = 0.5 * (cov_p + cov_q)
-            mean_term = torch.dot(mean_diff, mean_diff)
-            cov_term = torch.trace(cov_p + cov_q - 2 * torch.sqrt(cov_mean))
-            pairwise_distances[i, j] = mean_term + cov_term
+            # Expand p_comp to match q_comp along the batch dimension
+            p_mu = p_comp.mean.expand_as(q_comp.mean)  # Shape [256, 32, 8, 8]
+            q_mu = q_comp.mean  # Shape [256, 32, 8, 8]
+            p_cov = p_comp.covariance_matrix.expand_as(
+                q_comp.covariance_matrix
+            )  # Shape [256, 32, 8, 8, 8]
+            q_cov = q_comp.covariance_matrix  # Shape [256, 32, 8, 8, 8]
 
-    # Compute the Wasserstein distance between the GMMs
+            # Calculate the mean term (squared Euclidean distance between means)
+            mean_diff = p_mu - q_mu
+            mean_term = torch.sum(
+                mean_diff**2, dim=(-3, -2, -1)
+            )  # Sum over spatial dimensions -> Shape [256]
+
+            # Calculate the covariance term, sum over channels to match mean_term shape
+            cov_term = torch.sum(
+                p_cov + q_cov - 2 * torch.sqrt(p_cov * q_cov), dim=(-4, -3, -2, -1)
+            )  # Shape [256]
+
+            # Store the Wasserstein distance between components in the pairwise distances matrix
+            pairwise_distances[i, j] = torch.sum(mean_term + cov_term)
+
+    # Calculate the overall Wasserstein distance between the GMMs
     wasserstein_distance = torch.sum(
         p_pi.unsqueeze(1) * q_pi.unsqueeze(0) * pairwise_distances
     )
+
     return wasserstein_distance
