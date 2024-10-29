@@ -95,7 +95,15 @@ class TopDownLayer(nn.Module):
         # Define stochastic block with convolutions
         
         # Select stochastic block based on the argument
-        if self.stochastic_block_type == 'normal':
+        if is_top_layer and stochastic_block_type == 'mixture':
+            self.stochastic = MixtureStochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                n_components=self.n_components,
+            )
+        else:
             self.stochastic = NormalStochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,
@@ -103,17 +111,7 @@ class TopDownLayer(nn.Module):
                 conv_mult=conv_mult,
                 transform_p_params=(not is_top_layer),
             )
-        elif self.stochastic_block_type == 'mixture':
-            self.stochastic = MixtureStochasticConvBlock(
-                c_in=n_filters,
-                c_vars=z_dim,
-                c_out=n_filters,
-                conv_mult=conv_mult,
-                n_components=self.n_components,
-                transform_p_params=(not is_top_layer),
-            )
-        else:
-            raise ValueError(f"Unsupported stochastic block type: {stochastic_block_type}")
+        
         
 
         if not is_top_layer:

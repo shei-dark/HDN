@@ -3,32 +3,41 @@ import warnings
 
 warnings.filterwarnings("ignore")
 # We import all our dependencies.
-import numpy as np
 import torch
 import sys
 
 sys.path.insert(0, "/home/sheida.rahnamai/GIT/HDN/")
-from torch.utils.data import DataLoader
-from boilerplate import boilerplate
-from models.lvae import LadderVAE
+from models.mvae import ConvMVAE
+import train_mvae
 from boilerplate.dataloader import (
     Custom2DDataset,
     BalancedBatchSampler,
     CombinedBatchSampler,
 )
-import lib.utils as utils
-import training
-from tifffile import imread
-from scipy import ndimage
-from matplotlib import pyplot as plt
-from tqdm import tqdm
-import tifffile as tiff
-from glob import glob
-from itertools import chain
+from torch.utils.data import DataLoader
 import pickle
+import tifffile as tiff
+from tqdm import tqdm
+from boilerplate import boilerplate
+import numpy as np
+
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
+
+# Set parameters
+latent_dim = 4
+num_components = 4  # Number of Gaussians in the mixture
+
+# Initialize model and optimizer
+
+
+
+# Assume `data_loader` is prepared with 64x64 grayscale image patches
+num_epochs = 50
+
+
+
 
 patch_size = 64
 
@@ -36,31 +45,26 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/NG_without_CL/"
+directory_path = "/group/jug/Sheida/HVAE/2D/mixture/"
 noiseModel = None
 
 # Training-specific
-batch_size = 256
+batch_size = 8
 lr = 3e-4
 max_epochs = 500
 
 # Model-specific
 load_checkpoint = False
 checkpoint = directory_path + "model0/2D_HVAE_best_vae.net"
-num_latents = 3
-z_dims = [32] * int(num_latents)
-blocks_per_layer = 5
-batchnorm = True
-free_bits = 0.0
 
 alpha = 1
 beta = 1e-1
-gamma = 1e-1
+gamma = 1e-2
 # contrastive
 mask_size = 1
 label_size = 1
 mode = "1x1"
-contrastive_learning = False
+contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
@@ -168,43 +172,12 @@ img_shape = (64, 64)
 if load_checkpoint:
     model = torch.load(checkpoint)
 else:
-    model = LadderVAE(
-        z_dims=z_dims,
-        blocks_per_layer=blocks_per_layer,
-        data_mean=data_mean,
-        data_std=data_std,
-        noiseModel=noiseModel,
-        conv_mult=2,
-        device=device,
-        batchnorm=batchnorm,
-        free_bits=free_bits,
-        img_shape=img_shape,
-        grad_checkpoint=True,
-        mask_size=mask_size,
-        contrastive_learning=contrastive_learning,
-        margin=margin,
-        lambda_contrastive=lambda_contrastive,
-        labeled_ratio=labeled_ratio,
-        stochastic_block_type=stochastic_block_type,
-        n_components=n_components,
-    ).cuda()
+    model = ConvMVAE(latent_dim, num_components).cuda()
+
 print(model)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 model.train()  # Model set in training mode
 
-training.train_network(
-    model=model,
-    lr=lr,
-    max_epochs=max_epochs,
-    directory_path=directory_path,
-    batch_size=batch_size,
-    alpha=alpha,
-    beta=beta,
-    gamma=gamma,
-    train_loader=train_loader,
-    val_loader=val_loader,
-    gaussian_noise_std=gaussian_noise_std,
-    model_name=model_name,
-    nrows=2,
-    gradient_scale=256,
-    use_wandb=use_wandb,
-)
+
+train_mvae.train_network(model, train_loader, optimizer, num_epochs, num_components)

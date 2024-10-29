@@ -150,7 +150,10 @@ def train_network(
             cl_loss = outputs["cl_loss"]
             cl_pos = outputs["cl_pos"]
             cl_neg = outputs["cl_neg"]
-            loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss
+            if model.contrastive_learning:
+                loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss
+            else:
+                loss = alpha * inpainting_loss + beta * kl_loss
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
 
@@ -166,7 +169,7 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
-                        "CL": cl_loss * gamma,
+                        "CL": cl_loss * gamma if model.contrastive_learning else None,
                         "PPL": cl_pos,
                         "NPL": cl_neg,
                         "Total": loss,
@@ -180,7 +183,7 @@ def train_network(
             running_training_loss.append(loss.item())
             running_inpainting_loss.append(inpainting_loss.item())
             running_kl_loss.append(kl_loss.item())
-            running_cl_loss.append(cl_loss.item())
+            running_cl_loss.append(cl_loss.item() if model.contrastive_learning else 0)
             running_cl_pos.append(cl_pos)
             running_cl_neg.append(cl_neg)
 

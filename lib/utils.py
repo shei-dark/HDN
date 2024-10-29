@@ -379,15 +379,18 @@ def compute_cl_loss(
 ):
 
     output = {}
-    # pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
-    #     mus, labels, margin, labeled_ratio
-    # )
 
-    ### KL based contrastive loss
-    # pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(mus, logvars, labels, margin, labeled_ratio)
-
-    ### Mixture Model
-    pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_pi(pis, labels, margin, labeled_ratio)
+    if None not in pis:
+        ### Mixture Model
+        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_pi(pis, labels, margin, labeled_ratio)
+    else:
+        if logvars is not None:
+            ### KL based contrastive loss
+            pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(mus, logvars, labels, margin, labeled_ratio)
+        else:
+            pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
+                mus, labels, margin, labeled_ratio
+            ) # Euclidean distance based contrastive loss
 
 
     neg_thetas = get_thetas(neg_pair_loss_terms)
@@ -417,7 +420,7 @@ def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
     """
     
     num_classes = torch.unique(labels).size(0)
-    batch_size = len(pis[0])
+    batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size].unsqueeze(0)

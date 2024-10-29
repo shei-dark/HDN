@@ -91,6 +91,7 @@ class LadderVAE(nn.Module):
         self.margin = margin
         self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
+        self.prior_type = stochastic_block_type
 
         assert self.data_std is not None, "Data std is not specified"
         assert self.data_mean is not None, "Data mean is not specified"
@@ -257,7 +258,7 @@ class LadderVAE(nn.Module):
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
             ll, likelihood_info = self.likelihood(out, x)
-        if self.mode_pred is False and self.contrastive_learning:
+        if self.mode_pred is False:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.cat([kl_layer.unsqueeze(1) for kl_layer in td_data["kl"]], dim=1)
@@ -265,20 +266,22 @@ class LadderVAE(nn.Module):
             kl_avg_layerwise = kl.mean(0)
             kl_loss = free_bits_kl(kl, self.free_bits).sum()  # sum over layers
             kl = kl_sep.mean()
-            cl = compute_cl_loss(
-                mus=td_data["mu"],
-                logvars=td_data["logvar"],
-                pis=td_data["pi"],
-                labels=y,
-                margin=self.margin,
-                lambda_contrastive=self.lambda_contrastive,
-                labeled_ratio=self.labeled_ratio,
-            )
         else:
             kl_sep = None
             kl_avg_layerwise = None
             kl_loss = None
             kl = None
+        
+        if self.contrastive_learning:
+            cl = compute_cl_loss(
+                mus=td_data["mu"],
+                logvars=td_data["logvar"],
+                pis=td_data["pi"] if "pi" in td_data else None,
+                labels=y,
+                margin=self.margin,
+                lambda_contrastive=self.lambda_contrastive,
+                labeled_ratio=self.labeled_ratio,
+            )
 
         output = {
             "ll": ll,
@@ -404,7 +407,7 @@ class LadderVAE(nn.Module):
             kl_spatial[i] = aux["kl_spatial"]  # (batch, h, w)
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
-            pi[i] = aux["pi"]
+            pi[i] = aux["pi"] if "pi" in aux else None
             if self.mode_pred is False:
                 logprob_p += aux["logprob_p"].mean()  # mean over batch
             else:
@@ -475,7 +478,9 @@ class LadderVAE(nn.Module):
         # TODO num channels depends on random variable we're using
         dwnsc = self.overall_downscale_factor
         sz = self.get_padded_size(self.input_array_shape, dim)
-        c = self.n_filters #z_dims[-1] * 2  # mu and logvar
+        c = self.z_dims[-1] * 2  # mu and logvar
+        if self.prior_type == "mixture":
+            c *= self.n_components
         if self.conv_mult == 2:
             h = sz[0] // dwnsc
             w = sz[1] // dwnsc
