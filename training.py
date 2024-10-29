@@ -146,24 +146,16 @@ def train_network(
             )
 
             inpainting_loss = outputs["inpainting_loss"]
-            # kl_loss = outputs["kl_loss"]
-            earth_mover_loss = outputs["wasserstein_distance"]
+            kl_loss = outputs["kl_loss"]
             cl_loss = outputs["cl_loss"]
             cl_pos = outputs["cl_pos"]
             cl_neg = outputs["cl_neg"]
-            # if model.contrastive_learning:
-            # loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss
-            # else:
-            loss = alpha * inpainting_loss + beta * earth_mover_loss[2]
+            if model.contrastive_learning:
+                loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss
+            else:
+                loss = alpha * inpainting_loss + beta * kl_loss
             with torch.autograd.set_detect_anomaly(mode=True):
-                # scaler.scale(loss).backward()
-                loss.backward()
-
-            if torch.isnan(self.p_pi.grad).any() or torch.isinf(self.p_pi.grad).any():
-                print("NaN or Inf in p_pi gradients")
-
-            if torch.isnan(self.q_pi.grad).any() or torch.isinf(self.q_pi.grad).any():
-                print("NaN or Inf in q_pi gradients")
+                scaler.scale(loss).backward()
 
             if max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
@@ -176,8 +168,7 @@ def train_network(
                         "global_idx": global_idx,
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
-                        # "KL": kl_loss * beta,
-                        "EM": beta * earth_mover_loss[2],
+                        "KL": kl_loss * beta,
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         "PPL": cl_pos,
                         "NPL": cl_neg,
@@ -262,16 +253,21 @@ def train_network(
                 )
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
-                # val_kl_loss = val_outputs["kl_loss"]
+                val_kl_loss = val_outputs["kl_loss"]
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = (
-                    alpha * val_inpainting_loss
-                    # + beta * val_kl_loss
-                    + beta * val_outputs["wasserstein_distance"][2]
-                    # + gamma * val_cl_loss
-                )
+                if model.contrastive_learning:
+                    val_loss = (
+                        alpha * val_inpainting_loss
+                        + beta * val_kl_loss
+                        + gamma * val_cl_loss
+                    )
+                else: 
+                    val_loss = (
+                        alpha * val_inpainting_loss
+                        + beta * val_kl_loss
+                    )
                 running_validation_loss.append(val_loss)
 
         if use_wandb:

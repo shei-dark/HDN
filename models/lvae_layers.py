@@ -211,9 +211,7 @@ class TopDownLayer(nn.Module):
         x = self.deterministic_block(x)
         keys = [
             "z",
-            "kl_samplewise",
-            "kl_spatial",
-            "wasserstein_distance",
+            "kl",
             "logprob_p",
             "logprob_q",
             "mu",

@@ -119,10 +119,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
             mask_size=model.mask_size,
             conv=model.conv_mult,
         ).mean()
-        kl_sep = model_out["kl_sep"]
-        kl = model_out["kl"]
-        # kl_loss = model_out["kl_loss"] / float(x.shape[2] * x.shape[3])
-        earth_mover_loss = model_out["wasserstein_distance"]
+        kl_loss = model_out["kl"]
         cl_loss = model_out["cl_loss"]
         cl_pos = model_out["cl_pos"]
         cl_neg = model_out["cl_neg"]
@@ -131,8 +128,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
 
         output = {
             "inpainting_loss": inpainting_loss,
-            # "kl_loss": kl_loss,
-            "wasserstein_distance": earth_mover_loss,
+            "kl_loss": kl_loss,
             "cl_loss": cl_loss,
             "cl_pos": cl_pos,
             "cl_neg": cl_neg,
@@ -150,9 +146,6 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
         }
-
-    if "kl_avg_layerwise" in model_out:
-        output["kl_avg_layerwise"] = model_out["kl_avg_layerwise"]
 
     return output
 

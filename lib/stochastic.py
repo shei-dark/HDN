@@ -95,39 +95,23 @@ class NormalStochasticConvBlock(nn.Module):
         # Output of stochastic layer
         out = self.conv_out(z)
 
+        logprob_p = None
+        logprob_q = None
+        kl_analytical = None
+        
         # Compute log p(z)
         if mode_pred is False:
             # Summing over all dims but batch
             logprob_p = p.log_prob(z).sum(list(range(1, z.dim())))
-        else:
-            logprob_p = None
-
+            
         if q_params is not None:
-
             # Compute log q(z)
             logprob_q = q.log_prob(z).sum(list(range(1, z.dim())))
 
             if mode_pred is False:  # if not predicting
                 # Compute KL (analytical or MC estimate)
                 kl_analytical = kl_divergence(q, p)
-                if analytical_kl:
-                    kl_elementwise = kl_analytical
-                else:
-                    kl_elementwise = kl_normal_mc(z, p_params, q_params)
-                kl_samplewise = kl_elementwise.sum(list(range(1, z.dim())))
-
-                # Compute spatial KL analytically (but conditioned on samples from
-                # previous layers)
-                kl_spatial_analytical = kl_analytical.sum(1)
-            else:  # if predicting, no need to compute KL
-                kl_analytical = None
-                kl_elementwise = None
-                kl_samplewise = None
-                kl_spatial_analytical = None
-
-        else:
-            kl_elementwise = kl_samplewise = kl_spatial_analytical = None
-            logprob_q = None
+                kl_analytical = kl_analytical.sum(list(range(1, kl_analytical.dim()))).mean()            
 
         data = {
             "z": z,  # sampled variable at this layer (batch, ch, h, w)
@@ -135,10 +119,7 @@ class NormalStochasticConvBlock(nn.Module):
             "q_params": q_params,  # (batch, ch, h, w)
             "logprob_p": logprob_p,  # (batch, )
             "logprob_q": logprob_q,  # (batch, )
-            "kl_elementwise": kl_elementwise,  # (batch, ch, h, w)
-            "kl_samplewise": kl_samplewise,  # (batch, )
-            "kl_spatial": kl_spatial_analytical,  # (batch, h, w)
-            "wasserstein_distance": 0,
+            "kl": kl_analytical,  # (batch, )
             "mu": q_mu,
             "logvar": q_lv,
             "pi": None,
@@ -178,7 +159,6 @@ class MixtureStochasticConvBlock(nn.Module):
         self.p_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
         self.q_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
 
-
     def forward(
         self,
         p_params,
@@ -208,7 +188,7 @@ class MixtureStochasticConvBlock(nn.Module):
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(
-                MultivariateNormal(mu_chunk, torch.diag_embed(std_chunk))
+                Normal(mu_chunk, std_chunk)
             )  # Create Gaussian components for p
 
         if q_params is not None:
@@ -227,7 +207,7 @@ class MixtureStochasticConvBlock(nn.Module):
 
             for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
                 q_components.append(
-                    MultivariateNormal(mu_chunk, torch.diag_embed(std_chunk))
+                    Normal(mu_chunk, std_chunk)
                 )  # Create Gaussian components for q
 
             sampling_distrib = q_components
@@ -279,10 +259,18 @@ class MixtureStochasticConvBlock(nn.Module):
         else:
             log_prob_q_z = None
 
-        # Compute the Wasserstein distance
-        wasserstein_dist = wasserstein_distance_gmm(
-            p_components, q_components, p_pi, q_pi
-        )
+        kl_analytical = None
+
+        # Compute KL divergence
+        if q_params is not None and mode_pred is False:
+            for i, (p_component, q_component) in enumerate(
+                zip(p_components, q_components)
+            ):
+                current_kl = kl_divergence(q_component, p_component) * q_pi[i]
+                if kl_analytical is None:
+                    kl_analytical = torch.zeros_like(current_kl)
+                kl_analytical += current_kl
+        kl_analytical = kl_analytical.sum(dim=tuple(range(1, kl_analytical.dim()))).mean()
 
         data = {
             "z": z,  # sampled latent variable
@@ -290,10 +278,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "q_params": q_params,
             "logprob_p": log_prob_p_z,
             "logprob_q": log_prob_q_z,
-            "kl_elementwise": 0,
-            "kl_samplewise": 0,
-            "kl_spatial": 0,
-            "wasserstein_distance": wasserstein_dist,
+            "kl": kl_analytical,
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
             "pi": q_pi if q_params is not None else p_pi,  # mixture coefficients
@@ -320,45 +305,3 @@ def kl_normal_mc(z, p_mulv, q_mulv):
     p_distrib = Normal(p_mu, p_std)
     q_distrib = Normal(q_mu, q_std)
     return q_distrib.log_prob(z) - p_distrib.log_prob(z)
-
-
-def wasserstein_distance_gmm(p_components, q_components, p_pi, q_pi):
-    # Determine the number of components in p and q
-    num_components_p = len(p_components)
-    num_components_q = len(q_components)
-
-    # Initialize pairwise distances tensor to store Wasserstein distances between each pair of components
-    pairwise_distances = torch.zeros(
-        num_components_p, num_components_q, device=p_pi.device
-    )
-
-    for i, p_comp in enumerate(p_components):
-        for j, q_comp in enumerate(q_components):
-            # Expand p_comp to match q_comp along the batch dimension
-            p_mu = p_comp.mean.expand_as(q_comp.mean)  # Shape [256, 32, 8, 8]
-            q_mu = q_comp.mean  # Shape [256, 32, 8, 8]
-            p_cov = p_comp.covariance_matrix.expand_as(
-                q_comp.covariance_matrix
-            )  # Shape [256, 32, 8, 8, 8]
-            q_cov = q_comp.covariance_matrix  # Shape [256, 32, 8, 8, 8]
-
-            # Calculate the mean term (squared Euclidean distance between means)
-            mean_diff = p_mu - q_mu
-            mean_term = torch.sum(
-                mean_diff**2, dim=(-3, -2, -1)
-            )  # Sum over spatial dimensions -> Shape [256]
-
-            # Calculate the covariance term, sum over channels to match mean_term shape
-            cov_term = torch.sum(
-                p_cov + q_cov - 2 * torch.sqrt(p_cov * q_cov), dim=(-4, -3, -2, -1)
-            )  # Shape [256]
-
-            # Store the Wasserstein distance between components in the pairwise distances matrix
-            pairwise_distances[i, j] = torch.sum(mean_term + cov_term)
-
-    # Calculate the overall Wasserstein distance between the GMMs
-    wasserstein_distance = torch.sum(
-        p_pi.unsqueeze(1) * q_pi.unsqueeze(0) * pairwise_distances
-    )
-
-    return wasserstein_distance
