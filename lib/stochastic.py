@@ -98,12 +98,12 @@ class NormalStochasticConvBlock(nn.Module):
         logprob_p = None
         logprob_q = None
         kl_analytical = None
-        
+
         # Compute log p(z)
         if mode_pred is False:
             # Summing over all dims but batch
             logprob_p = p.log_prob(z).sum(list(range(1, z.dim())))
-            
+
         if q_params is not None:
             # Compute log q(z)
             logprob_q = q.log_prob(z).sum(list(range(1, z.dim())))
@@ -111,7 +111,9 @@ class NormalStochasticConvBlock(nn.Module):
             if mode_pred is False:  # if not predicting
                 # Compute KL (analytical or MC estimate)
                 kl_analytical = kl_divergence(q, p)
-                kl_analytical = kl_analytical.sum(list(range(1, kl_analytical.dim()))).mean()            
+                kl_analytical = kl_analytical.sum(
+                    list(range(1, kl_analytical.dim()))
+                ).mean()
 
         data = {
             "z": z,  # sampled variable at this layer (batch, ch, h, w)
@@ -123,6 +125,7 @@ class NormalStochasticConvBlock(nn.Module):
             "mu": q_mu,
             "logvar": q_lv,
             "pi": None,
+            "cross_entropy": None,
         }
         return out, data
 
@@ -156,8 +159,9 @@ class MixtureStochasticConvBlock(nn.Module):
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
         # Define mixture coefficients for p and q as learnable 1D tensors
-        self.p_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
-        self.q_pi = nn.Parameter(torch.zeros(n_components), requires_grad=True)
+        self.p_pi = nn.Parameter(torch.rand(n_components) * 0.1, requires_grad=True)
+        self.q_pi = nn.Parameter(torch.rand(n_components) * 0.5, requires_grad=True)
+
 
     def forward(
         self,
@@ -259,6 +263,9 @@ class MixtureStochasticConvBlock(nn.Module):
         else:
             log_prob_q_z = None
 
+        # Calculate the cross-entropy loss between p_pi and q_pi
+        cross_entropy = -torch.sum(q_pi * torch.log(p_pi + 1e-10))  # Avoid log(0)
+
         kl_analytical = None
 
         # Compute KL divergence
@@ -270,7 +277,9 @@ class MixtureStochasticConvBlock(nn.Module):
                 if kl_analytical is None:
                     kl_analytical = torch.zeros_like(current_kl)
                 kl_analytical += current_kl
-        kl_analytical = kl_analytical.sum(dim=tuple(range(1, kl_analytical.dim()))).mean()
+        kl_analytical = kl_analytical.sum(
+            dim=tuple(range(1, kl_analytical.dim()))
+        ).mean()
 
         data = {
             "z": z,  # sampled latent variable
@@ -282,6 +291,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
             "pi": q_pi if q_params is not None else p_pi,  # mixture coefficients
+            "cross_entropy": cross_entropy,
         }
 
         return out, data

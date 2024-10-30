@@ -120,6 +120,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
             conv=model.conv_mult,
         ).mean()
         kl_loss = model_out["kl"]
+        cross_entropy = model_out["cross_entropy"]
         cl_loss = model_out["cl_loss"]
         cl_pos = model_out["cl_pos"]
         cl_neg = model_out["cl_neg"]
@@ -129,6 +130,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
         output = {
             "inpainting_loss": inpainting_loss,
             "kl_loss": kl_loss,
+            "cross_entropy": cross_entropy,
             "cl_loss": cl_loss,
             "cl_pos": cl_pos,
             "cl_neg": cl_neg,

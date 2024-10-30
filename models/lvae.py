@@ -256,6 +256,7 @@ class LadderVAE(nn.Module):
 
         cl = None
         kl = None
+        cross_entropy = None
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -266,6 +267,7 @@ class LadderVAE(nn.Module):
             kl = torch.stack(td_data["kl"]).mean(0)
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
+            cross_entropy = td_data["cross_entropy"]
 
 
         if self.contrastive_learning:
@@ -284,6 +286,7 @@ class LadderVAE(nn.Module):
             "z": td_data["z"],
             "mu": td_data["mu"],
             "kl": kl,
+            "cross_entropy": cross_entropy,
             "cl_loss": cl["cl_loss"] if cl is not None else None,
             "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
             "cl_neg": cl["neg_pair_loss"] if cl is not None else None,
@@ -350,10 +353,7 @@ class LadderVAE(nn.Module):
         # KL divergence of each layer
         kl = [None] * self.n_layers
 
-        # Spatial map of KL divergence for each layer
-        kl_spatial = [None] * self.n_layers
-
-        earth_mover_distance = [None] * self.n_layers
+        cross_entropy = [None] * self.n_layers
 
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
@@ -398,6 +398,7 @@ class LadderVAE(nn.Module):
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
+            cross_entropy[i] = aux["cross_entropy"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
@@ -415,6 +416,7 @@ class LadderVAE(nn.Module):
             "mu": mu,
             "logvar": logvar,
             "pi": pi,
+            "cross_entropy": cross_entropy,
         }
         return out, data
 

@@ -212,6 +212,7 @@ class TopDownLayer(nn.Module):
         keys = [
             "z",
             "kl",
+            "cross_entropy",
             "logprob_p",
             "logprob_q",
             "mu",

@@ -36,11 +36,11 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/GMM_without_CL/"
+directory_path = "/group/jug/Sheida/HVAE/2D/GMM_with_CE/"
 noiseModel = None
 
 # Training-specific
-batch_size = 256
+batch_size = 512
 lr = 3e-4
 max_epochs = 500
 

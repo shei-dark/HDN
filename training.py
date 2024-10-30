@@ -78,6 +78,7 @@ def train_network(
     loss_train_history = []
     inpainting_loss_train_history = []
     kl_loss_train_history = []
+    cross_entropy_loss_train_history = []
     cl_loss_train_history = []
     loss_val_history = []
 
@@ -125,12 +126,12 @@ def train_network(
         running_training_loss = []
         running_inpainting_loss = []
         running_kl_loss = []
+        running_ce_loss = []
         running_cl_loss = []
         running_cl_pos = []
         running_cl_neg = []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-
             x = x.squeeze(0)
             y = y.squeeze(0)
             z = z.squeeze(0)
@@ -147,13 +148,14 @@ def train_network(
 
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
+            cross_entropy = outputs["cross_entropy"]
             cl_loss = outputs["cl_loss"]
             cl_pos = outputs["cl_pos"]
             cl_neg = outputs["cl_neg"]
             if model.contrastive_learning:
                 loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss
             else:
-                loss = alpha * inpainting_loss + beta * kl_loss
+                loss = alpha * inpainting_loss + beta * kl_loss + cross_entropy[-1]
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
 
@@ -169,6 +171,7 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
+                        "CE": cross_entropy[-1],
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         "PPL": cl_pos,
                         "NPL": cl_neg,
@@ -180,11 +183,12 @@ def train_network(
 
             # Optimization step
 
-            running_training_loss.append(loss.item())
-            running_inpainting_loss.append(inpainting_loss.item())
-            # running_kl_loss.append(kl_loss.item())
+            running_training_loss.append(loss)
+            running_inpainting_loss.append(inpainting_loss)
+            running_kl_loss.append(kl_loss)
+            running_ce_loss.append(cross_entropy[-1])
             if model.contrastive_learning:
-                running_cl_loss.append(cl_loss.item())
+                running_cl_loss.append(cl_loss)
                 running_cl_pos.append(cl_pos)
                 running_cl_neg.append(cl_neg)
 
@@ -194,14 +198,15 @@ def train_network(
             step = model.global_step
 
         ### Print training losses
-        to_print = "Epoch[{}/{}] Training Loss: {:.4f} Inpainting Loss: {:.4f} KL Loss: {:.4f} CL Loss: {:.4f}"
+        to_print = "Epoch[{}/{}] Training Loss: {:.4f} Inpainting Loss: {:.4f} KL Loss: {:.4f} CE Loss: {:.4f}"
         to_print = to_print.format(
             epoch,
             max_epochs,
-            np.mean(running_training_loss),
-            np.mean(running_inpainting_loss),
-            np.mean(running_kl_loss),
-            np.mean(running_cl_loss),
+            torch.mean(torch.stack(running_training_loss)),
+            torch.mean(torch.stack(running_inpainting_loss)),
+            torch.mean(torch.stack(running_kl_loss)),
+            torch.mean(torch.stack(running_ce_loss)),
+            # torch.mean(torch.stack(running_cl_loss)),
         )
 
         print(to_print)
@@ -212,9 +217,11 @@ def train_network(
             run.log(
                 {
                     "epoch": epoch,
-                    "inpainting loss": np.mean(running_inpainting_loss) * alpha,
-                    "kl loss": np.mean(running_kl_loss) * beta,
-                    "total loss": np.mean(running_training_loss),
+                    "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
+                    * alpha,
+                    "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
+                    "cross entropy": torch.mean(torch.stack(running_ce_loss)),
+                    "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
             if model.contrastive_learning:
@@ -225,19 +232,6 @@ def train_network(
                         "cl neg pair": torch.mean(torch.stack(running_cl_neg)).item(),
                     }
                 )
-
-        ### Save training losses
-        loss_train_history.append(np.mean(running_training_loss))
-        inpainting_loss_train_history.append(np.mean(running_inpainting_loss))
-        kl_loss_train_history.append(np.mean(running_kl_loss))
-        cl_loss_train_history.append(np.mean(running_cl_loss))
-        np.save(model_folder + "train_loss.npy", np.array(loss_train_history))
-        np.save(
-            model_folder + "train_reco_loss.npy",
-            np.array(inpainting_loss_train_history),
-        )
-        np.save(model_folder + "train_kl_loss.npy", np.array(kl_loss_train_history))
-        np.save(model_folder + "train_cl_loss.npy", np.array(cl_loss_train_history))
 
         ### Validation step
         running_validation_loss = []
@@ -254,6 +248,7 @@ def train_network(
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
+                val_ce_loss = val_outputs["cross_entropy"][-1]
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
@@ -263,10 +258,9 @@ def train_network(
                         + beta * val_kl_loss
                         + gamma * val_cl_loss
                     )
-                else: 
+                else:
                     val_loss = (
-                        alpha * val_inpainting_loss
-                        + beta * val_kl_loss
+                        alpha * val_inpainting_loss + beta * val_kl_loss + val_ce_loss
                     )
                 running_validation_loss.append(val_loss)
 
