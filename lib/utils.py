@@ -383,7 +383,7 @@ def compute_cl_loss(
     if prior == 'mixture':
         ### Mixture Model
         return pos_neg_loss_pi(
-            mus[2], logvars[2], pis[2], labels, labeled_ratio
+            mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio
         )
     else:
         if logvars is not None:

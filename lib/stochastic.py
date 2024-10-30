@@ -277,9 +277,10 @@ class MixtureStochasticConvBlock(nn.Module):
                 if kl_analytical is None:
                     kl_analytical = torch.zeros_like(current_kl)
                 kl_analytical += current_kl
-        kl_analytical = kl_analytical.sum(
-            dim=tuple(range(1, kl_analytical.dim()))
-        ).mean()
+        if kl_analytical is not None:
+            kl_analytical = kl_analytical.sum(
+                dim=tuple(range(1, kl_analytical.dim()))
+            ).mean()
 
         data = {
             "z": z,  # sampled latent variable

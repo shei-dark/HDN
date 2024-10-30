@@ -270,7 +270,7 @@ class LadderVAE(nn.Module):
             cross_entropy = td_data["cross_entropy"]
 
 
-        if self.contrastive_learning:
+        if self.contrastive_learning and self.mode_pred is False:
             cl = compute_cl_loss(
                 mus=td_data["mu"],
                 logvars=td_data["logvar"],
