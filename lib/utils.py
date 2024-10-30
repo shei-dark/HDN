@@ -375,15 +375,15 @@ def get_normalized_tensor(img, model, device):
 
 
 def compute_cl_loss(
-    mus, logvars, pis, labels, margin=50, lambda_contrastive=0.5, labeled_ratio=1
+    mus, logvars, pis, labels, margin=50, lambda_contrastive=0.5, labeled_ratio=1, prior='normal'
 ):
 
     output = {}
 
-    if None not in pis:
+    if prior == 'mixture':
         ### Mixture Model
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_pi(
-            pis, labels, margin, labeled_ratio
+        return pos_neg_loss_pi(
+            mus[2], logvars[2], pis[2], labels, labeled_ratio
         )
     else:
         if logvars is not None:
@@ -412,57 +412,35 @@ def compute_cl_loss(
     return output
 
 
-def pos_neg_loss_pi(pis, labels, margin=50.0, labeled_ratio=1):
-    """
-    Compute positive and negative pair losses using pi assignments.
-
-    Args:
-        pis: The pi (mixture component probabilities) for each sample.
-        labels: The ground truth class labels for each sample.
-        margin: Margin for contrastive loss.
-        labeled_ratio: Ratio of labeled samples to use in the contrastive loss.
-    """
+def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5):
 
     num_classes = torch.unique(labels).size(0)
     batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
 
-    labels = labels[:small_batch_size].unsqueeze(0)
-    pis = pis[:, :small_batch_size]
+    labels = labels[:small_batch_size]
+    n_components = num_classes
+    
+    stds = (logvars / 2).exp()
+    mu_chunks = mus.chunk(n_components, dim=1)
+    std_chunks = stds.chunk(n_components, dim=1)
+    
+    log_probs = []
+    for i, (mu, std) in enumerate(zip(mu_chunks, std_chunks)):
+        # Create Normal distribution for the component
+        component_dist = Normal(mu, std)
+        log_prob = component_dist.log_prob(mu).sum(dim=tuple(range(1, mu.dim())))  # Log-prob across the embedding dimension
+        log_probs.append(log_prob)
+        
+    log_probs = torch.stack(log_probs, dim=1)
 
-    # Compute distance between pis (which represent mixture assignments)
-    dist_pis = torch.cdist(pis, pis, p=2).squeeze(0)
+    pis = pis.view(1, n_components)  # Reshape for broadcasting
+    weighted_log_probs = log_probs + torch.log(pis + 1e-10)  # Add log(pi) for each component
+    similarity_matrix = weighted_log_probs / temperature  # Scale by temperature
+    labels = labels.to(similarity_matrix.device).long()
+    contrastive_loss = F.cross_entropy(similarity_matrix, labels)
 
-    # Positive pair loss: Ensure samples from the same class are assigned to similar components
-    boolean_matrix = (labels == labels.T).to(device=pis.device)
-    pos_pair_loss = torch.sum(boolean_matrix * dist_pis)
-
-    num_pos_pairs = torch.sum(boolean_matrix) - small_batch_size
-    if num_pos_pairs == 0:
-        pos_pair_loss = torch.tensor(0.0, device=pis.device)
-    else:
-        pos_pair_loss /= num_pos_pairs
-
-    # Negative pair loss: Ensure samples from different classes are assigned to different components
-    neg_pair_loss_terms = {}
-    for i in range(num_classes - 1):
-        for j in range(i + 1, num_classes):
-            mask_i = labels == i
-            mask_j = labels == j
-            mask_ij = mask_i & mask_j.T
-
-            neg_bool_matrix = mask_ij.to(device=pis.device)
-            neg_loss = torch.sum(neg_bool_matrix * F.relu(margin - dist_pis))
-
-            num_neg_pairs = torch.sum(neg_bool_matrix)
-            if num_neg_pairs == 0:
-                neg_loss = torch.tensor(0.0, device=pis.device)
-            else:
-                neg_loss /= num_neg_pairs
-
-            neg_pair_loss_terms[f"{i}{j}"] = neg_loss
-
-    return pos_pair_loss, neg_pair_loss_terms
+    return contrastive_loss
 
 
 def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):

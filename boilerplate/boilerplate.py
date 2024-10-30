@@ -121,21 +121,22 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
         ).mean()
         kl_loss = model_out["kl"]
         cross_entropy = model_out["cross_entropy"]
-        cl_loss = model_out["cl_loss"]
-        cl_pos = model_out["cl_pos"]
-        cl_neg = model_out["cl_neg"]
-        cl_neg_terms = model_out["cl_neg_terms"]
-        thetas = model_out["thetas"]
+        cl_loss = model_out["cl"]
+        # cl_loss = model_out["cl_loss"]
+        # cl_pos = model_out["cl_pos"]
+        # cl_neg = model_out["cl_neg"]
+        # cl_neg_terms = model_out["cl_neg_terms"]
+        # thetas = model_out["thetas"]
 
         output = {
             "inpainting_loss": inpainting_loss,
             "kl_loss": kl_loss,
             "cross_entropy": cross_entropy,
             "cl_loss": cl_loss,
-            "cl_pos": cl_pos,
-            "cl_neg": cl_neg,
-            "cl_neg_terms": cl_neg_terms,
-            "thetas": thetas,
+            # "cl_pos": cl_pos,
+            # "cl_neg": cl_neg,
+            # "cl_neg_terms": cl_neg_terms,
+            # "thetas": thetas,
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
         }

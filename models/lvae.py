@@ -279,6 +279,7 @@ class LadderVAE(nn.Module):
                 margin=self.margin,
                 lambda_contrastive=self.lambda_contrastive,
                 labeled_ratio=self.labeled_ratio,
+                prior = self.prior_type,
             )
 
         output = {
@@ -287,11 +288,12 @@ class LadderVAE(nn.Module):
             "mu": td_data["mu"],
             "kl": kl,
             "cross_entropy": cross_entropy,
-            "cl_loss": cl["cl_loss"] if cl is not None else None,
-            "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
-            "cl_neg": cl["neg_pair_loss"] if cl is not None else None,
-            "cl_neg_terms": cl["neg_pair_terms"] if cl is not None else None,
-            "thetas": cl["thetas"] if cl is not None else None,
+            "cl": cl,
+            # "cl_loss": cl["cl_loss"] if cl is not None else None,
+            # "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
+            # "cl_neg": cl["neg_pair_loss"] if cl is not None else None,
+            # "cl_neg_terms": cl["neg_pair_terms"] if cl is not None else None,
+            # "thetas": cl["thetas"] if cl is not None else None,
             "logp": td_data["logprob_p"],
             "out_mean": likelihood_info["mean"],
             "out_mode": likelihood_info["mode"],

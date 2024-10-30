@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/GMM_with_CE/"
+directory_path = "/group/jug/Sheida/HVAE/2D/GMM_with_CL/"
 noiseModel = None
 
 # Training-specific
@@ -60,7 +60,7 @@ gamma = 1e-1
 mask_size = 1
 label_size = 1
 mode = "1x1"
-contrastive_learning = False
+contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
