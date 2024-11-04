@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/GMM_with_CL/"
+directory_path = "/group/jug/Sheida/HVAE/2D/NG_with_CL/"
 noiseModel = None
 
 # Training-specific
@@ -45,8 +45,8 @@ lr = 3e-4
 max_epochs = 500
 
 # Model-specific
-load_checkpoint = False
-checkpoint = directory_path + "model0/2D_HVAE_best_vae.net"
+load_checkpoint = True
+checkpoint = directory_path + "model/2D_HVAE_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -69,7 +69,7 @@ use_wandb = True
 semi_supervised = False
 labeled_ratio = 1
 
-stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+stochastic_block_type = "normal"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
 percent_labeled = "1_percent"

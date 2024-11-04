@@ -128,12 +128,11 @@ def train_network(
         running_kl_loss = []
         running_ce_loss = []
         running_cl_loss = []
-        running_cl_pos = []
-        running_cl_neg = []
+        # running_cl_pos = []
+        # running_cl_neg = []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-            if idx == 5:
-                break
+
             x = x.squeeze(0)
             y = y.squeeze(0)
             z = z.squeeze(0)
@@ -154,10 +153,12 @@ def train_network(
             cl_loss = outputs["cl_loss"]
             # cl_pos = outputs["cl_pos"]
             # cl_neg = outputs["cl_neg"]
+            loss = alpha * inpainting_loss + beta * kl_loss
+            if model.prior_type == "mixture":
+                loss += cross_entropy[-1]
             if model.contrastive_learning:
-                loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss + cross_entropy[-1]
-            else:
-                loss = alpha * inpainting_loss + beta * kl_loss + cross_entropy[-1]
+                loss += gamma * cl_loss
+
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
 
@@ -173,7 +174,9 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
-                        "CE": cross_entropy[-1],
+                        "CE": (
+                            cross_entropy[-1] if model.prior_type == "mixture" else None
+                        ),
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         # "PPL": cl_pos,
                         # "NPL": cl_neg,
@@ -188,7 +191,8 @@ def train_network(
             running_training_loss.append(loss)
             running_inpainting_loss.append(inpainting_loss)
             running_kl_loss.append(kl_loss)
-            running_ce_loss.append(cross_entropy[-1])
+            if model.prior_type == "mixture":
+                running_ce_loss.append(cross_entropy[-1])
             if model.contrastive_learning:
                 running_cl_loss.append(cl_loss)
                 # running_cl_pos.append(cl_pos)
@@ -199,19 +203,6 @@ def train_network(
             model.increment_global_step()
             step = model.global_step
 
-        ### Print training losses
-        to_print = "Epoch[{}/{}] Training Loss: {:.4f} Inpainting Loss: {:.4f} KL Loss: {:.4f} CE Loss: {:.4f} CL Loss: {:.4f}"
-        to_print = to_print.format(
-            epoch,
-            max_epochs,
-            torch.mean(torch.stack(running_training_loss)),
-            torch.mean(torch.stack(running_inpainting_loss)),
-            torch.mean(torch.stack(running_kl_loss)),
-            torch.mean(torch.stack(running_ce_loss)),
-            torch.mean(torch.stack(running_cl_loss)),
-        )
-
-        print(to_print)
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
 
@@ -222,10 +213,15 @@ def train_network(
                     "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
-                    "cross entropy": torch.mean(torch.stack(running_ce_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
+            if model.prior_type == "mixture":
+                run.log(
+                    {
+                        "cross entropy": torch.mean(torch.stack(running_ce_loss)),
+                    }
+                )
             if model.contrastive_learning:
                 run.log(
                     {
@@ -250,21 +246,16 @@ def train_network(
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
-                val_ce_loss = val_outputs["cross_entropy"][-1]
+                val_ce_loss = (val_outputs["cross_entropy"][-1] if model.prior_type == "mixture" else 0)
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
+                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss
                 if model.contrastive_learning:
-                    val_loss = (
-                        alpha * val_inpainting_loss
-                        + beta * val_kl_loss
-                        + gamma * val_cl_loss
-                        + val_ce_loss
-                    )
-                else:
-                    val_loss = (
-                        alpha * val_inpainting_loss + beta * val_kl_loss + val_ce_loss
-                    )
+                    val_loss += gamma * val_cl_loss
+                if model.prior_type == "mixture":
+                    val_loss += val_ce_loss
+
                 running_validation_loss.append(val_loss)
 
         if use_wandb:
