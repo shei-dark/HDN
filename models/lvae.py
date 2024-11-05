@@ -249,14 +249,13 @@ class LadderVAE(nn.Module):
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(bu_values)
+        out, td_data = self.topdown_pass(y, bu_values)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
 
         cl = None
         kl = None
-        cross_entropy = None
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -267,7 +266,6 @@ class LadderVAE(nn.Module):
             kl = torch.stack(td_data["kl"]).mean(0)
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
-            cross_entropy = td_data["cross_entropy"]
 
 
         if self.contrastive_learning and self.mode_pred is False:
@@ -287,7 +285,6 @@ class LadderVAE(nn.Module):
             "z": td_data["z"],
             "mu": td_data["mu"],
             "kl": kl,
-            "cross_entropy": cross_entropy,
             "cl": cl,
             # "cl_loss": cl["cl_loss"] if cl is not None else None,
             # "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
@@ -317,6 +314,7 @@ class LadderVAE(nn.Module):
 
     def topdown_pass(
         self,
+        label,
         bu_values=None,
         n_img_prior=None,
         mode_layers=None,
@@ -387,6 +385,7 @@ class LadderVAE(nn.Module):
 
             # Full top-down layer, including sampling and deterministic part
             out, out_pre_residual, aux = self.top_down_layers[i](
+                label,
                 out,
                 skip_connection_input=skip_input,
                 inference_mode=inference_mode,
@@ -400,7 +399,6 @@ class LadderVAE(nn.Module):
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
-            cross_entropy[i] = aux["cross_entropy"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
@@ -418,7 +416,6 @@ class LadderVAE(nn.Module):
             "mu": mu,
             "logvar": logvar,
             "pi": pi,
-            "cross_entropy": cross_entropy,
         }
         return out, data
 

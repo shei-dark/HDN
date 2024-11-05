@@ -33,6 +33,7 @@ class NormalStochasticConvBlock(nn.Module):
 
     def forward(
         self,
+        label,
         p_params,
         q_params=None,
         forced_latent=None,
@@ -159,12 +160,12 @@ class MixtureStochasticConvBlock(nn.Module):
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
         # Define mixture coefficients for p and q as learnable 1D tensors
-        self.p_pi = nn.Parameter(torch.rand(n_components) * 0.1, requires_grad=True)
-        self.q_pi = nn.Parameter(torch.rand(n_components) * 0.5, requires_grad=True)
+        self.p_pi = nn.Parameter(torch.rand(n_components) * 0.5, requires_grad=True)
 
 
     def forward(
         self,
+        label,
         p_params,
         q_params=None,
         forced_latent=None,
@@ -197,7 +198,6 @@ class MixtureStochasticConvBlock(nn.Module):
 
         if q_params is not None:
             q_params = self.conv_in_q(q_params)
-            q_pi = torch.softmax(torch.clamp(self.q_pi, min=-10, max=10), dim=0)
 
             q_mu, q_lv = torch.chunk(q_params, 2, dim=1)
             q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
@@ -218,29 +218,38 @@ class MixtureStochasticConvBlock(nn.Module):
         else:
             sampling_distrib = p_components
 
-        # Sample the mixture component
-        component_distribution = (
-            Categorical(p_pi) if q_params is None else Categorical(q_pi)
-        )
-        # Adjust the sampling based on q_params or p_params
         batch_size = q_params.size(0) if q_params is not None else 1
-        selected_component = component_distribution.sample(
-            (batch_size,)
-        )  # Sample a component for each batch entry
+        
+        if label is not None:
+            z_samples = []
+            for i, component in enumerate(q_components):
+                # Create a mask based on the label to select the correct component
+                mask = (label == i).float().view(batch_size, *[1] * (q_mu.ndim - 1))
+                mask = mask.to(q_mu.device)
+                z_samples.append(component.sample() * mask)
+            z = torch.sum(torch.stack(z_samples), dim=0)
+        else:
+            print("Label is None")
+            # Sample the mixture component
+            component_distribution = Categorical(p_pi)
+            # Adjust the sampling based on q_params or p_params
+            selected_component = component_distribution.sample(
+                (batch_size,)
+            )  # Sample a component for each batch entry
 
-        # Create z samples based on selected components
-        z_samples = []
-        for i, component in enumerate(sampling_distrib):
-            # Reshape mask to match component's dimensions
-            mask = (
-                (selected_component == i)
-                .float()
-                .view(batch_size, *[1] * (p_mu.ndim - 1))
-            )
-            z_samples.append(component.sample() * mask)
+            # Create z samples based on selected components
+            z_samples = []
+            for i, component in enumerate(sampling_distrib):
+                # Reshape mask to match component's dimensions
+                mask = (
+                    (selected_component == i)
+                    .float()
+                    .view(batch_size, *[1] * (p_mu.ndim - 1))
+                )
+                z_samples.append(component.sample() * mask)
 
-        # Combine samples from all components based on selection
-        z = torch.sum(torch.stack(z_samples), dim=0)
+            # Combine samples from all components based on selection
+            z = torch.sum(torch.stack(z_samples), dim=0)
 
         # Get the output from the latent variable
         out = self.conv_out(z)
@@ -256,15 +265,12 @@ class MixtureStochasticConvBlock(nn.Module):
             log_probs_q = torch.stack(
                 [component.log_prob(z) for component in q_components]
             )
-            weighted_log_probs_q = log_probs_q + torch.log(q_pi).view(
+            weighted_log_probs_q = log_probs_q + torch.log(p_pi).view(
                 -1, *[1] * (log_probs_p.dim() - 1)
             )
             log_prob_q_z = torch.logsumexp(weighted_log_probs_q, dim=0)
         else:
             log_prob_q_z = None
-
-        # Calculate the cross-entropy loss between p_pi and q_pi
-        cross_entropy = -torch.sum(q_pi * torch.log(p_pi + 1e-10))  # Avoid log(0)
 
         kl_analytical = None
 
@@ -273,7 +279,7 @@ class MixtureStochasticConvBlock(nn.Module):
             for i, (p_component, q_component) in enumerate(
                 zip(p_components, q_components)
             ):
-                current_kl = kl_divergence(q_component, p_component) * q_pi[i]
+                current_kl = kl_divergence(q_component, p_component) * p_pi[i]
                 if kl_analytical is None:
                     kl_analytical = torch.zeros_like(current_kl)
                 kl_analytical += current_kl
@@ -291,8 +297,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "kl": kl_analytical,
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
-            "pi": q_pi if q_params is not None else p_pi,  # mixture coefficients
-            "cross_entropy": cross_entropy,
+            "pi": p_pi, # mixture coefficients
         }
 
         return out, data

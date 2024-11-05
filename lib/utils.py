@@ -375,12 +375,19 @@ def get_normalized_tensor(img, model, device):
 
 
 def compute_cl_loss(
-    mus, logvars, pis, labels, margin=50, lambda_contrastive=0.5, labeled_ratio=1, prior='normal'
+    mus,
+    logvars,
+    pis,
+    labels,
+    margin=50,
+    lambda_contrastive=0.5,
+    labeled_ratio=1,
+    prior="normal",
 ):
 
     output = {}
 
-    if prior == 'mixture':
+    if prior == "mixture":
         ### Mixture Model
         return pos_neg_loss_pi(
             mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio
@@ -401,15 +408,15 @@ def compute_cl_loss(
     contrastive_loss = (
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
-
-    output = {
-        "cl_loss": contrastive_loss,
-        "pos_pair_loss": pos_pair_loss,
-        "neg_pair_loss": weighted_neg,
-        "neg_pair_terms": neg_pair_loss_terms,
-        "thetas": neg_thetas,
-    }
-    return output
+    return contrastive_loss
+    # output = {
+    #     "cl_loss": contrastive_loss,
+    #     "pos_pair_loss": pos_pair_loss,
+    #     "neg_pair_loss": weighted_neg,
+    #     "neg_pair_terms": neg_pair_loss_terms,
+    #     "thetas": neg_thetas,
+    # }
+    # return output
 
 
 def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5):
@@ -419,29 +426,38 @@ def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5)
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size]
+    labels = labels.long()
     n_components = num_classes
-    
+
     stds = (logvars / 2).exp()
     mu_chunks = mus.chunk(n_components, dim=1)
     std_chunks = stds.chunk(n_components, dim=1)
-    
+
+    # List to hold the log probabilities for each component
     log_probs = []
-    for i, (mu, std) in enumerate(zip(mu_chunks, std_chunks)):
-        # Create Normal distribution for the component
-        component_dist = Normal(mu, std)
-        log_prob = component_dist.log_prob(mu).sum(dim=tuple(range(1, mu.dim())))  # Log-prob across the embedding dimension
-        log_probs.append(log_prob)
+    
+    for i in range(n_components):
+        # Create a normal distribution for each component
+        component_dist = Normal(mu_chunks[i], std_chunks[i])
         
+        # Calculate the log-probability for each component
+        # Sum across the spatial and channel dimensions (channel_size, h, w)
+        log_prob = component_dist.log_prob(mu_chunks[i]).sum(dim=(1, 2, 3))  # (batch_size,)
+        log_probs.append(log_prob)
+    
+    # Stack log probabilities to have shape (batch_size, n_components)
     log_probs = torch.stack(log_probs, dim=1)
+    
+    # Apply temperature scaling
+    similarity_matrix = log_probs / temperature  # Scale by temperature
+    
+    # Compute cross-entropy loss using the similarity matrix and the labels
+    targets = F.one_hot(labels, num_classes=n_components)  # (batch_size, n_components)
 
-    pis = pis.view(1, n_components)  # Reshape for broadcasting
-    weighted_log_probs = log_probs + torch.log(pis + 1e-10)  # Add log(pi) for each component
-    similarity_matrix = weighted_log_probs / temperature  # Scale by temperature
-    labels = labels.to(similarity_matrix.device).long()
-    contrastive_loss = F.cross_entropy(similarity_matrix, labels)
-
+    targets = targets.to(device=similarity_matrix.device).float()
+    contrastive_loss = F.cross_entropy(similarity_matrix, targets)
+    
     return contrastive_loss
-
 
 def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):
 

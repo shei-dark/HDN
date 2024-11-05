@@ -149,13 +149,10 @@ def train_network(
 
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
-            cross_entropy = outputs["cross_entropy"]
             cl_loss = outputs["cl_loss"]
             # cl_pos = outputs["cl_pos"]
             # cl_neg = outputs["cl_neg"]
             loss = alpha * inpainting_loss + beta * kl_loss
-            if model.prior_type == "mixture":
-                loss += cross_entropy[-1]
             if model.contrastive_learning:
                 loss += gamma * cl_loss
 
@@ -174,9 +171,6 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
-                        "CE": (
-                            cross_entropy[-1] if model.prior_type == "mixture" else None
-                        ),
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         # "PPL": cl_pos,
                         # "NPL": cl_neg,
@@ -191,8 +185,6 @@ def train_network(
             running_training_loss.append(loss)
             running_inpainting_loss.append(inpainting_loss)
             running_kl_loss.append(kl_loss)
-            if model.prior_type == "mixture":
-                running_ce_loss.append(cross_entropy[-1])
             if model.contrastive_learning:
                 running_cl_loss.append(cl_loss)
                 # running_cl_pos.append(cl_pos)
@@ -216,12 +208,6 @@ def train_network(
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
-            if model.prior_type == "mixture":
-                run.log(
-                    {
-                        "cross entropy": torch.mean(torch.stack(running_ce_loss)),
-                    }
-                )
             if model.contrastive_learning:
                 run.log(
                     {
@@ -246,15 +232,12 @@ def train_network(
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
-                val_ce_loss = (val_outputs["cross_entropy"][-1] if model.prior_type == "mixture" else 0)
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
                 val_loss = alpha * val_inpainting_loss + beta * val_kl_loss
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
-                if model.prior_type == "mixture":
-                    val_loss += val_ce_loss
 
                 running_validation_loss.append(val_loss)
 

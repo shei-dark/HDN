@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from typing import Type, Union
-
+import math
 from lib.nn import ResidualBlock, ResidualGatedBlock
 from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
 
@@ -61,10 +61,21 @@ class TopDownLayer(nn.Module):
         self.n_components = n_components
 
         # Define top layer prior parameters, possibly learnable
+        # TODO hardcoded for now
         if is_top_layer:
-            self.top_prior_params = nn.Parameter(
-                torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
-            )
+            chunk_values = torch.cat([
+                torch.full((1, 32, 8, 8), -9),  # First chunk with value -2
+                torch.full((1, 32, 8, 8), -3),  # Second chunk with value -1
+                torch.full((1, 32, 8, 8), 3),   # Third chunk with value 1
+                torch.full((1, 32, 8, 8), 9),    # Fourth chunk with value 2
+                torch.zeros((1, 128, 8, 8)),      # Fifth chunk with value 0
+            ], dim=1)  # Concatenate along the channel dimension
+
+            # Convert to nn.Parameter
+            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=learn_top_prior)
+            # self.top_prior_params = nn.Parameter(
+            #     torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
+            # )
 
         # Downsampling steps left to do in this layer
         dws_left = downsampling_steps
@@ -143,6 +154,7 @@ class TopDownLayer(nn.Module):
 
     def forward(
         self,
+        label,
         input_=None,
         skip_connection_input=None,
         inference_mode=False,
@@ -189,6 +201,7 @@ class TopDownLayer(nn.Module):
         # Sample from either q(z_i | z_{i+1}, x) or p(z_i | z_{i+1})
         # depending on whether q_params is None
         x, data_stoch = self.stochastic(
+            label=label,
             p_params=p_params,
             q_params=q_params,
             forced_latent=forced_latent,
@@ -212,7 +225,6 @@ class TopDownLayer(nn.Module):
         keys = [
             "z",
             "kl",
-            "cross_entropy",
             "logprob_p",
             "logprob_q",
             "mu",
