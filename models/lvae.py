@@ -264,6 +264,7 @@ class LadderVAE(nn.Module):
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.stack(td_data["kl"]).mean(0)
+            repulsive = torch.stack(td_data["repulsive"]).mean(0)
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
 
@@ -285,7 +286,7 @@ class LadderVAE(nn.Module):
             "z": td_data["z"],
             "mu": td_data["mu"],
             "kl": kl,
-            "repulsive": td_data["repulsive"],
+            "repulsive": repulsive,
             "cl": cl,
             # "cl_loss": cl["cl_loss"] if cl is not None else None,
             # "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
@@ -414,7 +415,7 @@ class LadderVAE(nn.Module):
         data = {
             "z": z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
             "kl": kl,  # list of tensors with shape (batch, )
-            "repulsive": repulsive[-1],
+            "repulsive": repulsive,
             "logprob_p": logprob_p,  # scalar, mean over batch
             "mu": mu,
             "logvar": logvar,

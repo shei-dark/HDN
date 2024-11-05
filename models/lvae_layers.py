@@ -64,10 +64,10 @@ class TopDownLayer(nn.Module):
         # TODO hardcoded for now
         if is_top_layer:
             chunk_values = torch.cat([
-                torch.full((1, 32, 8, 8), -9),  # First chunk with value -2
-                torch.full((1, 32, 8, 8), -3),  # Second chunk with value -1
-                torch.full((1, 32, 8, 8), 3),   # Third chunk with value 1
-                torch.full((1, 32, 8, 8), 9),    # Fourth chunk with value 2
+                torch.full((1, 32, 8, 8), -6),  # First chunk with value -2
+                torch.full((1, 32, 8, 8), -2),  # Second chunk with value -1
+                torch.full((1, 32, 8, 8), 2),   # Third chunk with value 1
+                torch.full((1, 32, 8, 8), 6),    # Fourth chunk with value 2
                 torch.zeros((1, 128, 8, 8)),      # Fifth chunk with value 0
             ], dim=1)  # Concatenate along the channel dimension
 
@@ -106,9 +106,17 @@ class TopDownLayer(nn.Module):
         self.deterministic_block = nn.Sequential(*block_list)
 
         # Define stochastic block with convolutions
-
         # Select stochastic block based on the argument
-        if is_top_layer and stochastic_block_type == "mixture":
+        if stochastic_block_type == "all_mixture":
+            self.stochastic = MixtureStochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                n_components=self.n_components,
+                transform_p_params=(not is_top_layer),
+            )
+        elif is_top_layer and stochastic_block_type == "mixture":
             self.stochastic = MixtureStochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,

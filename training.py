@@ -157,8 +157,9 @@ def train_network(
             if model.contrastive_learning:
                 loss += gamma * cl_loss
 
-            with torch.autograd.set_detect_anomaly(mode=True):
-                scaler.scale(loss).backward()
+            # with torch.autograd.set_detect_anomaly(mode=True):
+            #     scaler.scale(loss).backward()
+            loss.backward()
 
             if max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
@@ -192,8 +193,9 @@ def train_network(
                 # running_cl_pos.append(cl_pos)
                 # running_cl_neg.append(cl_neg)
 
-            scaler.step(optimizer)
-            scaler.update()
+            # scaler.step(optimizer)
+            # scaler.update()
+            optimizer.step()
             model.increment_global_step()
             step = model.global_step
 
@@ -221,6 +223,11 @@ def train_network(
 
         ### Validation step
         running_validation_loss = []
+        running_val_inpainting_loss = []
+        running_val_kl_loss = []
+        running_val_repulsive_loss = []
+        running_val_cl_loss = []
+        
         model.eval()
         with torch.no_grad():
             for i, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
@@ -241,15 +248,27 @@ def train_network(
                 val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + val_repulsive
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
+                    running_val_cl_loss.append(gamma * val_cl_loss)
 
                 running_validation_loss.append(val_loss)
+                running_val_inpainting_loss.append(alpha * val_inpainting_loss)
+                running_val_kl_loss.append(beta * val_kl_loss)
+                running_val_repulsive_loss.append(val_repulsive)
 
         if use_wandb:
             run.log(
                 {
                     "val total loss": torch.mean(
                         torch.stack(running_validation_loss)
-                    ).item()
+                    ).item(),
+                    "val inpainting loss": torch.mean(
+                        torch.stack(running_val_inpainting_loss)
+                    ).item(),
+                    "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
+                    "val repulsive": torch.mean(
+                        torch.stack(running_val_repulsive_loss)
+                    ).item(),
+                    "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item(),
                 }
             )
         model.train()

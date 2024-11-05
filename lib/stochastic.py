@@ -146,6 +146,7 @@ class MixtureStochasticConvBlock(nn.Module):
         conv_mult,
         kernel=3,
         n_components=4,
+        transform_p_params=False,
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -154,9 +155,12 @@ class MixtureStochasticConvBlock(nn.Module):
         self.c_in = c_in
         self.c_out = c_out
         self.c_vars = c_vars
+        self.transform_p_params = transform_p_params
 
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
+        if transform_p_params:
+            self.conv_in_p = conv_type(c_in, 2 * c_vars * n_components, kernel, padding=pad)
         self.conv_in_q = conv_type(c_in, 2 * c_vars * n_components, kernel, padding=pad)
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
@@ -182,6 +186,8 @@ class MixtureStochasticConvBlock(nn.Module):
         p_pi = torch.softmax(torch.clamp(self.p_pi, min=-10, max=10), dim=0)
 
         # Separate mu and logvar for each component
+        if self.transform_p_params:
+            p_params = self.conv_in_p(p_params)
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
         p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
