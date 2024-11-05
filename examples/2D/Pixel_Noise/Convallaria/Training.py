@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/WiderSpread/"
+directory_path = "/group/jug/Sheida/HVAE/2D/repulsive/"
 noiseModel = None
 
 # Training-specific

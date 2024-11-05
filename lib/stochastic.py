@@ -123,6 +123,7 @@ class NormalStochasticConvBlock(nn.Module):
             "logprob_p": logprob_p,  # (batch, )
             "logprob_q": logprob_q,  # (batch, )
             "kl": kl_analytical,  # (batch, )
+            "repulsive": None,
             "mu": q_mu,
             "logvar": q_lv,
             "pi": None,
@@ -206,6 +207,11 @@ class MixtureStochasticConvBlock(nn.Module):
 
             q_mu_chunks = q_mu.chunk(self.n_components, dim=1)
             q_std_chunks = q_std.chunk(self.n_components, dim=1)
+
+            mus_avg = torch.stack([mu.mean(dim=(1, 2, 3)) for mu in q_mu_chunks])
+            dist_matrix = torch.cdist(mus_avg, mus_avg, p=2)
+            mask = torch.ones_like(dist_matrix) - torch.eye(dist_matrix.size(0)).to(dist_matrix.device)
+            repulsive = (1 / (dist_matrix + 1e-5)) * mask
 
             q_components = []
 
@@ -295,6 +301,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "logprob_p": log_prob_p_z,
             "logprob_q": log_prob_q_z,
             "kl": kl_analytical,
+            "repulsive": repulsive.sum(),
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
             "pi": p_pi, # mixture coefficients

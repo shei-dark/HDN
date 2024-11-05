@@ -285,6 +285,7 @@ class LadderVAE(nn.Module):
             "z": td_data["z"],
             "mu": td_data["mu"],
             "kl": kl,
+            "repulsive": td_data["repulsive"],
             "cl": cl,
             # "cl_loss": cl["cl_loss"] if cl is not None else None,
             # "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
@@ -353,7 +354,7 @@ class LadderVAE(nn.Module):
         # KL divergence of each layer
         kl = [None] * self.n_layers
 
-        cross_entropy = [None] * self.n_layers
+        repulsive = [None] * self.n_layers
 
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
@@ -399,6 +400,7 @@ class LadderVAE(nn.Module):
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
+            repulsive[i] = aux["repulsive"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
@@ -412,6 +414,7 @@ class LadderVAE(nn.Module):
         data = {
             "z": z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
             "kl": kl,  # list of tensors with shape (batch, )
+            "repulsive": repulsive[-1],
             "logprob_p": logprob_p,  # scalar, mean over batch
             "mu": mu,
             "logvar": logvar,

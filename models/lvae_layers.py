@@ -225,6 +225,7 @@ class TopDownLayer(nn.Module):
         keys = [
             "z",
             "kl",
+            "repulsive",
             "logprob_p",
             "logprob_q",
             "mu",

@@ -149,10 +149,11 @@ def train_network(
 
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
+            repulsive = outputs["repulsive"]
             cl_loss = outputs["cl_loss"]
             # cl_pos = outputs["cl_pos"]
             # cl_neg = outputs["cl_neg"]
-            loss = alpha * inpainting_loss + beta * kl_loss
+            loss = alpha * inpainting_loss + beta * kl_loss + repulsive
             if model.contrastive_learning:
                 loss += gamma * cl_loss
 
@@ -171,6 +172,7 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
+                        "Repulsive": repulsive,
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         # "PPL": cl_pos,
                         # "NPL": cl_neg,
@@ -232,10 +234,11 @@ def train_network(
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
+                val_repulsive = val_outputs["repulsive"]
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss
+                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + val_repulsive
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
 
