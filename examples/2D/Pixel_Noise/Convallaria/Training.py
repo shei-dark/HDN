@@ -36,11 +36,11 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/repulsive_semi/"
+directory_path = "/group/jug/Sheida/HVAE/2D/NG_higherCL/"
 noiseModel = None
 
 # Training-specific
-batch_size = 32
+batch_size = 512
 lr = 3e-4
 max_epochs = 500
 
@@ -55,21 +55,21 @@ free_bits = 0.0
 
 alpha = 1
 beta = 1e-2
-gamma = 1e-1
+gamma = 1
 # contrastive
 mask_size = 1
 label_size = 1
 mode = "1x1"
 contrastive_learning = True
-margin = 50
+margin = 1500
 lambda_contrastive = 0.5
 
-use_wandb = False
+use_wandb = True
 
 semi_supervised = False
 labeled_ratio = 1
 
-stochastic_block_type = "all_mixture"  # 'normal' or 'mixture'
+stochastic_block_type = "normal"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
 percent_labeled = "1_percent"

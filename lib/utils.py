@@ -386,22 +386,28 @@ def compute_cl_loss(
 ):
 
     output = {}
-
-    if prior == "mixture":
+    contrastive_loss = 0
+    if prior == "all_mixture":
+        for i in range(3):
+            contrastive_loss += pos_neg_loss_pi(
+                mus[i], logvars[i], pis[i], labels=labels, labeled_ratio=labeled_ratio
+            )
+        return contrastive_loss
+    elif prior == "mixture":
         ### Mixture Model
         return pos_neg_loss_pi(
             mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio
         )
     else:
-        if logvars is not None:
-            ### KL based contrastive loss
-            pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(
-                mus, logvars, labels, margin, labeled_ratio
-            )
-        else:
-            pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
-                mus, labels, margin, labeled_ratio
-            )  # Euclidean distance based contrastive loss
+        # if logvars is not None:
+        #     ### KL based contrastive loss
+        #     pos_pair_loss, neg_pair_loss_terms = pos_neg_kl_loss(
+        #         mus, logvars, labels, margin, labeled_ratio
+        #     )
+        # else:
+        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
+            mus, labels, margin, labeled_ratio
+        )  # Euclidean distance based contrastive loss
 
     neg_thetas = get_thetas(neg_pair_loss_terms)
     weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)

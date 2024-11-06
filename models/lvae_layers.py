@@ -63,19 +63,19 @@ class TopDownLayer(nn.Module):
         # Define top layer prior parameters, possibly learnable
         # TODO hardcoded for now
         if is_top_layer:
-            chunk_values = torch.cat([
-                torch.full((1, 32, 8, 8), -6),  # First chunk with value -2
-                torch.full((1, 32, 8, 8), -2),  # Second chunk with value -1
-                torch.full((1, 32, 8, 8), 2),   # Third chunk with value 1
-                torch.full((1, 32, 8, 8), 6),    # Fourth chunk with value 2
-                torch.zeros((1, 128, 8, 8)),      # Fifth chunk with value 0
-            ], dim=1)  # Concatenate along the channel dimension
+            # chunk_values = torch.cat([
+            #     torch.full((1, 32, 8, 8), -6),  # First chunk with value -2
+            #     torch.full((1, 32, 8, 8), -2),  # Second chunk with value -1
+            #     torch.full((1, 32, 8, 8), 2),   # Third chunk with value 1
+            #     torch.full((1, 32, 8, 8), 6),    # Fourth chunk with value 2
+            #     torch.zeros((1, 128, 8, 8)),      # Fifth chunk with value 0
+            # ], dim=1)  # Concatenate along the channel dimension
 
             # Convert to nn.Parameter
-            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=learn_top_prior)
-            # self.top_prior_params = nn.Parameter(
-            #     torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
-            # )
+            # self.top_prior_params = nn.Parameter(chunk_values, requires_grad=learn_top_prior)
+            self.top_prior_params = nn.Parameter(
+                torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
+            )
 
         # Downsampling steps left to do in this layer
         dws_left = downsampling_steps

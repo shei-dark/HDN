@@ -157,9 +157,8 @@ def train_network(
             if model.contrastive_learning:
                 loss += gamma * cl_loss
 
-            # with torch.autograd.set_detect_anomaly(mode=True):
-            #     scaler.scale(loss).backward()
-            loss.backward()
+            with torch.autograd.set_detect_anomaly(mode=True):
+                scaler.scale(loss).backward()
 
             if max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(
@@ -193,9 +192,8 @@ def train_network(
                 # running_cl_pos.append(cl_pos)
                 # running_cl_neg.append(cl_neg)
 
-            # scaler.step(optimizer)
-            # scaler.update()
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             model.increment_global_step()
             step = model.global_step
 
@@ -265,9 +263,9 @@ def train_network(
                         torch.stack(running_val_inpainting_loss)
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    "val repulsive": torch.mean(
-                        torch.stack(running_val_repulsive_loss)
-                    ).item(),
+                    # "val repulsive": torch.mean(
+                    #     torch.stack(running_val_repulsive_loss)
+                    # ).item(),
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item(),
                 }
             )

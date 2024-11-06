@@ -256,6 +256,7 @@ class LadderVAE(nn.Module):
 
         cl = None
         kl = None
+        repulsive = 0
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -264,7 +265,10 @@ class LadderVAE(nn.Module):
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.stack(td_data["kl"]).mean(0)
-            repulsive = torch.stack(td_data["repulsive"]).mean(0)
+            if self.prior_type == "all_mixture":
+                repulsive = torch.stack(td_data["repulsive"]).mean(0)
+            elif self.prior_type == "mixture":
+                repulsive = td_data["repulsive"][-1]
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
 
