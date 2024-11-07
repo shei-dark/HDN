@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/GMM_semisupervised/"
+directory_path = "/group/jug/Sheida/HVAE/2D/SEMI_added_linear_layer/"
 noiseModel = None
 
 # Training-specific
@@ -55,7 +55,7 @@ free_bits = 0.0
 
 alpha = 1
 beta = 1e-2
-gamma = 1
+gamma = 10
 # contrastive
 mask_size = 1
 label_size = 1

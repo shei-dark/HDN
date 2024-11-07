@@ -138,6 +138,8 @@ class LadderVAE(nn.Module):
         )
 
         # Init lists of layers
+        # TODO hard coded for now
+        self.linear_logit_layer = nn.Linear(in_features=2048, out_features=4)  # Adjust in_features based on mu size
         self.top_down_layers = nn.ModuleList([])
         self.bottom_up_layers = nn.ModuleList([])
 
@@ -283,6 +285,7 @@ class LadderVAE(nn.Module):
                 lambda_contrastive=self.lambda_contrastive,
                 labeled_ratio=self.labeled_ratio,
                 prior = self.prior_type,
+                linear=self.linear_logit_layer,
             )
 
         output = {

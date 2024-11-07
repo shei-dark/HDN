@@ -383,6 +383,7 @@ def compute_cl_loss(
     lambda_contrastive=0.5,
     labeled_ratio=1,
     prior="normal",
+    linear=None
 ):
 
     output = {}
@@ -396,7 +397,7 @@ def compute_cl_loss(
     elif prior == "mixture":
         ### Mixture Model
         return pos_neg_loss_pi(
-            mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio
+            mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
         )
     else:
         # if logvars is not None:
@@ -425,7 +426,7 @@ def compute_cl_loss(
     # return output
 
 
-def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5):
+def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5, linear=None):
     
     batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
@@ -440,30 +441,28 @@ def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5)
     std_chunks = stds.chunk(n_components, dim=1)
 
     # List to hold the log probabilities for each component
-    log_probs = []
+    logits_list = []
     
     for i in range(n_components):
-        # Create a normal distribution for each component
-        component_dist = Normal(mu_chunks[i][:small_batch_size], std_chunks[i][:small_batch_size])
+        # Flatten each component's mu to shape (batch_size, 2048)
+        flattened_mu = mu_chunks[i][:small_batch_size].view(small_batch_size, -1)  # Shape: (small_batch_size, 2048)
         
-        # Calculate the log-probability for each component
-        # Sum across the spatial and channel dimensions (channel_size, h, w)
-        log_prob = component_dist.log_prob(mu_chunks[i][:small_batch_size]).sum(dim=(1, 2, 3))  # (batch_size,)
-        log_probs.append(log_prob)
-    
-    # Stack log probabilities to have shape (batch_size, n_components)
-    log_probs = torch.stack(log_probs, dim=1)
+        # Apply the linear layer to obtain logits
+        logits = linear(flattened_mu*pis[i])  # Shape: (small_batch_size, out_features=4)
+        
+        # Add logits to the list for later use in calculating the similarity matrix
+        logits_list.append(logits)
+            
+    # Stack logits to form the similarity matrix with shape (batch_size, n_components)
+    similarity_matrix = sum(logits_list)  # Shape: (small_batch_size, 4)
     
     # Apply temperature scaling
-    similarity_matrix = log_probs / temperature  # Scale by temperature
+    similarity_matrix = similarity_matrix / temperature  # Scale by temperature
     
-    for d in range(similarity_matrix.size(1)):
-        similarity_matrix[:, d] += torch.log(pis[d])
-    
-    # Compute cross-entropy loss using the similarity matrix and the labels
-    # targets = F.one_hot(labels, num_classes=n_components)  # (batch_size, n_components)
-
+    # Move labels to the same device and type
     labels = labels.to(device=similarity_matrix.device).long()
+
+    # Compute cross-entropy loss using the similarity matrix and the labels
     contrastive_loss = F.cross_entropy(similarity_matrix, labels)
     
     return contrastive_loss
