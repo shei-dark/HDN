@@ -374,6 +374,61 @@ def get_normalized_tensor(img, model, device):
     return test_images
 
 
+def kl_margin_separation_loss(mu_chunks, std_chunks, margin=1.0):
+    n_components = len(mu_chunks)
+    loss = 0
+    for i in range(n_components):
+        for j in range(i + 1, n_components):
+            # Create normal distributions for components i and j
+            dist_i = Normal(mu_chunks[i], std_chunks[i])
+            dist_j = Normal(mu_chunks[j], std_chunks[j])
+
+            # Compute symmetric KL divergence
+            kl_loss = (
+                kl_divergence(dist_i, dist_j).mean()
+                + kl_divergence(dist_j, dist_i).mean()
+            )
+
+            # Only penalize if KL is below the margin
+            margin_loss = F.relu(margin - kl_loss)
+            loss += margin_loss
+    return loss
+
+
+def wasserstein_margin_separation_loss(mu_chunks, std_chunks, margin=5.0):
+    n_components = len(mu_chunks)
+    loss = 0
+    for i in range(n_components):
+        for j in range(i + 1, n_components):
+            # Compute the mean and variance distances
+            mean_dist = torch.norm(mu_chunks[i] - mu_chunks[j], p=2)
+            std_dist = torch.norm(std_chunks[i] - std_chunks[j], p=2)
+
+            # Calculate Wasserstein distance
+            wasserstein_dist = mean_dist + std_dist
+
+            # Only penalize if Wasserstein distance is below the margin
+            margin_loss = F.relu(margin - wasserstein_dist)
+            loss += margin_loss
+    return loss
+
+
+def contrastive_separation_loss(mu_chunks, std_chunks, margin=5.0):
+    n_components = len(mu_chunks)
+    loss = 0
+    for i in range(n_components):
+        for j in range(i + 1, n_components):
+            # Compute Euclidean distance between component means
+            mean_dist = torch.norm(mu_chunks[i] - mu_chunks[j], p=2)
+
+            # Compute similarity as 1 / (1 + distance)
+            similarity = 1 / (1 + mean_dist)
+
+            # Contrastive loss with margin
+            loss += F.relu(margin - mean_dist) * similarity
+    return loss
+
+
 def compute_cl_loss(
     mus,
     logvars,
@@ -383,11 +438,26 @@ def compute_cl_loss(
     lambda_contrastive=0.5,
     labeled_ratio=1,
     prior="normal",
-    linear=None
+    linear=None,
 ):
 
     output = {}
     contrastive_loss = 0
+
+    batch_size = len(labels)
+    small_batch_size = int(batch_size * labeled_ratio)
+
+    labels = labels[:small_batch_size]
+    num_classes = torch.unique(labels).size(0)
+    n_components = num_classes
+
+    stds = (logvars[-1] / 2).exp()
+    mu_chunks = mus[-1].chunk(n_components, dim=1)
+    std_chunks = stds.chunk(n_components, dim=1)
+    return kl_margin_separation_loss(mu_chunks, std_chunks)
+    return wasserstein_margin_separation_loss(mu_chunks, std_chunks)
+    return contrastive_separation_loss(mu_chunks, std_chunks)
+
     if prior == "all_mixture":
         for i in range(3):
             contrastive_loss += pos_neg_loss_pi(
@@ -399,7 +469,9 @@ def compute_cl_loss(
         # return pos_neg_loss_pi(
         #     mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
         # )
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss([mus[2]], labels, margin, labeled_ratio)
+        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
+            [mus[2]], labels, margin, labeled_ratio
+        )
     else:
         # if logvars is not None:
         #     ### KL based contrastive loss
@@ -427,13 +499,14 @@ def compute_cl_loss(
     # return output
 
 
-def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5, linear=None):
-    
+def pos_neg_loss_pi(
+    mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5, linear=None
+):
+
     batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size]
-    # labels = labels.long()
     num_classes = torch.unique(labels).size(0)
     n_components = num_classes
 
@@ -443,39 +516,44 @@ def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5,
 
     # List to hold the log probabilities for each component
     logits_list = []
-    
+
     for i in range(n_components):
         # Flatten each component's mu to shape (batch_size, 2048)
-        flattened_mu = mu_chunks[i][:small_batch_size].view(small_batch_size, -1)  # Shape: (small_batch_size, 2048)
-        
+        flattened_mu = mu_chunks[i][:small_batch_size].view(
+            small_batch_size, -1
+        )  # Shape: (small_batch_size, 2048)
+
         # Apply the linear layer to obtain logits
-        logits = linear(flattened_mu*pis[i])  # Shape: (small_batch_size, out_features=4)
-        
+        logits = linear(
+            flattened_mu * pis[i]
+        )  # Shape: (small_batch_size, out_features=4)
+
         # Add logits to the list for later use in calculating the similarity matrix
         logits_list.append(logits)
-            
+
     # Stack logits to form the similarity matrix with shape (batch_size, n_components)
     similarity_matrix = sum(logits_list)  # Shape: (small_batch_size, 4)
-    
+
     # Apply temperature scaling
     similarity_matrix = similarity_matrix / temperature  # Scale by temperature
-    
+
     # Move labels to the same device and type
     labels = labels.to(device=similarity_matrix.device).long()
 
     # Compute cross-entropy loss using the similarity matrix and the labels
     contrastive_loss = F.cross_entropy(similarity_matrix, labels)
-    
+
     return contrastive_loss
+
 
 def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):
 
     dist = 0
-    num_classes = torch.unique(labels).size(0)
     batch_size = len(mus[0])
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size]
+    num_classes = torch.unique(labels).size(0)
     labels = labels.unsqueeze(0)
 
     mus = [mus[i].view(batch_size, -1) for i in range(len(mus))]

@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/cdist_gmm/"
+directory_path = "/group/jug/Sheida/HVAE/2D/kl_margin_separation_loss/"
 noiseModel = None
 
 # Training-specific
@@ -64,7 +64,7 @@ contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = False
+use_wandb = True
 
 semi_supervised = False
 labeled_ratio = 1
