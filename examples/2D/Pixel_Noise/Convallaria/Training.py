@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/SEMI_added_linear_layer/"
+directory_path = "/group/jug/Sheida/HVAE/2D/cdist_gmm/"
 noiseModel = None
 
 # Training-specific
@@ -55,7 +55,7 @@ free_bits = 0.0
 
 alpha = 1
 beta = 1e-2
-gamma = 10
+gamma = 1
 # contrastive
 mask_size = 1
 label_size = 1
@@ -64,9 +64,9 @@ contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
-semi_supervised = True
+semi_supervised = False
 labeled_ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
