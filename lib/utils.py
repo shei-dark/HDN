@@ -390,7 +390,7 @@ def kl_margin_separation_loss(mu_chunks, std_chunks, margin=1.0):
             )
 
             # Only penalize if KL is below the margin
-            margin_loss = F.relu(margin - kl_loss)
+            margin_loss = 1/(kl_loss + 1e-6)
             loss += margin_loss
     return loss
 
@@ -408,7 +408,7 @@ def wasserstein_margin_separation_loss(mu_chunks, std_chunks, margin=500.0):
             wasserstein_dist = mean_dist + std_dist
 
             # Only penalize if Wasserstein distance is below the margin
-            margin_loss = F.relu(margin - wasserstein_dist)
+            margin_loss = 1/(wasserstein_dist + 1e-6)
             loss += margin_loss
     return loss
 
@@ -421,11 +421,12 @@ def contrastive_separation_loss(mu_chunks, std_chunks, margin=400.0):
             # Compute Euclidean distance between component means
             mean_dist = torch.norm(mu_chunks[i] - mu_chunks[j], p=2)
 
-            # Compute similarity as 1 / (1 + distance)
-            similarity = 1 / (1 + mean_dist)
+            # # Compute similarity as 1 / (1 + distance)
+            # similarity = 1 / (1 + mean_dist)
 
             # Contrastive loss with margin
-            loss += F.relu(margin - mean_dist) * similarity
+            # loss += F.relu(margin - mean_dist) * similarity
+            loss += 1/(mean_dist + 1e-6)
     return loss
 
 
@@ -442,21 +443,21 @@ def compute_cl_loss(
 ):
 
     output = {}
-    contrastive_loss = 0
+    # contrastive_loss = 0
 
-    batch_size = len(labels)
-    small_batch_size = int(batch_size * labeled_ratio)
+    # batch_size = len(labels)
+    # small_batch_size = int(batch_size * labeled_ratio)
 
-    labels = labels[:small_batch_size]
-    num_classes = torch.unique(labels).size(0)
-    n_components = num_classes
+    # labels = labels[:small_batch_size]
+    # num_classes = torch.unique(labels).size(0)
+    # n_components = num_classes
 
-    stds = (logvars[-1] / 2).exp()
-    mu_chunks = mus[-1].chunk(n_components, dim=1)
-    std_chunks = stds.chunk(n_components, dim=1)
-    # return kl_margin_separation_loss(mu_chunks, std_chunks)
-    # return wasserstein_margin_separation_loss(mu_chunks, std_chunks)
-    return contrastive_separation_loss(mu_chunks, std_chunks)
+    # stds = (logvars[-1][:small_batch_size] / 2).exp()
+    # mu_chunks = mus[-1][:small_batch_size].chunk(n_components, dim=1)
+    # std_chunks = stds.chunk(n_components, dim=1)
+    # return torch.clamp(kl_margin_separation_loss(mu_chunks, std_chunks), min=1e-6, max=1e2)
+    # return torch.clamp(wasserstein_margin_separation_loss(mu_chunks, std_chunks), min=1e-6, max=1e2)
+    # return torch.clamp(contrastive_separation_loss(mu_chunks, std_chunks), min=1e-6, max=1e2)
 
     if prior == "all_mixture":
         for i in range(3):
@@ -466,12 +467,12 @@ def compute_cl_loss(
         return contrastive_loss
     elif prior == "mixture":
         ### Mixture Model
-        # return pos_neg_loss_pi(
-        #     mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
-        # )
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
-            [mus[2]], labels, margin, labeled_ratio
+        return pos_neg_loss_pi(
+            mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
         )
+        # pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
+        #     [mus[2]], labels, margin, labeled_ratio
+        # )
     else:
         # if logvars is not None:
         #     ### KL based contrastive loss

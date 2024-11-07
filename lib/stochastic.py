@@ -186,8 +186,8 @@ class MixtureStochasticConvBlock(nn.Module):
         p_pi = torch.softmax(torch.clamp(self.p_pi, min=-10, max=10), dim=0)
 
         # Separate mu and logvar for each component
-        # if self.transform_p_params:
-            # p_params = self.conv_in_p(p_params)
+        if self.transform_p_params:
+            p_params = self.conv_in_p(p_params)
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
         p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv

@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/contrastive_separation_loss/"
+directory_path = "/group/jug/Sheida/HVAE/2D/SEMI_added_linear_layer/"
 noiseModel = None
 
 # Training-specific
@@ -45,7 +45,7 @@ lr = 3e-4
 max_epochs = 500
 
 # Model-specific
-load_checkpoint = False
+load_checkpoint = True
 checkpoint = directory_path + "model/2D_HVAE_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
@@ -66,7 +66,7 @@ lambda_contrastive = 0.5
 
 use_wandb = True
 
-semi_supervised = False
+semi_supervised = True
 labeled_ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
