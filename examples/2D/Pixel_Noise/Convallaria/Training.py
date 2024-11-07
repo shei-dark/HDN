@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/NG_higherCL/"
+directory_path = "/group/jug/Sheida/HVAE/2D/GMM_semisupervised/"
 noiseModel = None
 
 # Training-specific
@@ -61,15 +61,15 @@ mask_size = 1
 label_size = 1
 mode = "1x1"
 contrastive_learning = True
-margin = 1500
+margin = 50
 lambda_contrastive = 0.5
 
 use_wandb = True
 
-semi_supervised = False
+semi_supervised = True
 labeled_ratio = 1
 
-stochastic_block_type = "normal"  # 'normal' or 'mixture'
+stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
 percent_labeled = "1_percent"

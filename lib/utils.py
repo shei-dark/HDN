@@ -426,13 +426,13 @@ def compute_cl_loss(
 
 
 def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5):
-
-    num_classes = torch.unique(labels).size(0)
+    
     batch_size = len(labels)
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size]
-    labels = labels.long()
+    # labels = labels.long()
+    num_classes = torch.unique(labels).size(0)
     n_components = num_classes
 
     stds = (logvars / 2).exp()
@@ -444,11 +444,11 @@ def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5)
     
     for i in range(n_components):
         # Create a normal distribution for each component
-        component_dist = Normal(mu_chunks[i], std_chunks[i])
+        component_dist = Normal(mu_chunks[i][:small_batch_size], std_chunks[i][:small_batch_size])
         
         # Calculate the log-probability for each component
         # Sum across the spatial and channel dimensions (channel_size, h, w)
-        log_prob = component_dist.log_prob(mu_chunks[i]).sum(dim=(1, 2, 3))  # (batch_size,)
+        log_prob = component_dist.log_prob(mu_chunks[i][:small_batch_size]).sum(dim=(1, 2, 3))  # (batch_size,)
         log_probs.append(log_prob)
     
     # Stack log probabilities to have shape (batch_size, n_components)
@@ -457,11 +457,14 @@ def pos_neg_loss_pi(mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5)
     # Apply temperature scaling
     similarity_matrix = log_probs / temperature  # Scale by temperature
     
+    for d in range(similarity_matrix.size(1)):
+        similarity_matrix[:, d] += torch.log(pis[d])
+    
     # Compute cross-entropy loss using the similarity matrix and the labels
-    targets = F.one_hot(labels, num_classes=n_components)  # (batch_size, n_components)
+    # targets = F.one_hot(labels, num_classes=n_components)  # (batch_size, n_components)
 
-    targets = targets.to(device=similarity_matrix.device).float()
-    contrastive_loss = F.cross_entropy(similarity_matrix, targets)
+    labels = labels.to(device=similarity_matrix.device).long()
+    contrastive_loss = F.cross_entropy(similarity_matrix, labels)
     
     return contrastive_loss
 
@@ -531,11 +534,11 @@ def pos_neg_kl_loss(mus, logvars, labels, margin=50.0, labeled_ratio=1):
 
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
 
-    num_classes = torch.unique(labels).size(0)
     batch_size = len(mus[0])
     small_batch_size = int(batch_size * labeled_ratio)
 
     labels = labels[:small_batch_size]
+    num_classes = torch.unique(labels).size(0)
     labels = labels.unsqueeze(0)
 
     mus = [mus[i].view(batch_size, -1) for i in range(len(mus))]
