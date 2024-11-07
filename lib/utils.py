@@ -395,7 +395,7 @@ def kl_margin_separation_loss(mu_chunks, std_chunks, margin=1.0):
     return loss
 
 
-def wasserstein_margin_separation_loss(mu_chunks, std_chunks, margin=5.0):
+def wasserstein_margin_separation_loss(mu_chunks, std_chunks, margin=500.0):
     n_components = len(mu_chunks)
     loss = 0
     for i in range(n_components):
@@ -454,7 +454,7 @@ def compute_cl_loss(
     stds = (logvars[-1] / 2).exp()
     mu_chunks = mus[-1].chunk(n_components, dim=1)
     std_chunks = stds.chunk(n_components, dim=1)
-    return kl_margin_separation_loss(mu_chunks, std_chunks)
+    # return kl_margin_separation_loss(mu_chunks, std_chunks)
     return wasserstein_margin_separation_loss(mu_chunks, std_chunks)
     return contrastive_separation_loss(mu_chunks, std_chunks)
 

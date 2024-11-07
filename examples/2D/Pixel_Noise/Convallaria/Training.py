@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/kl_margin_separation_loss/"
+directory_path = "/group/jug/Sheida/HVAE/2D/wasserstein_margin_separation_loss/"
 noiseModel = None
 
 # Training-specific
