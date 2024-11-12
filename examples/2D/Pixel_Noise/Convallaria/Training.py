@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/SEMI_added_linear_layer/"
+directory_path = "/group/jug/Sheida/HVAE/2D/Semi1_Linear_and_Cdist/"
 noiseModel = None
 
 # Training-specific
@@ -45,7 +45,7 @@ lr = 3e-4
 max_epochs = 500
 
 # Model-specific
-load_checkpoint = True
+load_checkpoint = False
 checkpoint = directory_path + "model/2D_HVAE_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
@@ -54,7 +54,7 @@ batchnorm = True
 free_bits = 0.0
 
 alpha = 1
-beta = 1e-2
+beta = 1e-4
 gamma = 1
 # contrastive
 mask_size = 1

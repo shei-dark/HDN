@@ -241,7 +241,6 @@ class MixtureStochasticConvBlock(nn.Module):
                 z_samples.append(component.sample() * mask)
             z = torch.sum(torch.stack(z_samples), dim=0)
         else:
-            print("Label is None")
             # Sample the mixture component
             component_distribution = Categorical(p_pi)
             # Adjust the sampling based on q_params or p_params
