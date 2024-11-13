@@ -242,20 +242,20 @@ class MixtureStochasticConvBlock(nn.Module):
                 z_samples.append(component.sample() * mask)
             
             # Sample the mixture component
-            # component_distribution = Categorical(p_pi)
+            component_distribution = Categorical(p_pi)
             # Adjust the sampling based on q_params or p_params
-            # selected_component = component_distribution.sample(
-                # (batch_size,)
-            # )  # Sample a component for each batch entry
+            selected_component = component_distribution.sample(
+                (batch_size,)
+            )  # Sample a component for each batch entry
             # Create z samples based on selected components
             for i, component in enumerate(sampling_distrib):
                 # Reshape mask to match component's dimensions
                 mask = (
-                    (label == -2)
+                    ((label == -2) & (selected_component == i))
                     .float()
                     .view(batch_size, *[1] * (p_mu.ndim - 1))
                 )
-                z_samples.append(component.sample() * p_pi[i] * mask)
+                z_samples.append(component.sample() * mask)
             z = torch.sum(torch.stack(z_samples), dim=0)
             
         else:
