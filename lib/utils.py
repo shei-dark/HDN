@@ -470,6 +470,7 @@ def compute_cl_loss(
         lin_based_loss = pos_neg_loss_pi(
             mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
         )
+        return lin_based_loss
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             [mus[2]], labels, margin, labeled_ratio
         )

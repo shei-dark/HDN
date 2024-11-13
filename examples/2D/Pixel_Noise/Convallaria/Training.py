@@ -36,7 +36,7 @@ gaussian_noise_std = None
 
 
 model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/Semi1_Linear_and_Cdist/"
+directory_path = "/group/jug/Sheida/HVAE/2D/equidistanced/"
 noiseModel = None
 
 # Training-specific
@@ -54,7 +54,7 @@ batchnorm = True
 free_bits = 0.0
 
 alpha = 1
-beta = 1e-4
+beta = 1e-3
 gamma = 1
 # contrastive
 mask_size = 1
@@ -119,14 +119,17 @@ train_labels = {key: tiff.imread(path) for key, path in zip(keys, train_lbl_path
 val_images = {key: tiff.imread(path) for key, path in zip(keys, val_img_paths)}
 val_labels = {key: tiff.imread(path) for key, path in zip(keys, val_lbl_paths)}
 
+valid_train = {}
+valid_val = {}
+
 for key in tqdm(keys, desc="filtering out outside of the cell"):
-    filtered_image, filtered_label = boilerplate._filter_slices(
+    filtered_image, filtered_label, valid_train[key] = boilerplate._filter_slices(
         train_images[key], train_labels[key]
     )
     train_images[key] = filtered_image
     train_labels[key] = filtered_label
 
-    filtered_image, filtered_label = boilerplate._filter_slices(
+    filtered_image, filtered_label, valid_val[key] = boilerplate._filter_slices(
         val_images[key], val_labels[key]
     )
 

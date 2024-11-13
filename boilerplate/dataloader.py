@@ -24,6 +24,7 @@ class Custom2DDataset(Dataset):
         labeled_indices=None,
     ):
         self.patch_size = patch_size
+        # self.indices = []
         self.mask_size = mask_size
         self.label_size = label_size
         self.all_patches = []
@@ -35,6 +36,7 @@ class Custom2DDataset(Dataset):
             self.images = images
             self.labels = labels
             self._update_patches_by_label()
+            
 
     def __len__(self):
 
@@ -43,7 +45,6 @@ class Custom2DDataset(Dataset):
     def _extract_valid_patches(self, images, labels):
 
         patches_by_label = {}
-
         keys = list(images.keys())
         for key in keys:
             for img, lbl in tqdm(
@@ -63,6 +64,7 @@ class Custom2DDataset(Dataset):
                             start : start + self.label_size,
                             start : start + self.label_size,
                         ]
+                        
                         unique_labels = np.unique(unique_label_area)
                         if len(unique_labels) == 1 and unique_labels[0] != -1:
                             center_label = unique_labels[0]
@@ -78,6 +80,7 @@ class Custom2DDataset(Dataset):
                             patches_by_label[center_label].append(
                                 len(self.all_patches) - 1
                             )
+                            # self.indices.append((key, z_stack, y+start, x+start))
         return patches_by_label
 
     def _get_random_patch(self):

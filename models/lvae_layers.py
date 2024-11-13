@@ -4,7 +4,7 @@ from typing import Type, Union
 import math
 from lib.nn import ResidualBlock, ResidualGatedBlock
 from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
-
+import numpy as np
 
 class TopDownLayer(nn.Module):
     """
@@ -63,16 +63,30 @@ class TopDownLayer(nn.Module):
         # Define top layer prior parameters, possibly learnable
         # TODO hardcoded for now
         if is_top_layer:
-            chunk_values = torch.cat([
-                torch.full((1, 32, 8, 8), -6), 
-                torch.full((1, 32, 8, 8), -2),
-                torch.full((1, 32, 8, 8), 2),   
-                torch.full((1, 32, 8, 8), 6),   
-                torch.zeros((1, 128, 8, 8)),      
-            ], dim=1)  # Concatenate along the channel dimension
+            # chunk_values = torch.cat([
+            #     torch.full((1, 32, 8, 8), -6), 
+            #     torch.full((1, 32, 8, 8), -2),
+            #     torch.full((1, 32, 8, 8), 2),   
+            #     torch.full((1, 32, 8, 8), 6),   
+            #     torch.zeros((1, 128, 8, 8)),      
+            # ], dim=1)  # Concatenate along the channel dimension
 
+            scale = 2 / np.sqrt(2)
+            base_points = np.array([
+                    [1, 1, 1],
+                    [1, -1, -1],
+                    [-1, 1, -1],
+                    [-1, -1, 1]
+                ]) * scale
+            chunk_values = torch.zeros((4, 32, 8, 8))
+            chunk_values[0, :3, 3, 3] = torch.tensor(base_points[0])
+            chunk_values[1, :3, 3, 3] = torch.tensor(base_points[1])
+            chunk_values[2, :3, 3, 3] = torch.tensor(base_points[2])
+            chunk_values[3, :3, 3, 3] = torch.tensor(base_points[3])
+            chunk_values = torch.cat([chunk_values.view(1, 128, 8, 8),
+                                      torch.zeros((1, 128, 8, 8))], dim=1)
             # Convert to nn.Parameter
-            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=learn_top_prior)
+            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=False)
             # self.top_prior_params = nn.Parameter(
             #     torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
             # )

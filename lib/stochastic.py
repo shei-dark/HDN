@@ -231,33 +231,51 @@ class MixtureStochasticConvBlock(nn.Module):
             sampling_distrib = p_components
 
         batch_size = q_params.size(0) if q_params is not None else 1
-        
+
         if label is not None:
+            label = label.to(q_mu.device)
             z_samples = []
             for i, component in enumerate(q_components):
                 # Create a mask based on the label to select the correct component
                 mask = (label == i).float().view(batch_size, *[1] * (q_mu.ndim - 1))
-                mask = mask.to(q_mu.device)
+                # mask = mask.to(q_mu.device)
                 z_samples.append(component.sample() * mask)
+            
+            # Sample the mixture component
+            # component_distribution = Categorical(p_pi)
+            # Adjust the sampling based on q_params or p_params
+            # selected_component = component_distribution.sample(
+                # (batch_size,)
+            # )  # Sample a component for each batch entry
+            # Create z samples based on selected components
+            for i, component in enumerate(sampling_distrib):
+                # Reshape mask to match component's dimensions
+                mask = (
+                    (label == -2)
+                    .float()
+                    .view(batch_size, *[1] * (p_mu.ndim - 1))
+                )
+                z_samples.append(component.sample() * p_pi[i] * mask)
             z = torch.sum(torch.stack(z_samples), dim=0)
+            
         else:
             # Sample the mixture component
-            component_distribution = Categorical(p_pi)
+            # component_distribution = Categorical(p_pi)
             # Adjust the sampling based on q_params or p_params
-            selected_component = component_distribution.sample(
-                (batch_size,)
-            )  # Sample a component for each batch entry
+            # selected_component = component_distribution.sample(
+            #     (batch_size,)
+            # )  # Sample a component for each batch entry
 
             # Create z samples based on selected components
             z_samples = []
             for i, component in enumerate(sampling_distrib):
                 # Reshape mask to match component's dimensions
-                mask = (
-                    (selected_component == i)
-                    .float()
-                    .view(batch_size, *[1] * (p_mu.ndim - 1))
-                )
-                z_samples.append(component.sample() * mask)
+                # mask = (
+                #     (selected_component == i)
+                #     .float()
+                #     .view(batch_size, *[1] * (p_mu.ndim - 1))
+                # )
+                z_samples.append(component.sample() * p_pi[i])
 
             # Combine samples from all components based on selection
             z = torch.sum(torch.stack(z_samples), dim=0)

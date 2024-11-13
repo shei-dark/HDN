@@ -84,7 +84,7 @@ def _make_datamanager(
 def _filter_slices(image, label):
     # 23, 53, 13 number of slices for c1, c2 and c3 respectively are invalid
     valid_indices = ~np.all(label == -1, axis=(1, 2))
-    return image[valid_indices], label[valid_indices]
+    return image[valid_indices], label[valid_indices], valid_indices
 
 
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
