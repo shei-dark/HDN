@@ -24,6 +24,7 @@ from boilerplate import boilerplate
 from models.lvae import LadderVAE
 import lib.utils as utils
 import wandb
+import optuna
 
 wandb.require("core")
 
@@ -46,6 +47,7 @@ def train_network(
     amp=True,
     gradient_scale=8192,
     use_wandb=True,
+    trial=None,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -269,6 +271,12 @@ def train_network(
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item(),
                 }
             )
+        
+        if trial is not None:
+            trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()    
+        
         model.train()
 
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
@@ -311,3 +319,4 @@ def train_network(
         )
 
         print("----------------------------------------", flush=True)
+    return torch.mean(torch.stack(running_val_cl_loss)).item()

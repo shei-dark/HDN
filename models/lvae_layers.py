@@ -47,7 +47,8 @@ class TopDownLayer(nn.Module):
         top_prior_param_shape=None,
         analytical_kl=False,
         stochastic_block_type="normal",  # 'normal' or 'mixture'
-        n_components=4,  # Used only for Mixture block
+        n_components=4, # Used only for Mixture block
+        scale=4, 
     ):
 
         super().__init__()
@@ -71,7 +72,7 @@ class TopDownLayer(nn.Module):
             #     torch.zeros((1, 128, 8, 8)),      
             # ], dim=1)  # Concatenate along the channel dimension
 
-            scale = 2 / np.sqrt(2)
+            scale /= np.sqrt(2)
             base_points = np.array([
                     [1, 1, 1],
                     [1, -1, -1],

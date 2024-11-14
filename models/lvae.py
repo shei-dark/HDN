@@ -54,6 +54,7 @@ class LadderVAE(nn.Module):
         labeled_ratio=1,
         stochastic_block_type="normal",
         n_components=4,
+        scale=4,
     ):
 
         super().__init__()
@@ -93,6 +94,7 @@ class LadderVAE(nn.Module):
         self.labeled_ratio = labeled_ratio
         self.prior_type = stochastic_block_type
         self.n_components = n_components
+        self.scale = scale
 
         assert self.data_std is not None, "Data std is not specified"
         assert self.data_mean is not None, "Data mean is not specified"
@@ -201,6 +203,7 @@ class LadderVAE(nn.Module):
                     analytical_kl=analytical_kl,
                     stochastic_block_type=stochastic_block_type,
                     n_components=n_components,
+                    scale=scale,
                 )
             )
 
