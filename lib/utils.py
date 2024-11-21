@@ -516,46 +516,27 @@ def pos_neg_loss_pi(
     mu_chunks = mus.chunk(n_components, dim=1)
     std_chunks = stds.chunk(n_components, dim=1)
 
-    # Split mus into chunks for each component
-    mu_chunks = mus.chunk(num_classes, dim=1)
-    logits_list = []
-    target_list = []
+    mu_stack = torch.stack(mu_chunks, dim=1)[:small_batch_size].view(small_batch_size, n_components, -1)
 
-    for i in range(num_classes):
-        # Flatten mu for component i
-        mu_i = mu_chunks[i][:small_batch_size].view(small_batch_size, -1)
+    # Flatten to (batch_size * num_components, feature_dim)
+    mu_flat = mu_stack.view(-1, mu_stack.size(-1))
 
-        # Pass through linear layer
-        logits_i = linear(mu_i) / temperature  # Shape: (batch_size, num_classes)
+    # Pass through the linear layer
+    outputs_flat = linear(mu_flat)  # Shape: (batch_size * num_components, num_classes)
 
-        # Append logits to list
-        logits_list.append(logits_i)
+    # Reshape to (batch_size, num_components, num_classes)
+    outputs = outputs_flat.view(small_batch_size, n_components, -1)  # Shape: (batch_size, num_components, num_classes)
 
-        # Create target distributions
-        targets_i = torch.zeros_like(logits_i)
+    # Extract outputs_selected[s, l'] = outputs[s, l', l']
+    outputs_selected = outputs.diagonal(dim1=1, dim2=2)  # Shape: (batch_size, num_components)
 
-        # For samples where the true label is i (correct component)
-        correct_mask = (labels == i)
-        if correct_mask.any():
-            # One-hot target for correct component
-            targets_i[correct_mask, i] = 1.0
+    # Create targets: target[s, l'] = 1 if l' == label[s], else 0
+    targets = torch.zeros_like(outputs_selected)
+    targets[torch.arange(small_batch_size), labels] = 1.0
 
-        # For samples where the true label is not i (incorrect components)
-        incorrect_mask = ~correct_mask
-        if incorrect_mask.any():
-            # Uniform distribution over incorrect classes (excluding true label)
-            targets_i[incorrect_mask] = 1.0 / (num_classes - 1)
-            targets_i[incorrect_mask, labels[incorrect_mask]] = 0.0
+    # Compute binary cross-entropy loss with logits
+    loss = F.binary_cross_entropy_with_logits(outputs_selected, targets)
 
-        # Append targets to list
-        target_list.append(targets_i)
-
-    # Stack logits and targets
-    logits_all = torch.cat(logits_list, dim=0)  # Shape: (batch_size * num_classes, num_classes)
-    targets_all = torch.cat(target_list, dim=0)  # Shape: (batch_size * num_classes, num_classes)
-
-    # Compute cross-entropy loss with soft targets
-    loss = F.cross_entropy(logits_all, targets_all, reduction='mean')
 
     return loss
 
