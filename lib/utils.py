@@ -527,15 +527,20 @@ def pos_neg_loss_pi(
     # Reshape to (batch_size, num_components, num_classes)
     outputs = outputs_flat.view(small_batch_size, n_components, -1)  # Shape: (batch_size, num_components, num_classes)
 
-    # Extract outputs_selected[s, l'] = outputs[s, l', l']
-    outputs_selected = outputs.diagonal(dim1=1, dim2=2)  # Shape: (batch_size, num_components)
+    # Create target tensor of zeros
+    targets = torch.zeros_like(outputs)  # Shape: (batch_size, num_components, num_classes)
 
-    # Create targets: target[s, l'] = 1 if l' == label[s], else 0
-    targets = torch.zeros_like(outputs_selected)
-    targets[torch.arange(small_batch_size), labels] = 1.0
+    # Set targets[s, l, l] = 1 for each sample s with label l
+    for s in range(small_batch_size):
+        l = labels[s].item()
+        targets[s, l, l] = 1.0
+
+    # Flatten outputs and targets for loss computation
+    outputs_flat = outputs.view(small_batch_size,-1)
+    targets_flat = targets.view(small_batch_size,-1)
 
     # Compute binary cross-entropy loss with logits
-    loss = F.binary_cross_entropy_with_logits(outputs_selected, targets)
+    loss = F.binary_cross_entropy_with_logits(outputs_flat, targets_flat)
 
 
     return loss
