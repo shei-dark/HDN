@@ -470,7 +470,7 @@ def compute_cl_loss(
         lin_based_loss = pos_neg_loss_pi(
             mus[2], logvars[2], pis[2], labels=labels, labeled_ratio=labeled_ratio, linear=linear
         )
-        return lin_based_loss
+        # return lin_based_loss
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             [mus[2]], labels, margin, labeled_ratio
         )
@@ -516,9 +516,57 @@ def pos_neg_loss_pi(
     mu_chunks = mus.chunk(n_components, dim=1)
     std_chunks = stds.chunk(n_components, dim=1)
 
-    # List to hold the log probabilities for each component
+    # Split mus into chunks for each component
+    mu_chunks = mus.chunk(num_classes, dim=1)
     logits_list = []
+    target_list = []
 
+    for i in range(num_classes):
+        # Flatten mu for component i
+        mu_i = mu_chunks[i][:small_batch_size].view(small_batch_size, -1)
+
+        # Pass through linear layer
+        logits_i = linear(mu_i) / temperature  # Shape: (batch_size, num_classes)
+
+        # Append logits to list
+        logits_list.append(logits_i)
+
+        # Create target distributions
+        targets_i = torch.zeros_like(logits_i)
+
+        # For samples where the true label is i (correct component)
+        correct_mask = (labels == i)
+        if correct_mask.any():
+            # One-hot target for correct component
+            targets_i[correct_mask, i] = 1.0
+
+        # For samples where the true label is not i (incorrect components)
+        incorrect_mask = ~correct_mask
+        if incorrect_mask.any():
+            # Uniform distribution over incorrect classes (excluding true label)
+            targets_i[incorrect_mask] = 1.0 / (num_classes - 1)
+            targets_i[incorrect_mask, labels[incorrect_mask]] = 0.0
+
+        # Append targets to list
+        target_list.append(targets_i)
+
+    # Stack logits and targets
+    logits_all = torch.cat(logits_list, dim=0)  # Shape: (batch_size * num_classes, num_classes)
+    targets_all = torch.cat(target_list, dim=0)  # Shape: (batch_size * num_classes, num_classes)
+
+    # Compute cross-entropy loss with soft targets
+    loss = F.cross_entropy(logits_all, targets_all, reduction='mean')
+
+    return loss
+
+    # List to hold the log probabilities for each component
+    # logits_list = []
+    # selected_mus = []
+    # for s, l in enumerate(labels): # sample and label
+    #     selected_mus.append(mu_chunks[l][s].flatten())
+    # logits = linear(torch.stack(selected_mus))
+    # labels = labels.to(device=logits.device).long()
+    # return F.cross_entropy(logits, labels)
     for i in range(n_components):
         # Flatten each component's mu to shape (batch_size, 2048)
         flattened_mu = mu_chunks[i][:small_batch_size].view(
@@ -527,7 +575,7 @@ def pos_neg_loss_pi(
 
         # Apply the linear layer to obtain logits
         logits =  linear(
-            flattened_mu * pis[i]
+            flattened_mu #* pis[i]
         )  # Shape: (small_batch_size, out_features=4)
 
         # Add logits to the list for later use in calculating the similarity matrix
@@ -540,7 +588,7 @@ def pos_neg_loss_pi(
     similarity_matrix = similarity_matrix / temperature  # Scale by temperature
 
     # Move labels to the same device and type
-    labels = labels.to(device=similarity_matrix.device).long()
+    
 
     # Compute cross-entropy loss using the similarity matrix and the labels
     contrastive_loss = F.cross_entropy(similarity_matrix, labels)

@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/2D/scale_optuna.log
+#SBATCH --output=/group/jug/Sheida/HVAE/2D/new_cl_1.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
-#SBATCH --mem=128GB
+#SBATCH --mem=25GB
 #SBATCH --ntasks=8
 #SBATCH --job-name=2d_hvae
-#SBATCH --time=2-00:00:00
+#SBATCH --time=01:00:00
 #SBATCH --no-requeue
 
 
