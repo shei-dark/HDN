@@ -155,7 +155,7 @@ def train_network(
             cl_loss = outputs["cl_loss"]
             # cl_pos = outputs["cl_pos"]
             # cl_neg = outputs["cl_neg"]
-            loss = alpha * inpainting_loss + beta * kl_loss #+ repulsive
+            loss = alpha * inpainting_loss + beta * kl_loss + (0.01 * repulsive)
             if model.contrastive_learning:
                 loss += gamma * cl_loss
 
@@ -245,7 +245,7 @@ def train_network(
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss #+ val_repulsive
+                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + (0.1 * val_repulsive)
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
                     running_val_cl_loss.append(gamma * val_cl_loss)
@@ -320,3 +320,31 @@ def train_network(
 
         print("----------------------------------------", flush=True)
     return torch.mean(torch.stack(running_val_cl_loss)).item()
+
+
+def train_unet(unet, train_loader, val_loader, epochs=50, lr=3e-4, device="cuda"):
+    unet.to(device)
+    optimizer = optim.Adam(unet.parameters(), lr=lr)
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch in range(epochs):
+        unet.train()
+        train_loss = 0
+        for patches, labels in tqdm(train_loader, desc=f"Training Epoch {epoch+1}"):
+            patches, labels = patches.to(device), labels.to(device)
+            optimizer.zero_grad()
+            center_preds = unet(patches)
+            loss = criterion(center_preds, labels)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+
+        val_loss = 0
+        unet.eval()
+        with torch.no_grad():
+            for patches, labels in tqdm(val_loader, desc="Validating"):
+                patches, labels = patches.to(device), labels.to(device)
+                center_preds = unet(patches)
+                val_loss += criterion(center_preds, labels).item()
+
+        print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")

@@ -87,7 +87,7 @@ class TopDownLayer(nn.Module):
             chunk_values = torch.cat([chunk_values.view(1, 128, 8, 8),
                                       torch.zeros((1, 128, 8, 8))], dim=1)
             # Convert to nn.Parameter
-            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=True) # TODO
+            self.top_prior_params = nn.Parameter(chunk_values, requires_grad=False) # TODO
             # self.top_prior_params = nn.Parameter(
             #     torch.zeros(top_prior_param_shape), requires_grad=learn_top_prior
             # )

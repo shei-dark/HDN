@@ -4,8 +4,8 @@ sys.path.append("../../../")
 sys.path.append("/home/sheida.rahnamai/GIT/HDN/")
 import torch
 import numpy as np
-from sklearn.cluster import HDBSCAN
 from tqdm import tqdm
+from sklearn.cluster import MiniBatchKMeans
 
 # from lib.dataloader import CustomTestDataset
 from boilerplate.dataloader import CustomTestDataset
@@ -21,11 +21,7 @@ dist_metric = ["cosine"]
 
 num_clusters = 4
 patch_size = (1, 64, 64)
-mask_size = 5
-label_size = 5
-n_channel = 32
 hierarchy_level = 3
-
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
 
 One_test_image = ["high_c4"]
@@ -35,7 +31,6 @@ test_img_path = os.path.join(
     data_dir, One_test_image[0], f"{One_test_image[0]}_source.tif"
 )
 test_images = tiff.imread(test_img_path)
-
 # Print loaded test images paths
 print("Test image loaded from path:")
 print(test_img_path)
@@ -43,16 +38,23 @@ print(test_img_path)
 # Load test ground truth images
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
-
 model_dir = "/group/jug/Sheida/HVAE/2D/"
-img_idx = [500, 600, 700]
-model_versions = ["supervised_5x5_5x5"]
+img_idx = [626]
+model_versions = ["SEMI_added_linear_layer", "Semi1_Linear_and_Cdist"]
 batch_size = 512
+
+# kmeans = MiniBatchKMeans(
+#     n_clusters=num_clusters, random_state=42, batch_size=batch_size
+# )
+
 for test_index in img_idx:
     print("Processing test dataset")
     test_dataset = CustomTestDataset(
-        test_images, patch_size=patch_size, index=test_index, model="2D"
+        test_images, patch_size=(64, 64), index=test_index, stride=1, model="2D"
     )
+    # test_dataset = CustomTestDataset(
+    #     test_images, patch_size=patch_size, index=test_index, model="2D"
+    # )
     print("Test dataset loaded. Processing test dataloader")
     dataloader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
@@ -67,21 +69,62 @@ for test_index in img_idx:
         print(f"Processing image slice {test_index} with model version {model_v}")
         index = 0
         all_mus = np.zeros(
-            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
+            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
             dtype=np.float16,
         )
+        # Incrementally fit MiniBatchKMeans
+        # with torch.no_grad():
+        #     for batch in tqdm(dataloader):
+        #         # Normalize batch
+        #         batch = batch.to(device)
+        #         batch = (batch - data_mean) / data_std
+        #         output = model(batch)
+
+        #         # Flatten the output (assuming it's hierarchical VAE)
+        #         mu_test = output["mu"][-1].reshape(batch.shape[0], -1)
+        #         mu_test = np.array(mu_test.cpu().numpy())
+
+        #         # Fit MiniBatchKMeans on this batch
+        #         kmeans.partial_fit(mu_test)
+
+        # # Predict cluster labels for all patches (optional, for writing results)
+        # index = 0
+        # clusters = np.zeros(
+        #     (test_dataset.num_patches_y * test_dataset.num_patches_x), dtype=np.int32
+        # )
+        # with torch.no_grad():
+        #     for batch in tqdm(dataloader):
+        #         batch = batch.to(device)
+        #         batch = (batch - data_mean) / data_std
+        #         output = model(batch)
+        #         mu_test = output["mu"][-1].reshape(batch.shape[0], -1)
+        #         mu_test = np.array(mu_test.cpu().numpy())
+
+        #         # Predict clusters for this batch
+        #         cluster_labels = kmeans.predict(mu_test)
+        #         y_start = (index // test_dataset.num_patches_y) * batch_size
+        #         x_start = index % test_dataset.num_patches_x
+        #         clusters[index : index + batch.shape[0]] = cluster_labels
+        #         index += batch.shape[0]
+
+        # # Save cluster map
+        # tiff.imwrite(f"{model_dir}{model_v}/{test_index}.tif", clusters.reshape(test_dataset.num_patches_y, test_dataset.num_patches_x))
+        # tiff.imwrite(f"{model_dir}{model_v}/{test_index}_gt.tif", test_ground_truth_image[626])
+        # tiff.imwrite(f"{model_dir}{model_v}/{test_index}_source.tif", test_images[626])
         with torch.no_grad():
             for batch in tqdm(dataloader):
                 batch = batch.to(device)
                 batch = (batch - data_mean) / data_std
                 output = model(batch)
-                mu_test = torch.cat(
-                    [
-                        output["mu"][i].reshape(batch.shape[0], -1)
-                        for i in range(hierarchy_level)
-                    ],
-                    dim=1,
-                )
+                # mu_test = torch.cat(
+                #     [
+                #         output["mu"][i].reshape(batch.shape[0], -1)
+                #         for i in range(hierarchy_level)
+                #     ],
+                #     dim=1,
+                # )
+                # mu_test = output["mu"][-1].reshape(batch.shape[0], -1)
+                mu_test = torch.cat([output["mu"][i].reshape(batch.shape[0], -1) for i in range(hierarchy_level)], dim=1)
                 mu_test = np.array(mu_test.cpu().numpy())
                 all_mus[index : index + batch.shape[0]] = mu_test
                 index += batch.shape[0]

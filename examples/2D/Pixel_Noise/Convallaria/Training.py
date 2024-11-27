@@ -40,18 +40,18 @@ patch_size = 64
 gaussian_noise_std = None
 
 
-model_name = "2D_HVAE"
-directory_path = "/group/jug/Sheida/HVAE/2D/new_cl_5/"
+model_name = "EXTAC"
+directory_path = "/group/jug/Sheida/HVAE/TAC/ex_1/"
 noiseModel = None
 
 # Training-specific
 batch_size = 512
-lr = 3e-4
+lr = 3e-5
 max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-checkpoint = directory_path + "model/2D_HVAE_best_vae_0.net"
+checkpoint = "/group/jug/Sheida/HVAE/TAC//model/EXTAC_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -65,18 +65,18 @@ mask_size = 1
 label_size = 1
 mode = "1x1"
 contrastive_learning = True
-margin = 50
+margin = 2*scale
 lambda_contrastive = 0.5
 
 use_wandb = True
 
-semi_supervised = True
+semi_supervised = False
 labeled_ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
-percent_labeled = "1_percent"
+percent_labeled = "10_percent"
 
 train_labeled_indices = None
 val_labeled_indices = None
@@ -100,28 +100,46 @@ if semi_supervised:
 
 # train data
 
-data_dir = "/group/jug/Sheida/pancreatic beta cells/download/2d/"
+# data_dir = "/group/jug/Sheida/pancreatic beta cells/download/2d/"
+data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
 keys = ["high_c1", "high_c2", "high_c3"]
 
 # Load source images
-train_img_paths = [
-    os.path.join(data_dir + "train/" + key + f"/{key}_source.tif") for key in keys
-]
-train_lbl_paths = [
-    os.path.join(data_dir + "train/" + key + f"/{key}_gt.tif") for key in keys
-]
-val_img_paths = [
-    os.path.join(data_dir + "val/" + key + f"/{key}_source.tif") for key in keys
-]
-val_lbl_paths = [
-    os.path.join(data_dir + "val/" + key + f"/{key}_gt.tif") for key in keys
-]
+# train_img_paths = [
+#     os.path.join(data_dir + "train/" + key + f"/{key}_source.tif") for key in keys
+# ]
+# train_lbl_paths = [
+#     os.path.join(data_dir + "train/" + key + f"/{key}_gt.tif") for key in keys
+# ]
+# val_img_paths = [
+#     os.path.join(data_dir + "val/" + key + f"/{key}_source.tif") for key in keys
+# ]
+# val_lbl_paths = [
+#     os.path.join(data_dir + "val/" + key + f"/{key}_gt.tif") for key in keys
+# ]
 
-train_images = {key: tiff.imread(path) for key, path in zip(keys, train_img_paths)}
-train_labels = {key: tiff.imread(path) for key, path in zip(keys, train_lbl_paths)}
+img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
+lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
+imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
+lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
+train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
+# Validation indices
+# val_indices = np.arange(start_idx, end_idx)
+# Training indices (everything except validation indices)
+# train_indices = np.concatenate([
+#     np.arange(0, start_idx),
+#     np.arange(end_idx, num_samples)
+# ])
+for key in keys:
+    train_images[key] = imgs[key][: int(0.8 * imgs[key].shape[0])]
+    val_images[key] = imgs[key][int(0.8 * imgs[key].shape[0]) :]
+    train_labels[key] = lbls[key][: int(0.8 * imgs[key].shape[0])]
+    val_labels[key] = lbls[key][int(0.8 * imgs[key].shape[0]) :]
+# train_images = {key: tiff.imread(path) for key, path in zip(keys, train_img_paths)}
+# train_labels = {key: tiff.imread(path) for key, path in zip(keys, train_lbl_paths)}
 
-val_images = {key: tiff.imread(path) for key, path in zip(keys, val_img_paths)}
-val_labels = {key: tiff.imread(path) for key, path in zip(keys, val_lbl_paths)}
+# val_images = {key: tiff.imread(path) for key, path in zip(keys, val_img_paths)}
+# val_labels = {key: tiff.imread(path) for key, path in zip(keys, val_lbl_paths)}
 
 valid_train = {}
 valid_val = {}

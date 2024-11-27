@@ -36,7 +36,6 @@ class Custom2DDataset(Dataset):
             self.images = images
             self.labels = labels
             self._update_patches_by_label()
-            
 
     def __len__(self):
 
@@ -64,7 +63,7 @@ class Custom2DDataset(Dataset):
                             start : start + self.label_size,
                             start : start + self.label_size,
                         ]
-                        
+
                         unique_labels = np.unique(unique_label_area)
                         if len(unique_labels) == 1 and unique_labels[0] != -1:
                             center_label = unique_labels[0]
@@ -259,42 +258,110 @@ class Custom3DDataset(Dataset):
             patch, cls, label = self.all_patches[idx]
         return patch, cls, label
 
+import torch
+from torch.utils.data import Dataset
 
 class CustomTestDataset(Dataset):
-
     def __init__(self, image, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
+        """
+        Custom Dataset for extracting 2D/3D patches from test data.
 
+        Args:
+            image (ndarray): The input image (2D or 3D array).
+            patch_size (tuple): Size of the patches to extract (depth, height, width for 3D, height, width for 2D).
+            index (int): The depth slice index for 2D patching or center for 3D.
+            stride (int): Stride for patch extraction.
+            model (str): "2D" or "3D" mode to control patch dimensionality.
+        """
         self.image = image
         self.patch_size = patch_size
         self.stride = stride
-        self.all_patches = []  # List to store all patches (with different labels)
-        _, self.height, self.width = image.shape
-        self.depth = index - (patch_size[0] // 2)
-        self.num_patches_y = (self.height - patch_size[1]) // stride + 1
-        self.num_patches_x = (self.width - patch_size[2]) // stride + 1
         self.model = model
 
+        if model == "3D":
+            assert len(patch_size) == 3, "3D model requires a 3D patch size."
+            self.depth = index - (patch_size[0] // 2)
+        elif model == "2D":
+            assert len(patch_size) == 2, "2D model requires a 2D patch size."
+            self.patch_size = (1, *patch_size)  # Add a dummy depth for uniform handling
+            self.depth = index  # Fixed slice for 2D patches
+        else:
+            raise ValueError("Model type must be '2D' or '3D'.")
+
+        _, self.height, self.width = image.shape if model == "3D" else (1, *image.shape[1:])
+        self.num_patches_y = (self.height - self.patch_size[1]) // stride + 1
+        self.num_patches_x = (self.width - self.patch_size[2]) // stride + 1
+
     def __len__(self):
-        # return len(self.all_patches)
+        """Returns the total number of patches."""
         return self.num_patches_y * self.num_patches_x
 
     def __getitem__(self, index):
-        # return self.all_patches[index]
-        y = index // self.num_patches_x
-        x = index % self.num_patches_x
+        """
+        Extracts a patch based on the index.
 
-        # Extract the patch dynamically
-        patch = self.image[
-            self.depth : self.depth + self.patch_size[0],
-            y : y + self.patch_size[1],
-            x : x + self.patch_size[2],
-        ]
+        Args:
+            index (int): Index of the patch.
 
-        # Add a channel dimension to the patch (if needed)
-        patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dimension
-        if self.model == "2D":
-            patch_tensor = patch_tensor.squeeze(0)
+        Returns:
+            torch.Tensor: Extracted patch as a tensor.
+        """
+        y = (index // self.num_patches_x) * self.stride
+        x = (index % self.num_patches_x) * self.stride
+
+        if self.model == "3D":
+            patch = self.image[
+                self.depth : self.depth + self.patch_size[0],
+                y : y + self.patch_size[1],
+                x : x + self.patch_size[2],
+            ]
+        else:  # For 2D
+            patch = self.image[
+                self.depth,
+                y : y + self.patch_size[1],
+                x : x + self.patch_size[2],
+            ]
+
+        # Add a channel dimension for PyTorch compatibility
+        patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dim
         return patch_tensor
+
+
+# class CustomTestDataset(Dataset):
+
+#     def __init__(self, image, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
+
+#         self.image = image
+#         self.patch_size = patch_size
+#         self.stride = stride
+#         self.all_patches = []  # List to store all patches (with different labels)
+#         _, self.height, self.width = image.shape
+#         self.depth = index - (patch_size[0] // 2)
+#         self.num_patches_y = (self.height - patch_size[1]) // stride + 1
+#         self.num_patches_x = (self.width - patch_size[2]) // stride + 1
+#         self.model = model
+
+#     def __len__(self):
+#         # return len(self.all_patches)
+#         return self.num_patches_y * self.num_patches_x
+
+#     def __getitem__(self, index):
+#         # return self.all_patches[index]
+#         y = index // self.num_patches_x
+#         x = index % self.num_patches_x
+
+#         # Extract the patch dynamically
+#         patch = self.image[
+#             self.depth : self.depth + self.patch_size[0],
+#             y : y + self.patch_size[1],
+#             x : x + self.patch_size[2],
+#         ]
+
+#         # Add a channel dimension to the patch (if needed)
+#         patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dimension
+#         if self.model == "2D":
+#             patch_tensor = patch_tensor.squeeze(0)
+#         return patch_tensor
 
 
 class CombinedCustom3DDataset(Custom3DDataset):
