@@ -68,7 +68,7 @@ contrastive_learning = True
 margin = 2*scale
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
 semi_supervised = False
 labeled_ratio = 1

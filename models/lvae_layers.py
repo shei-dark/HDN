@@ -72,18 +72,22 @@ class TopDownLayer(nn.Module):
             #     torch.zeros((1, 128, 8, 8)),      
             # ], dim=1)  # Concatenate along the channel dimension
 
-            scale /= np.sqrt(2)
-            base_points = np.array([
-                    [1, 1, 1],
-                    [1, -1, -1],
-                    [-1, 1, -1],
-                    [-1, -1, 1]
-                ]) * scale
+            # scale /= np.sqrt(2)
+            # base_points = np.array([
+            #         [1, 1, 1],
+            #         [1, -1, -1],
+            #         [-1, 1, -1],
+            #         [-1, -1, 1]
+            #     ]) * scale
             chunk_values = torch.zeros((4, 32, 8, 8))
-            chunk_values[0, :3, 3, 3] = torch.tensor(base_points[0])
-            chunk_values[1, :3, 3, 3] = torch.tensor(base_points[1])
-            chunk_values[2, :3, 3, 3] = torch.tensor(base_points[2])
-            chunk_values[3, :3, 3, 3] = torch.tensor(base_points[3])
+            # chunk_values[0, :3, 3, 3] = torch.tensor(base_points[0])
+            # chunk_values[1, :3, 3, 3] = torch.tensor(base_points[1])
+            # chunk_values[2, :3, 3, 3] = torch.tensor(base_points[2])
+            # chunk_values[3, :3, 3, 3] = torch.tensor(base_points[3])
+            chunk_values[0] = 0.024886550649173455
+            chunk_values[1] = -0.2425339567969966
+            chunk_values[2] = 0.006688461536150142
+            chunk_values[3] = -0.23896780766486475
             chunk_values = torch.cat([chunk_values.view(1, 128, 8, 8),
                                       torch.zeros((1, 128, 8, 8))], dim=1)
             # Convert to nn.Parameter
