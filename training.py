@@ -134,7 +134,6 @@ def train_network(
         # running_cl_neg = []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-
             x = x.squeeze(0)
             y = y.squeeze(0)
             z = z.squeeze(0)
@@ -268,14 +267,14 @@ def train_network(
                     # "val repulsive": torch.mean(
                     #     torch.stack(running_val_repulsive_loss)
                     # ).item(),
-                    "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item(),
+                    "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }
             )
         
-        if trial is not None:
-            trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
-            if trial.should_prune():
-                raise optuna.exceptions.TrialPruned()    
+        # if trial is not None:
+        #     trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
+        #     if trial.should_prune():
+        #         raise optuna.exceptions.TrialPruned()    
         
         model.train()
 
@@ -319,7 +318,7 @@ def train_network(
         )
 
         print("----------------------------------------", flush=True)
-    return torch.mean(torch.stack(running_val_cl_loss)).item()
+    # return torch.mean(torch.stack(running_val_cl_loss)).item()
 
 
 def train_unet(unet, train_loader, val_loader, epochs=50, lr=3e-4, device="cuda"):

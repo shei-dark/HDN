@@ -400,12 +400,18 @@ def compute_cl_loss(
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             mus, labels, margin=margin, labeled_ratio=labeled_ratio
         )
-
+    elif prior == "normal":
+        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_normal(
+            mus, labels, margin=margin, labeled_ratio=labeled_ratio
+        )
+        
     neg_thetas = get_thetas(neg_pair_loss_terms)
     weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)
     contrastive_loss = (
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
-    ) + lin_based_loss * 10
+    )
+    if prior == 'mixture':
+        contrastive_loss += lin_based_loss * 10
     return contrastive_loss
 
 
@@ -528,6 +534,54 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
 
     return pos_pair_loss, neg_pair_loss_terms
 
+def pos_neg_loss_normal(mus, labels, margin=50.0, labeled_ratio=1):
+
+    batch_size = len(mus[0])
+    device = mus[0].device
+    small_batch_size = int(batch_size * labeled_ratio)
+
+    labels = labels[:small_batch_size]
+    num_classes = torch.unique(labels).size(0)
+    labels = labels.unsqueeze(0)
+    boolean_matrix = (labels == labels.T).to(device=device)
+    mask = torch.eye(small_batch_size, dtype=torch.bool).to(device)
+    boolean_matrix = boolean_matrix.masked_fill(mask, 0)
+    
+    pos_pair_loss = 0
+    neg_pair_loss_terms = {}
+
+    for index, mu in enumerate(mus):
+        mus = mu.view(1, batch_size, -1)
+        mus = mus[:, :small_batch_size]
+
+        dist = torch.cdist(mus, mus, p=2).squeeze(0)
+
+        dist = torch.clamp(dist, min=1e-6, max=1e6)
+    
+        pos_pair_loss += (torch.sum(boolean_matrix * dist)/(torch.sum(boolean_matrix)*(2**(2-index))))
+        
+        for i in range(num_classes - 1):
+            for j in range(i + 1, num_classes):
+                mask_i = labels == i
+                mask_j = labels == j
+                mask_ij = mask_i & mask_j.T
+
+                neg_bool_matrix = mask_ij.to(device=device)
+                neg_loss = custom_distance_loss_masked(dist, neg_bool_matrix, margin=margin)
+
+                num_neg_pairs = torch.sum(neg_bool_matrix)
+                if num_neg_pairs == 0:
+                    neg_loss = torch.tensor(0.0, device=device)
+                else:
+                    neg_loss /= (num_neg_pairs*(2**(2-index)))
+
+                if f"{i}{j}" in neg_pair_loss_terms.keys():
+                    neg_pair_loss_terms[f"{i}{j}"] += neg_loss
+                else:
+                    neg_pair_loss_terms[f"{i}{j}"] = neg_loss
+
+    return pos_pair_loss, neg_pair_loss_terms
+
 
 def custom_distance_loss_masked(distances, mask, margin=16.0, epsilon=1e-6, alpha=1.0):
     """
@@ -556,8 +610,6 @@ def custom_distance_loss_masked(distances, mask, margin=16.0, epsilon=1e-6, alph
     
     # Leave distances greater than or equal to margin untouched or reward
     # mask_large = masked_distances >= margin
-    # reward_large = masked_distances[mask_large]  # You can modify this for additional rewards
-    # loss[mask_large] = reward_large
     
     # Sum up the loss
     return loss.sum()

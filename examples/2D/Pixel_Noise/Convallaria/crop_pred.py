@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-dist_metric = ["euclidean"]
+dist_metric = ["cosine"]
 
 num_clusters = 4
 patch_size = (1, 64, 64)
@@ -39,13 +39,10 @@ print(test_img_path)
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/TAC/"
-img_idx = np.arange(48, 1015)
-model_versions = ["ex_1"]
+img_idx = [626]
+model_versions = ["ex_2", "ex_3", "ex_4", "ex_5"]
 batch_size = 1024
 
-# kmeans = MiniBatchKMeans(
-#     n_clusters=num_clusters, random_state=42, batch_size=batch_size
-# )
 
 for test_index in tqdm(img_idx):
     print("Processing test dataset")
@@ -68,23 +65,21 @@ for test_index in tqdm(img_idx):
         device = model.device
         print(f"Processing image slice {test_index} with model version {model_v}")
         index = 0
-        all_mus = np.zeros(
-            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
-            dtype=np.float16,
-        )
+        if model_v == "ex_2" or model_v == "ex_5":
+            all_mus = np.zeros(
+                ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
+                dtype=np.float16,
+            )
+        else:
+            all_mus = np.zeros(
+                ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
+                dtype=np.float16,
+            )
         with torch.no_grad():
             for batch in tqdm(dataloader):
                 batch = batch.to(device)
                 batch = (batch - data_mean) / data_std
                 output = model(batch)
-                # mu_test = torch.cat(
-                #     [
-                #         output["mu"][i].reshape(batch.shape[0], -1)
-                #         for i in range(hierarchy_level)
-                #     ],
-                #     dim=1,
-                # )
-                # mu_test = output["mu"][-1].reshape(batch.shape[0], -1)
                 mu_test = torch.cat([output["mu"][i].reshape(batch.shape[0], -1) for i in range(hierarchy_level)], dim=1)
                 mu_test = np.array(mu_test.cpu().numpy())
                 all_mus[index : index + batch.shape[0]] = mu_test

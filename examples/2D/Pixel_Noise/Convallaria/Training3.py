@@ -41,7 +41,7 @@ gaussian_noise_std = None
 
 
 model_name = "EXTAC"
-directory_path = "/group/jug/Sheida/HVAE/TAC/ex_7/"
+directory_path = "/group/jug/Sheida/HVAE/TAC/ex_3/"
 noiseModel = None
 
 # Training-specific
@@ -68,12 +68,12 @@ contrastive_learning = False
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
 semi_supervised = False
 labeled_ratio = 1
 
-stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+stochastic_block_type = "normal"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
 percent_labeled = "10_percent"
@@ -163,15 +163,17 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
+stride = 10
+
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
     train_images[key] = (train_images[key] - data_mean) / data_std
     val_images[key] = (val_images[key] - data_mean) / data_std
 train_set = Custom2DDataset(
-    train_images, train_labels, patch_size, mask_size, label_size, train_labeled_indices
+    train_images, train_labels, patch_size, mask_size, label_size, stride, train_labeled_indices
 )
 val_set = Custom2DDataset(
-    val_images, val_labels, patch_size, mask_size, label_size, val_labeled_indices
+    val_images, val_labels, patch_size, mask_size, label_size, stride, val_labeled_indices
 )
 
 if semi_supervised:

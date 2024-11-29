@@ -61,10 +61,10 @@ alpha = 1
 beta = 1e-3
 gamma = 1
 # contrastive
-mask_size = 1
-label_size = 1
+mask_size = 5
+label_size = 5
 mode = "1x1"
-contrastive_learning = False
+contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
@@ -163,15 +163,17 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
+stride = 64
+
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
     train_images[key] = (train_images[key] - data_mean) / data_std
     val_images[key] = (val_images[key] - data_mean) / data_std
 train_set = Custom2DDataset(
-    train_images, train_labels, patch_size, mask_size, label_size, train_labeled_indices
+    train_images, train_labels, patch_size, mask_size, label_size, stride, train_labeled_indices
 )
 val_set = Custom2DDataset(
-    val_images, val_labels, patch_size, mask_size, label_size, val_labeled_indices
+    val_images, val_labels, patch_size, mask_size, label_size, stride, val_labeled_indices
 )
 
 if semi_supervised:
