@@ -40,7 +40,7 @@ test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_g
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/TAC/"
 img_idx = [626]
-model_versions = ["ex_2", "ex_3", "ex_4", "ex_5"]
+model_versions = ["ex_13"]
 batch_size = 1024
 
 
@@ -49,9 +49,6 @@ for test_index in tqdm(img_idx):
     test_dataset = CustomTestDataset(
         test_images, patch_size=(64, 64), index=test_index, stride=1, model="2D"
     )
-    # test_dataset = CustomTestDataset(
-    #     test_images, patch_size=patch_size, index=test_index, model="2D"
-    # )
     print("Test dataset loaded. Processing test dataloader")
     dataloader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
@@ -65,16 +62,15 @@ for test_index in tqdm(img_idx):
         device = model.device
         print(f"Processing image slice {test_index} with model version {model_v}")
         index = 0
-        if model_v == "ex_2" or model_v == "ex_5":
-            all_mus = np.zeros(
-                ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
-                dtype=np.float16,
-            )
-        else:
-            all_mus = np.zeros(
-                ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
-                dtype=np.float16,
-            )
+        
+        all_mus = np.zeros(
+            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
+            dtype=np.float16,
+        )
+        # all_mus = np.zeros(
+        #     ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
+        #     dtype=np.float16,
+        # )
         with torch.no_grad():
             for batch in tqdm(dataloader):
                 batch = batch.to(device)
