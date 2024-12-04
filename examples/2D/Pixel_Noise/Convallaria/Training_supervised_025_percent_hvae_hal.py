@@ -30,7 +30,6 @@ import pickle
 # import optuna
 
 
-    
 scale = 8
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
@@ -41,7 +40,7 @@ gaussian_noise_std = None
 
 
 model_name = "EXTAC"
-directory_path = "/group/jug/Sheida/HVAE/TAC/ex_8/"
+directory_path = "/group/jug/Sheida/HVAE/TAC/supervised_025_percent_hvae_hal/"
 noiseModel = None
 
 # Training-specific
@@ -51,7 +50,7 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
+# checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -59,10 +58,10 @@ batchnorm = True
 free_bits = 0.0
 alpha = 1
 beta = 1e-3
-gamma = 1
+gamma = 1e-1
 # contrastive
-mask_size = 5
-label_size = 3
+mask_size = 1
+label_size = 1
 mode = "1x1"
 contrastive_learning = True
 margin = 50
@@ -82,21 +81,7 @@ train_labeled_indices = None
 val_labeled_indices = None
 
 if semi_supervised:
-    labeled_ratio = 0.5
-    classes = ["uncategorized", "nucleus", "granule", "mitochondria"]
-    train_labeled_indices = []
-    val_labeled_indices = []
-    for cls in classes:
-        with open(
-            f"/group/jug/Sheida/pancreatic beta cells/download/2d/train/{mode}/{percent_labeled}_{cls}.pickle",
-            "rb",
-        ) as file:
-            train_labeled_indices.extend(pickle.load(file))
-        with open(
-            f"/group/jug/Sheida/pancreatic beta cells/download/2d/val/{mode}/{percent_labeled}_{cls}.pickle",
-            "rb",
-        ) as file:
-            val_labeled_indices.extend(pickle.load(file))
+    labeled_ratio = 0.25
 
 # train data
 
@@ -132,9 +117,13 @@ train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
 # ])
 for key in keys:
     train_images[key] = imgs[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_images[key] = imgs[key][np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])]
+    val_images[key] = imgs[key][
+        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
+    ]
     train_labels[key] = lbls[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_labels[key] = lbls[key][np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])]
+    val_labels[key] = lbls[key][
+        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
+    ]
 # train_images = {key: tiff.imread(path) for key, path in zip(keys, train_img_paths)}
 # train_labels = {key: tiff.imread(path) for key, path in zip(keys, train_lbl_paths)}
 
@@ -163,17 +152,30 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-stride = 64
+train_stride = 64
+val_stride = 40
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
     train_images[key] = (train_images[key] - data_mean) / data_std
     val_images[key] = (val_images[key] - data_mean) / data_std
 train_set = Custom2DDataset(
-    train_images, train_labels, patch_size, mask_size, label_size, stride, train_labeled_indices
+    train_images,
+    train_labels,
+    patch_size,
+    mask_size,
+    label_size,
+    train_stride,
+    train_labeled_indices,
 )
 val_set = Custom2DDataset(
-    val_images, val_labels, patch_size, mask_size, label_size, stride, val_labeled_indices
+    val_images,
+    val_labels,
+    patch_size,
+    mask_size,
+    label_size,
+    val_stride,
+    val_labeled_indices,
 )
 
 if semi_supervised:

@@ -40,7 +40,7 @@ test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_g
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/TAC/"
 img_idx = [626]
-model_versions = ["ex_13"]
+model_versions = ["ex_15"]
 batch_size = 1024
 
 
