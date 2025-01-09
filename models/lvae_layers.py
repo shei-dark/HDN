@@ -6,6 +6,7 @@ from lib.nn import ResidualBlock, ResidualGatedBlock
 from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
 import numpy as np
 
+
 class TopDownLayer(nn.Module):
     """
     Top-down layer, including stochastic sampling, KL computation, and small
@@ -47,8 +48,8 @@ class TopDownLayer(nn.Module):
         top_prior_param_shape=None,
         analytical_kl=False,
         stochastic_block_type="normal",  # 'normal' or 'mixture'
-        n_components=4, # Used only for Mixture block
-        scale=4, 
+        n_components=4,  # Used only for Mixture block
+        scale=4,
     ):
 
         super().__init__()
@@ -65,15 +66,18 @@ class TopDownLayer(nn.Module):
         # TODO hardcoded for now
         if is_top_layer:
             if stochastic_block_type == "mixture":
+                # TODO hardcoded for now
                 chunk_values = torch.zeros((4, 32, 8, 8))
                 chunk_values[0, :8] = 2.0
                 chunk_values[1, 8:16] = 2.0
                 chunk_values[2, 16:24] = 2.0
                 chunk_values[3, 24:] = 2.0
-                chunk_values = torch.cat([chunk_values.view(1, 128, 8, 8),
-                                        torch.zeros((1, 128, 8, 8))], dim=1)
+                chunk_values = torch.cat(
+                    [chunk_values.view(1, 128, 8, 8), torch.zeros((1, 128, 8, 8))],
+                    dim=1,
+                )
                 # Convert to nn.Parameter
-                self.top_prior_params = nn.Parameter(chunk_values, requires_grad=False) # TODO
+                self.top_prior_params = nn.Parameter(chunk_values, requires_grad=False)
             else:
                 self.top_prior_params = nn.Parameter(
                     torch.zeros(top_prior_param_shape), requires_grad=False
@@ -175,6 +179,7 @@ class TopDownLayer(nn.Module):
         force_constant_output=False,
         mode_pred=False,
         use_uncond_mode=False,
+        epoch=0,
     ):
 
         # Check consistency of arguments
@@ -220,6 +225,7 @@ class TopDownLayer(nn.Module):
             analytical_kl=self.analytical_kl,
             mode_pred=mode_pred,
             use_uncond_mode=use_uncond_mode,
+            epoch=epoch,
         )
 
         # Skip connection from previous layer
@@ -241,6 +247,7 @@ class TopDownLayer(nn.Module):
             "mu",
             "logvar",
             "pi",
+            "temperature",
         ]
         data = {k: data_stoch[k] for k in keys}
         return x, x_pre_residual, data

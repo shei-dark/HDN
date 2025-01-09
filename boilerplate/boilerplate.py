@@ -102,14 +102,14 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     return optimizer, scheduler
 
 
-def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
+def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> dict:
 
     x_masked = mask_input(x, model)
     x_masked = x_masked.to(device, non_blocking=True)
     assert not torch.isnan(x_masked).any(), "Input contains NaNs!"
     assert not torch.isinf(x_masked).any(), "Input contains Infs!"
     with autocast(enabled=amp):
-        model_out = model(x=x_masked, y=y, x_orig=x)
+        model_out = model(x=x_masked, y=y, x_orig=x, epoch=epoch)
     if model.mode_pred is False:
 
         recons_sep = -model_out["ll"]
@@ -139,6 +139,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
             # "thetas": thetas,
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
+            "temperature": model_out["temperature"],
         }
 
     else:

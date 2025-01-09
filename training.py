@@ -134,9 +134,9 @@ def train_network(
         # running_cl_neg = []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
+        # for idx, (x, y) in tqdm(enumerate(train_loader), desc="Training"):
             x = x.squeeze(0)
             y = y.squeeze(0)
-            z = z.squeeze(0)
             x = x.to(device=device, dtype=torch.float)
 
             optimizer.zero_grad()
@@ -145,7 +145,7 @@ def train_network(
                 print("x has nan or inf")
                 continue
             outputs = boilerplate.forward_pass(
-                x, y, device, model, gaussian_noise_std, amp=amp
+                x, y, device, model, gaussian_noise_std, amp=amp, epoch=epoch
             )
 
             inpainting_loss = outputs["inpainting_loss"]
@@ -178,6 +178,7 @@ def train_network(
                         # "PPL": cl_pos,
                         # "NPL": cl_neg,
                         "Total": loss,
+                        "temperature": outputs["temperature"],
                     },
                     commit=True,
                 )
@@ -197,7 +198,7 @@ def train_network(
             scaler.update()
             model.increment_global_step()
             step = model.global_step
-
+        
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
 
@@ -270,7 +271,8 @@ def train_network(
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }
             )
-        
+        # beta /= 5
+        gamma /= 5
         # if trial is not None:
         #     trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
         #     if trial.should_prune():

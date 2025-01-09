@@ -10,6 +10,118 @@ from tqdm import tqdm
 from random import shuffle
 import torch.nn.functional as F
 import random
+import struct
+from array import array
+
+
+class MnistDataloader(object):
+    def __init__(
+        self,
+        training_images_filepath,
+        training_labels_filepath,
+        test_images_filepath,
+        test_labels_filepath,
+    ):
+        self.training_images_filepath = training_images_filepath
+        self.training_labels_filepath = training_labels_filepath
+        self.test_images_filepath = test_images_filepath
+        self.test_labels_filepath = test_labels_filepath
+
+    def read_images_labels(self, images_filepath, labels_filepath):
+        labels = []
+        with open(labels_filepath, "rb") as file:
+            magic, size = struct.unpack(">II", file.read(8))
+            if magic != 2049:
+                raise ValueError(
+                    "Magic number mismatch, expected 2049, got {}".format(magic)
+                )
+            labels = array("B", file.read())
+
+        with open(images_filepath, "rb") as file:
+            magic, size, rows, cols = struct.unpack(">IIII", file.read(16))
+            if magic != 2051:
+                raise ValueError(
+                    "Magic number mismatch, expected 2051, got {}".format(magic)
+                )
+            image_data = array("B", file.read())
+        images = []
+        for i in range(size):
+            images.append([0] * rows * cols)
+        for i in range(size):
+            img = np.array(image_data[i * rows * cols : (i + 1) * rows * cols])
+            img = img.reshape(28, 28)
+            images[i][:] = img
+
+        return images, labels
+
+    def load_data(self):
+        x_train, y_train = self.read_images_labels(
+            self.training_images_filepath, self.training_labels_filepath
+        )
+        x_test, y_test = self.read_images_labels(
+            self.test_images_filepath, self.test_labels_filepath
+        )
+        return (x_train, y_train), (x_test, y_test)
+
+
+class CustomMnistDataset(Dataset):
+    def __init__(
+        self,
+        images,
+        labels,
+        patch_size=28,
+        mask_size=5,
+        semi_supervised=False,
+        ratio=0.5,
+    ):
+        self.images = images
+        self.labels = labels
+        self.patch_size = patch_size
+        self.mask_size = mask_size
+        self.semi_supervised = semi_supervised
+        if ratio is None:
+            self.ratio = 1
+        self.patches_by_label = self._compute_valid_patches()
+
+    def _compute_valid_patches(self):
+        """Precompute metadata for valid patches."""
+        patches_by_label = {}
+        for index, lbl in enumerate(self.labels):
+            if lbl not in patches_by_label:
+                patches_by_label[lbl] = []
+            patches_by_label[lbl].append(index)
+        return patches_by_label
+
+    def __len__(self):
+        """Return the number of valid patches."""
+        if self.semi_supervised:
+            return int(len(self.images) / self.ratio)
+        else:
+            return len(self.images)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, list):  # Check if idx is a list of indices
+            # Fetch all patches corresponding to the indices in the list
+            patches = [
+                (self.images[i], self.labels[i])
+                for i in idx
+                if i < int(len(self.images) / self.ratio)
+            ]
+            if self.semi_supervised:
+                random_patches = [
+                    (self.images[i], -2)
+                    for i in idx
+                    if i >= int(len(self.images) / self.ratio)
+                ]
+                patches += random_patches
+            patches, labels = zip(*patches)  # Unpack the tuples into separate lists
+
+            return torch.unsqueeze(torch.tensor(patches), 1), torch.tensor(labels)
+        else:  # Single index
+            # Fetch the patch corresponding to a single index
+            x = self.images[idx]
+            y = self.labels[idx]
+            return torch.unsqueeze(torch.tensor(x), 1), torch.tensor(y)
 
 
 class Custom2DDataset(Dataset):
@@ -21,8 +133,8 @@ class Custom2DDataset(Dataset):
         mask_size=5,
         label_size=5,
         stride=64,
-        semi_supervised=False,
-        ratio=0.5,
+        mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
+        ratio=0.25,  # For 'mixed' mode, labeled data ratio in each batch
     ):
         self.patch_size = patch_size
         self.mask_size = mask_size
@@ -31,11 +143,15 @@ class Custom2DDataset(Dataset):
         self.images = images
         self.labels = labels
         self.keys = list(images.keys())
-        self.semi_supervised = semi_supervised
         self.all_patches, self.patches_by_label = (
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
+        self.mode = mode
         self.ratio = ratio
+
+    def set_mode(self, mode):
+        """Set the current mode of the dataset."""
+        self.mode = mode
 
     def _compute_valid_patches(self):
         """Precompute metadata for valid patches."""
@@ -69,27 +185,65 @@ class Custom2DDataset(Dataset):
         return all_patches, patches_by_label
 
     def __len__(self):
-        """Return the number of valid patches."""
-        if self.semi_supervised:
-            return int(len(self.all_patches)/self.ratio)
-        else:
+        """Return dataset size based on mode."""
+        if self.mode == "supervised":
             return len(self.all_patches)
+        elif self.mode == "unsupervised":
+            return len(self.all_patches)  # Assume same size for simplicity
+        elif self.mode == "mixed":
+            return len(self.all_patches) + int(
+                len(self.all_patches) * (1 - self.ratio) / self.ratio
+            )
 
     def __getitem__(self, idx):
-        if isinstance(idx, list):  # Check if idx is a list of indices
-            # Fetch all patches corresponding to the indices in the list
-            patches = [self._get_patch_by_metadata(self.all_patches[i]) for i in idx if i < len(self.all_patches)]
-            if self.semi_supervised:
-                random_patches = [self._get_random_patch() for i in idx if i >= len(self.all_patches)]
-                patches += random_patches
-            patches, clss, labels = zip(
-                *patches
-            )  # Unpack the tuples into separate lists
-            return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+        if isinstance(idx, list):  # Batch request
+            if self.mode == "supervised":
+                # Fetch all labeled patches corresponding to the indices
+                labeled_patches = [
+                    self._get_patch_by_metadata(self.all_patches[i])
+                    for i in idx
+                    if i < len(self.all_patches)
+                ]
+                patches, clss, labels = zip(*labeled_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
+            elif self.mode == "unsupervised":
+                # Fetch random patches for all indices
+                random_patches = [self._get_random_patch() for _ in idx]
+                patches, clss, labels = zip(*random_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
+            elif self.mode == "mixed":
+                labeled_count = int(len(idx) * self.ratio)
+                random_count = len(idx) - labeled_count
+
+                # Fetch labeled and random patches
+                labeled_indices = idx[:labeled_count]
+                labeled_patches = [
+                    self._get_patch_by_metadata(self.all_patches[i])
+                    for i in labeled_indices
+                ]
+                random_patches = [self._get_random_patch() for _ in range(random_count)]
+
+                # Combine and return
+                all_patches = labeled_patches + random_patches
+                patches, clss, labels = zip(*all_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
         else:  # Single index
-            # Fetch the patch corresponding to a single index
-            key, img_idx, y, x = self.all_patches[idx]
-            return self._get_patch_by_metadata((key, img_idx, y, x))
+            if self.mode == "supervised":
+                key, img_idx, y, x = self.all_patches[idx]
+                return self._get_patch_by_metadata((key, img_idx, y, x))
+
+            elif self.mode == "unsupervised":
+                return self._get_random_patch()
+
+            elif self.mode == "mixed":
+                if idx < len(self.all_patches):
+                    key, img_idx, y, x = self.all_patches[idx]
+                    return self._get_patch_by_metadata((key, img_idx, y, x))
+                else:
+                    return self._get_random_patch()
 
     def _get_patch_by_metadata(self, metadata):
         """Extract a patch dynamically based on metadata."""
@@ -570,10 +724,10 @@ class CombinedBatchSampler(Sampler):
             attribute for labeled patches.
         batch_size : int
             The total number of samples in each batch.
-        
+
         """
         self.label_to_indices = dataset.patches_by_label
-        self.random_indices = range(int(len(dataset)*labeled_ratio),len(dataset))
+        self.random_indices = range(int(len(dataset) * labeled_ratio), len(dataset))
         for key in self.label_to_indices:
             shuffle(self.label_to_indices[key])
         self.batch_size = batch_size
@@ -625,3 +779,22 @@ class CombinedBatchSampler(Sampler):
     def __len__(self):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
         return (max_class_size * self.num_labels) // self.small_batch_size
+
+class DynamicSampler(Sampler):
+    def __init__(self, dataset, batch_size, labeled_ratio=0.25):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.labeled_ratio = labeled_ratio
+
+    def __iter__(self):
+        if self.dataset.mode == "supervised":
+            sampler = BalancedBatchSampler(self.dataset, self.batch_size)
+        elif self.dataset.mode == "unsupervised":
+            sampler = CombinedBatchSampler(self.dataset, self.batch_size, labeled_ratio=0)
+        elif self.dataset.mode == "mixed":
+            sampler = CombinedBatchSampler(self.dataset, self.batch_size, labeled_ratio=0.25)
+
+        yield from iter(sampler)
+
+    def __len__(self):
+        return len(self.dataset) // self.batch_size

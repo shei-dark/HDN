@@ -247,14 +247,14 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x, y=None, x_orig=None):
+    def forward(self, x, y=None, x_orig=None, epoch=0):
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x, self.conv_mult)
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(y, bu_values)
+        out, td_data = self.topdown_pass(y, bu_values, epoch=epoch)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
@@ -308,6 +308,7 @@ class LadderVAE(nn.Module):
             "out_mode": likelihood_info["mode"],
             "out_sample": likelihood_info["sample"],
             "likelihood_params": likelihood_info["params"],
+            "temperature": td_data["temperature"][-1],
         }
         return output
 
@@ -332,6 +333,7 @@ class LadderVAE(nn.Module):
         mode_layers=None,
         constant_layers=None,
         forced_latent=None,
+        epoch=0,
     ):
 
         # Default: no layer is sampled from the distribution's mode
@@ -364,6 +366,7 @@ class LadderVAE(nn.Module):
 
         # KL divergence of each layer
         kl = [None] * self.n_layers
+        temperature = [None] * self.n_layers
 
         repulsive = [None] * self.n_layers
 
@@ -408,9 +411,11 @@ class LadderVAE(nn.Module):
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
                 use_uncond_mode=use_uncond_mode,
+                epoch=epoch,
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
+            temperature[i] = aux["temperature"]
             repulsive[i] = aux["repulsive"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
@@ -430,6 +435,7 @@ class LadderVAE(nn.Module):
             "mu": mu,
             "logvar": logvar,
             "pi": pi,
+            "temperature": temperature,
         }
         return out, data
 

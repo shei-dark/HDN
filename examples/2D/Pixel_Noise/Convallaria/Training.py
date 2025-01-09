@@ -1,34 +1,21 @@
 import os
 import warnings
-
 warnings.filterwarnings("ignore")
 # We import all our dependencies.
 import numpy as np
 import torch
 import sys
-
 sys.path.insert(0, "/home/sheida.rahnamai/GIT/HDN/")
 from torch.utils.data import DataLoader
 from boilerplate import boilerplate
 from models.lvae import LadderVAE
 from boilerplate.dataloader import (
     Custom2DDataset,
-    BalancedBatchSampler,
-    CombinedBatchSampler,
+    DynamicSampler
 )
-import lib.utils as utils
 import training
-from tifffile import imread
-from scipy import ndimage
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 import tifffile as tiff
-from glob import glob
-from itertools import chain
-import pickle
-
-# import optuna
-
 
 scale = 8
 use_cuda = torch.cuda.is_available()
@@ -39,8 +26,8 @@ patch_size = 64
 gaussian_noise_std = None
 
 
-model_name = "EXTAC"
-directory_path = "/group/jug/Sheida/HVAE/TAC/half_semisupervised_025_percent_hvae_hal/"
+model_name = "epsilon_seg"
+directory_path = "/group/jug/Sheida/HVAE/Epsilon/250107_1/"
 noiseModel = None
 
 # Training-specific
@@ -50,14 +37,14 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-# checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
 batchnorm = True
 free_bits = 0.0
 alpha = 1
-beta = 1e-3
+beta = 1e-4
 gamma = 1e-1
 # contrastive
 mask_size = 1
@@ -69,19 +56,13 @@ lambda_contrastive = 0.5
 
 use_wandb = True
 
-semi_supervised = True
-labeled_ratio = 1
+mode = 'supervised'
+ratio = 0.25
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
 percent_labeled = "10_percent"
-
-train_labeled_indices = None
-val_labeled_indices = None
-
-if semi_supervised:
-    labeled_ratio = 0.5
 
 # train data
 
@@ -140,7 +121,6 @@ train_set = Custom2DDataset(
     mask_size,
     label_size,
     train_stride,
-    train_labeled_indices,
 )
 val_set = Custom2DDataset(
     val_images,
@@ -149,18 +129,10 @@ val_set = Custom2DDataset(
     mask_size,
     label_size,
     val_stride,
-    val_labeled_indices,
 )
 
-if semi_supervised:
-    train_sampler = CombinedBatchSampler(
-        train_set, batch_size, labeled_ratio=labeled_ratio
-    )
-    val_sampler = CombinedBatchSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
-
-else:
-    train_sampler = BalancedBatchSampler(train_set, batch_size)
-    val_sampler = BalancedBatchSampler(val_set, batch_size)
+train_sampler = DynamicSampler(train_set, batch_size)
+val_sampler = DynamicSampler(val_set, batch_size)
 
 
 train_loader = DataLoader(train_set, sampler=train_sampler)
@@ -187,7 +159,7 @@ else:
         contrastive_learning=contrastive_learning,
         margin=margin,
         lambda_contrastive=lambda_contrastive,
-        labeled_ratio=labeled_ratio,
+        labeled_ratio=ratio,
         stochastic_block_type=stochastic_block_type,
         n_components=n_components,
         scale=scale,

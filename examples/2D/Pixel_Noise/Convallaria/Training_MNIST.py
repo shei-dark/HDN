@@ -15,6 +15,8 @@ from boilerplate.dataloader import (
     Custom2DDataset,
     BalancedBatchSampler,
     CombinedBatchSampler,
+    MnistDataloader,
+    CustomMnistDataset
 )
 import lib.utils as utils
 import training
@@ -26,21 +28,32 @@ import tifffile as tiff
 from glob import glob
 from itertools import chain
 import pickle
+from os.path  import join
+
 
 # import optuna
 
+input_path = '/group/jug/Sheida/archive/'
+training_images_filepath = join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
+training_labels_filepath = join(input_path, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
+test_images_filepath = join(input_path, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
+test_labels_filepath = join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
+mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+(x_train, y_train), (x_test, y_test) = mnist_dataloader.load_data()
+
+checkpoint = ''
 
 scale = 8
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-patch_size = 64
+patch_size = 28
 
 gaussian_noise_std = None
 
 
 model_name = "EXTAC"
-directory_path = "/group/jug/Sheida/HVAE/TAC/half_semisupervised_001_percent_hvae_cl/"
+directory_path = "/group/jug/Sheida/HVAE/MNIST/mnist/"
 noiseModel = None
 
 # Training-specific
@@ -50,14 +63,14 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-# checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
-num_latents = 3
-z_dims = [32] * int(num_latents)
+# checkpoint = "/group/jug/Sheida/HVAE/TAC/model/best_vae.net"
+num_latents = 2
+z_dims = [8] * int(num_latents)
 blocks_per_layer = 5
 batchnorm = True
 free_bits = 0.0
 alpha = 1
-beta = 1e-3
+beta = 1e-4
 gamma = 1e-1
 # contrastive
 mask_size = 1
@@ -67,13 +80,15 @@ contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
-semi_supervised = True
+semi_supervised = False
 labeled_ratio = 1
 
-stochastic_block_type = "normal"  # 'normal' or 'mixture'
-n_components = 4  # Used only for Mixture block
+stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+n_components = 10  # Used only for Mixture block
+
+percent_labeled = "10_percent"
 
 train_labeled_indices = None
 val_labeled_indices = None
@@ -81,75 +96,34 @@ val_labeled_indices = None
 if semi_supervised:
     labeled_ratio = 0.5
 
-# train data
-
-data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
-keys = ["high_c1", "high_c2", "high_c3"]
-
-img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
-lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
-imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
-lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
-train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
-
-for key in keys:
-    train_images[key] = imgs[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_images[key] = imgs[key][
-        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
-    ]
-    train_labels[key] = lbls[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_labels[key] = lbls[key][
-        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
-    ]
-
-valid_train = {}
-valid_val = {}
-
-for key in tqdm(keys, desc="filtering out outside of the cell"):
-    filtered_image, filtered_label, valid_train[key] = boilerplate._filter_slices(
-        train_images[key], train_labels[key]
-    )
-    train_images[key] = filtered_image
-    train_labels[key] = filtered_label
-
-    filtered_image, filtered_label, valid_val[key] = boilerplate._filter_slices(
-        val_images[key], val_labels[key]
-    )
-
-    val_images[key] = filtered_image
-    val_labels[key] = filtered_label
 
 # compute mean and std of the data
-all_elements = np.concatenate([train_images[key].flatten() for key in keys])
-data_mean = np.mean(all_elements)
-data_std = np.std(all_elements)
+data_mean = np.mean(x_train)
+data_std = np.std(x_train)
 
-train_stride = 128
-val_stride = 80
+x_train = (x_train - data_mean) / data_std
 
-# normalizing the data
-for key in tqdm(keys, "Normalizing data"):
-    train_images[key] = (train_images[key] - data_mean) / data_std
-    val_images[key] = (val_images[key] - data_mean) / data_std
-train_set = Custom2DDataset(
+train_images = x_train[:int(0.8 * len(x_train))]
+train_labels = y_train[:int(0.8 * len(y_train))]
+val_images = x_train[int(0.8 * len(x_train)):]
+val_labels = y_train[int(0.8 * len(y_train)):]
+
+    
+train_set = CustomMnistDataset(
     train_images,
     train_labels,
     patch_size,
     mask_size,
-    label_size,
-    train_stride,
     semi_supervised,
-    labeled_ratio,
+    train_labeled_indices,
 )
-val_set = Custom2DDataset(
+val_set = CustomMnistDataset(
     val_images,
     val_labels,
     patch_size,
     mask_size,
-    label_size,
-    val_stride,
     semi_supervised,
-    labeled_ratio,
+    val_labeled_indices,
 )
 
 if semi_supervised:
@@ -166,7 +140,7 @@ else:
 train_loader = DataLoader(train_set, sampler=train_sampler)
 val_loader = DataLoader(val_set, sampler=val_sampler)
 
-img_shape = (64, 64)
+img_shape = (28, 28)
 
 if load_checkpoint:
     model = torch.load(checkpoint)

@@ -3,6 +3,7 @@ from torch import nn
 from torch.distributions import kl_divergence, Categorical, MultivariateNormal
 from torch.distributions.normal import Normal
 from typing import Type, Union
+import torch.nn.functional as F
 
 
 class NormalStochasticConvBlock(nn.Module):
@@ -42,6 +43,7 @@ class NormalStochasticConvBlock(nn.Module):
         analytical_kl=False,
         mode_pred=False,
         use_uncond_mode=False,
+        epoch=0,
     ):
 
         # assert (forced_latent is None) or (not use_mode)
@@ -128,6 +130,7 @@ class NormalStochasticConvBlock(nn.Module):
             "logvar": q_lv,
             "pi": None,
             "cross_entropy": None,
+            "temperature": 0,
         }
         return out, data
 
@@ -136,6 +139,7 @@ class MixtureStochasticConvBlock(nn.Module):
     """
     Stochastic block with GMM for p(z) and q(z), handling both p(z) and q(z) parameters.
     Each component in the mixture has its own set of mu and log-variance.
+    Gumbel-Softmax is used to approximate the categorical distribution.
     """
 
     def __init__(
@@ -146,7 +150,6 @@ class MixtureStochasticConvBlock(nn.Module):
         conv_mult,
         kernel=3,
         n_components=4,
-        # transform_p_params=False,
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -155,18 +158,14 @@ class MixtureStochasticConvBlock(nn.Module):
         self.c_in = c_in
         self.c_out = c_out
         self.c_vars = c_vars
-        # self.transform_p_params = transform_p_params
 
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-        # if transform_p_params:
-            # self.conv_in_p = conv_type(c_in, 2 * c_vars * n_components, kernel, padding=pad)
         self.conv_in_q = conv_type(c_in, 2 * c_vars * n_components, kernel, padding=pad)
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
         # Define mixture coefficients for p and q as learnable 1D tensors
         self.p_pi = nn.Parameter(torch.rand(n_components) * 0.5, requires_grad=True)
-
 
     def forward(
         self,
@@ -179,24 +178,39 @@ class MixtureStochasticConvBlock(nn.Module):
         analytical_kl=False,
         mode_pred=False,
         use_uncond_mode=False,
+        hard=False,  # Use hard Gumbel-Softmax
+        epoch=0,
     ):
 
         assert (forced_latent is None) or (not use_mode)
+        self.epoch += 1
+        # Update Gumbel-Softmax temperature
+        temperature = self.update_temperature(epoch)
 
         p_pi = torch.softmax(torch.clamp(self.p_pi, min=-10, max=10), dim=0)
 
         # Separate mu and logvar for each component
-        # if self.transform_p_params:
-        #     p_params = self.conv_in_p(p_params)
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
         p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
-        p_std = (p_lv / 2).exp()
+        p_std = torch.where(p_lv < 0, (p_lv / 2).exp(), 1 + p_lv)
 
         p_mu_chunks = p_mu.chunk(self.n_components, dim=1)
         p_std_chunks = p_std.chunk(self.n_components, dim=1)
 
         p_components = []
+
+        # Gumbel-Softmax sampling
+        gumbel_noise = -torch.log(-torch.log(torch.rand_like(p_pi) + 1e-20) + 1e-20)
+        y_logits = torch.log(p_pi) + gumbel_noise
+        y = F.softmax(y_logits / temperature, dim=0)
+
+        if hard:
+            # Hard sampling: create one-hot vector
+            y_hard = torch.zeros_like(y).scatter_(0, y.argmax(dim=0, keepdim=True), 1.0)
+            y = y_hard.detach() - y.detach() + y
+
+        y = y.unsqueeze(-1)
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(
@@ -209,14 +223,16 @@ class MixtureStochasticConvBlock(nn.Module):
             q_mu, q_lv = torch.chunk(q_params, 2, dim=1)
             q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
             q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
-            q_std = (q_lv / 2).exp()
+            q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + p_lv)
 
             q_mu_chunks = q_mu.chunk(self.n_components, dim=1)
             q_std_chunks = q_std.chunk(self.n_components, dim=1)
 
             mus_avg = torch.stack([mu.mean(dim=(1, 2, 3)) for mu in q_mu_chunks])
             dist_matrix = torch.cdist(mus_avg, mus_avg, p=2)
-            mask = torch.ones_like(dist_matrix) - torch.eye(dist_matrix.size(0)).to(dist_matrix.device)
+            mask = torch.ones_like(dist_matrix) - torch.eye(dist_matrix.size(0)).to(
+                dist_matrix.device
+            )
             repulsive = (1 / (dist_matrix + 1e-5)) * mask
 
             q_components = []
@@ -238,9 +254,8 @@ class MixtureStochasticConvBlock(nn.Module):
             for i, component in enumerate(q_components):
                 # Create a mask based on the label to select the correct component
                 mask = (label == i).float().view(batch_size, *[1] * (q_mu.ndim - 1))
-                # mask = mask.to(q_mu.device)
                 z_samples.append(component.sample() * mask)
-            
+
             # Sample the mixture component
             component_distribution = Categorical(p_pi)
             # Adjust the sampling based on q_params or p_params
@@ -256,25 +271,13 @@ class MixtureStochasticConvBlock(nn.Module):
                     .view(batch_size, *[1] * (p_mu.ndim - 1))
                 )
                 z_samples.append(component.sample() * mask)
-            z = torch.sum(torch.stack(z_samples), dim=0)
-            
-        else:
-            # Sample the mixture component
-            # component_distribution = Categorical(p_pi)
-            # Adjust the sampling based on q_params or p_params
-            # selected_component = component_distribution.sample(
-            #     (batch_size,)
-            # )  # Sample a component for each batch entry
 
-            # Create z samples based on selected components
+            z = torch.sum(torch.stack(z_samples), dim=0)
+
+        else:
             z_samples = []
             for i, component in enumerate(sampling_distrib):
                 # Reshape mask to match component's dimensions
-                # mask = (
-                #     (selected_component == i)
-                #     .float()
-                #     .view(batch_size, *[1] * (p_mu.ndim - 1))
-                # )
                 z_samples.append(component.sample() * p_pi[i])
 
             # Combine samples from all components based on selection
@@ -327,7 +330,8 @@ class MixtureStochasticConvBlock(nn.Module):
             "repulsive": repulsive.sum(),
             "mu": q_mu if q_params is not None else p_mu,
             "logvar": q_lv if q_params is not None else p_lv,
-            "pi": p_pi, # mixture coefficients
+            "pi": p_pi,  # mixture coefficients
+            "temperature": temperature,  # current Gumbel-Softmax temperature
         }
 
         return out, data
