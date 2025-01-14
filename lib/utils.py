@@ -383,7 +383,6 @@ def compute_cl_loss(
     lambda_contrastive=0.5,
     labeled_ratio=1,
     prior="normal",
-    linear=None,
 ):
 
     if prior == "mixture":
@@ -394,7 +393,6 @@ def compute_cl_loss(
             pis[2],
             labels=labels,
             labeled_ratio=labeled_ratio,
-            linear=linear,
         )
         # return lin_based_loss
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
@@ -416,7 +414,7 @@ def compute_cl_loss(
 
 
 def pos_neg_loss_pi(
-    mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5, linear=None
+    mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5
 ):
 
     batch_size = len(labels)

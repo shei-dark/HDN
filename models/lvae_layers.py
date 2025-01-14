@@ -63,24 +63,15 @@ class TopDownLayer(nn.Module):
         self.n_components = n_components
 
         # Define top layer prior parameters, possibly learnable
-        # TODO hardcoded for now
         if is_top_layer:
             if stochastic_block_type == "mixture":
-                # TODO hardcoded for now
-                chunk_values = torch.zeros((4, 32, 8, 8))
-                chunk_values[0, :8] = 2.0
-                chunk_values[1, 8:16] = 2.0
-                chunk_values[2, 16:24] = 2.0
-                chunk_values[3, 24:] = 2.0
-                chunk_values = torch.cat(
-                    [chunk_values.view(1, 128, 8, 8), torch.zeros((1, 128, 8, 8))],
-                    dim=1,
+                self.top_prior_params = self._initialize_gmm_prior(
+                    n_components, top_prior_param_shape, learn_top_prior
                 )
-                # Convert to nn.Parameter
-                self.top_prior_params = nn.Parameter(chunk_values, requires_grad=False)
             else:
                 self.top_prior_params = nn.Parameter(
-                    torch.zeros(top_prior_param_shape), requires_grad=False
+                    torch.zeros(top_prior_param_shape),
+                    requires_grad=self.learn_top_prior,
                 )
 
         # Downsampling steps left to do in this layer
@@ -113,16 +104,7 @@ class TopDownLayer(nn.Module):
 
         # Define stochastic block with convolutions
         # Select stochastic block based on the argument
-        if stochastic_block_type == "all_mixture":
-            self.stochastic = MixtureStochasticConvBlock(
-                c_in=n_filters,
-                c_vars=z_dim,
-                c_out=n_filters,
-                conv_mult=conv_mult,
-                n_components=self.n_components,
-                transform_p_params=(not is_top_layer),
-            )
-        elif is_top_layer and stochastic_block_type == "mixture":
+        if is_top_layer and stochastic_block_type == "mixture":
             self.stochastic = MixtureStochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,
@@ -165,6 +147,41 @@ class TopDownLayer(nn.Module):
                     res_block_type=res_block_type,
                     grad_checkpoint=grad_checkpoint,
                 )
+
+    def _initialize_gmm_prior(
+        self, n_components, top_prior_param_shape, learn_top_prior
+    ):
+        # Extract spatial dimensions and channels
+        total_channels = top_prior_param_shape[1]  # Total number of channels 
+        spatial_res = top_prior_param_shape[2]  # Spatial resolution 
+        
+        # Each GMM component uses an equal fraction of the channels
+        channels_per_component = total_channels // (2 * n_components)  # Half for mus, half for sigmas
+
+        # Initialize the tensor for means (mus)
+        chunk_values = torch.zeros((n_components, channels_per_component, spatial_res, spatial_res))
+
+        # Dynamically assign values to means
+        chunk_size = channels_per_component // n_components
+        for i in range(n_components):
+            start_idx = i * chunk_size
+            end_idx = (i + 1) * chunk_size
+            chunk_values[i, start_idx:end_idx] = 2.0  # Equidistant initialization for means
+
+        # Reshape means into the required format
+        mus = chunk_values.view(1, n_components * channels_per_component, spatial_res, spatial_res)
+
+        # Initialize standard deviations (sigmas) as zeros (or another value if needed)
+        sigmas = torch.zeros_like(mus)
+
+        # Concatenate mus and sigmas along the channel dimension
+        prior_params = torch.cat([mus, sigmas], dim=1)
+        
+        # Convert to nn.Parameter
+        # Convert prior_params to nn.Parameter
+        prior_params = nn.Parameter(prior_params, requires_grad=learn_top_prior)
+        
+        return prior_params
 
     def forward(
         self,
@@ -225,7 +242,6 @@ class TopDownLayer(nn.Module):
             analytical_kl=self.analytical_kl,
             mode_pred=mode_pred,
             use_uncond_mode=use_uncond_mode,
-            epoch=epoch,
         )
 
         # Skip connection from previous layer

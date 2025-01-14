@@ -134,10 +134,10 @@ def train_network(
         # running_cl_neg = []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-        # for idx, (x, y) in tqdm(enumerate(train_loader), desc="Training"):
             x = x.squeeze(0)
             y = y.squeeze(0)
             x = x.to(device=device, dtype=torch.float)
+            y = y.to(device=device, dtype=torch.float)
 
             optimizer.zero_grad()
 

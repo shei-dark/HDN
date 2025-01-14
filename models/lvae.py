@@ -38,7 +38,7 @@ class LadderVAE(nn.Module):
         n_filters=64,
         dropout=0.2,
         free_bits=0.0,
-        learn_top_prior=True,
+        learn_top_prior=False,
         img_shape=None,
         res_block_type="bacdbacd",
         gated=True,
@@ -140,8 +140,6 @@ class LadderVAE(nn.Module):
         )
 
         # Init lists of layers
-        # TODO hard coded for now
-        self.linear_logit_layer = nn.Linear(in_features=2048, out_features=4)  # Adjust in_features based on mu size
         self.top_down_layers = nn.ModuleList([])
         self.bottom_up_layers = nn.ModuleList([])
 
@@ -246,7 +244,7 @@ class LadderVAE(nn.Module):
     def global_step(self) -> int:
         """Global step."""
         return self._global_step
-
+    # TODO: check forward function
     def forward(self, x, y=None, x_orig=None, epoch=0):
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
@@ -288,7 +286,6 @@ class LadderVAE(nn.Module):
                 lambda_contrastive=self.lambda_contrastive,
                 labeled_ratio=self.labeled_ratio,
                 prior = self.prior_type,
-                linear=self.linear_logit_layer,
             )
 
         output = {
