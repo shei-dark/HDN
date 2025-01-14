@@ -27,7 +27,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/Epsilon/250107_1/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/01/"
 noiseModel = None
 
 # Training-specific
@@ -57,7 +57,7 @@ lambda_contrastive = 0.5
 use_wandb = True
 
 mode = 'supervised'
-ratio = 0.25
+ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block

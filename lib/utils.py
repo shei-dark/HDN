@@ -387,13 +387,13 @@ def compute_cl_loss(
 
     if prior == "mixture":
         ### Mixture Model
-        lin_based_loss = pos_neg_loss_pi(
-            mus[2],
-            logvars[2],
-            pis[2],
-            labels=labels,
-            labeled_ratio=labeled_ratio,
-        )
+        # lin_based_loss = pos_neg_loss_pi(
+        #     mus[2],
+        #     logvars[2],
+        #     pis[2],
+        #     labels=labels,
+        #     labeled_ratio=labeled_ratio,
+        # )
         # return lin_based_loss
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             mus, labels, margin=margin, labeled_ratio=labeled_ratio
@@ -408,8 +408,8 @@ def compute_cl_loss(
     contrastive_loss = (
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
-    if prior == "mixture":
-        contrastive_loss += lin_based_loss * 10
+    # if prior == "mixture":
+    #     contrastive_loss += lin_based_loss * 10
     return contrastive_loss
 
 
@@ -476,14 +476,10 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
     mask = torch.eye(small_batch_size, dtype=torch.bool).to(device)
     boolean_matrix = boolean_matrix.masked_fill(mask, 0)
 
-    top_mus = mus[-1][:small_batch_size].view(small_batch_size, num_classes, -1)
-    top_mus = torch.cat(
-        [top_mus[index, lbl, :] for index, lbl in enumerate(labels[0])], dim=0
-    ).view(small_batch_size, -1)
-
+    top_mus = mus[-1][:small_batch_size].view(small_batch_size, -1)
     top_mus = top_mus.unsqueeze(0)
     dist = torch.cdist(top_mus, top_mus, p=2).squeeze(0)
-    dist = torch.clamp(dist, min=1e-6, max=1e6)
+    dist = torch.clamp(dist, min=0, max=1e6)
 
     pos_pair_loss = torch.sum(boolean_matrix * dist) / torch.sum(boolean_matrix)
 
@@ -511,7 +507,7 @@ def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
 
         dist = torch.cdist(mus, mus, p=2).squeeze(0)
 
-        dist = torch.clamp(dist, min=1e-6, max=1e6)
+        dist = torch.clamp(dist, min=0, max=1e6)
 
         pos_pair_loss += torch.sum(boolean_matrix * dist) / (
             torch.sum(boolean_matrix) * (2 ** (2 - index))

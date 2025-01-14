@@ -263,7 +263,7 @@ class TopDownLayer(nn.Module):
             "mu",
             "logvar",
             "pi",
-            "temperature",
+            "cross_entropy",
         ]
         data = {k: data_stoch[k] for k in keys}
         return x, x_pre_residual, data

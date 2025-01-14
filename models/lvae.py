@@ -305,7 +305,7 @@ class LadderVAE(nn.Module):
             "out_mode": likelihood_info["mode"],
             "out_sample": likelihood_info["sample"],
             "likelihood_params": likelihood_info["params"],
-            "temperature": td_data["temperature"][-1],
+            "ce": td_data["ce"][-1],
         }
         return output
 
@@ -363,7 +363,7 @@ class LadderVAE(nn.Module):
 
         # KL divergence of each layer
         kl = [None] * self.n_layers
-        temperature = [None] * self.n_layers
+        ce = [None] * self.n_layers
 
         repulsive = [None] * self.n_layers
 
@@ -412,7 +412,7 @@ class LadderVAE(nn.Module):
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
-            temperature[i] = aux["temperature"]
+            ce[i] = aux["cross_entropy"]
             repulsive[i] = aux["repulsive"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
@@ -432,7 +432,7 @@ class LadderVAE(nn.Module):
             "mu": mu,
             "logvar": logvar,
             "pi": pi,
-            "temperature": temperature,
+            "ce": ce,
         }
         return out, data
 

@@ -152,11 +152,13 @@ def train_network(
             kl_loss = outputs["kl_loss"]
             repulsive = outputs["repulsive"]
             cl_loss = outputs["cl_loss"]
+            ce = outputs["ce"]
             # cl_pos = outputs["cl_pos"]
             # cl_neg = outputs["cl_neg"]
-            loss = alpha * inpainting_loss + beta * kl_loss + (0.01 * repulsive)
+            loss = alpha * inpainting_loss + beta * kl_loss + ce
             if model.contrastive_learning:
                 loss += gamma * cl_loss
+                
 
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
@@ -178,7 +180,7 @@ def train_network(
                         # "PPL": cl_pos,
                         # "NPL": cl_neg,
                         "Total": loss,
-                        "temperature": outputs["temperature"],
+                        "CE": ce,
                     },
                     commit=True,
                 )
@@ -189,6 +191,7 @@ def train_network(
             running_training_loss.append(loss)
             running_inpainting_loss.append(inpainting_loss)
             running_kl_loss.append(kl_loss)
+            running_ce_loss.append(ce)
             if model.contrastive_learning:
                 running_cl_loss.append(cl_loss)
                 # running_cl_pos.append(cl_pos)
@@ -209,6 +212,7 @@ def train_network(
                     "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
+                    "ce loss": torch.mean(torch.stack(running_ce_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
@@ -225,7 +229,7 @@ def train_network(
         running_validation_loss = []
         running_val_inpainting_loss = []
         running_val_kl_loss = []
-        running_val_repulsive_loss = []
+        running_val_ce_loss = []
         running_val_cl_loss = []
         
         model.eval()
@@ -235,17 +239,18 @@ def train_network(
                 y = y.squeeze(0)
                 z = z.squeeze(0)
                 x = x.to(device=device, dtype=torch.float)
+                y = y.to(device=device, dtype=torch.float)
                 val_outputs = boilerplate.forward_pass(
                     x, y, device, model, gaussian_noise_std
                 )
 
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
-                val_repulsive = val_outputs["repulsive"]
+                val_ce = val_outputs["ce"]
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + (0.1 * val_repulsive)
+                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + (val_ce)
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
                     running_val_cl_loss.append(gamma * val_cl_loss)
@@ -253,7 +258,7 @@ def train_network(
                 running_validation_loss.append(val_loss)
                 running_val_inpainting_loss.append(alpha * val_inpainting_loss)
                 running_val_kl_loss.append(beta * val_kl_loss)
-                running_val_repulsive_loss.append(val_repulsive)
+                running_val_ce_loss.append(val_ce)
 
         if use_wandb:
             run.log(
@@ -265,9 +270,9 @@ def train_network(
                         torch.stack(running_val_inpainting_loss)
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    # "val repulsive": torch.mean(
-                    #     torch.stack(running_val_repulsive_loss)
-                    # ).item(),
+                    "val ce": torch.mean(
+                        torch.stack(running_val_ce_loss)
+                    ).item(),
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }
             )

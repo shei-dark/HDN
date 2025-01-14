@@ -139,7 +139,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> 
             # "thetas": thetas,
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
-            "temperature": model_out["temperature"],
+            "ce": model_out["ce"],
         }
 
     else:

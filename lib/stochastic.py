@@ -179,9 +179,9 @@ class MixtureStochasticConvBlock(nn.Module):
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
         # Linear layers to compute gamma and beta from the component mode vector
-        self.gamma_layer = nn.Linear(1, c_in)
-        self.beta_layer = nn.Linear(1, c_in)
-        self.temperature = 5.0
+        self.gamma_layer = nn.Linear(4, c_in)
+        self.beta_layer = nn.Linear(4, c_in)
+
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
     def forward(
@@ -200,14 +200,6 @@ class MixtureStochasticConvBlock(nn.Module):
 
         assert (forced_latent is None) or (not use_mode)
 
-        # Compute q(y|x): logits for categorical distribution
-        qy_logits = self.qy_x(q_params)  # Shape: (batch_size, n_components)
-        # y_probs = torch.softmax(qy_logits, dim=-1)
-        # y_sample = torch.nn.functional.gumbel_softmax(qy_logits, tau=self.temperature, hard=True)
-        # # Gumbel-Softmax Sampling for y
-        # gumbel_noise = -torch.log(-torch.log(torch.rand_like(qy_logits) + 1e-20) + 1e-20)
-        # y_logits = (qy_logits + gumbel_noise) / temperature
-
         # Separate mu and logvar for each component of the gmm prior
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
@@ -225,22 +217,16 @@ class MixtureStochasticConvBlock(nn.Module):
             ) # Create Gaussian components for p
         
         label = label.long()
-        y = qy_logits.float()
-        y = F.softmax(qy_logits, dim=-1)
-        if label is not None:
-            supervised_loss = torch.nn.functional.nll_loss(y, label)
-
         
+        qy_logits = self.qy_x(q_params)
         if label is not None:
-            # Use ground truth to select the correct component
-            selected_component = label  # Shape: (batch_size,)
-        else:
-            # Sample from q(y|x)
-            selected_component = y.argmax(dim=-1)  # Hard sample (can use Gumbel-Softmax for soft sampling)
-        selected_component = selected_component.to(torch.float16).view(-1, 1)
+            supervised_loss = torch.nn.functional.cross_entropy(qy_logits, label)
+        
+        y = F.softmax(qy_logits, dim=-1)
+
         # Step 2: Compute q(z|x, y)
-        gamma = self.gamma_layer(selected_component)  # Shape: (batch_size, c_in)
-        beta = self.beta_layer(selected_component)
+        gamma = self.gamma_layer(qy_logits)  # Shape: (batch_size, c_in)
+        beta = self.beta_layer(qy_logits)
         gamma = gamma.unsqueeze(-1).unsqueeze(-1)  # Shape: (batch_size, c_in, 1, 1)
         beta = beta.unsqueeze(-1).unsqueeze(-1)
         x_modulated = gamma * q_params + beta
@@ -250,42 +236,70 @@ class MixtureStochasticConvBlock(nn.Module):
         q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
         q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
         y_pred = y.argmax(dim=-1)
-        matching_mask = (y_pred == label).unsqueeze(-1)
         z = q_mu + q_std * torch.randn_like(q_std)
         
         out = self.conv_out(z)
 
         logprob_p = None
         logprob_q = None
+        kl_divergences = []
         kl_analytical = 0
         
-        # Compute log p(z) and log q(z)
-        logprob_p = torch.stack([comp.log_prob(z) for comp in p_components], dim=-1)
-        y_expanded = y.view(y.size(0), 1, 1, 1, -1)  # Shape: [512, 1, 1, 1, 4]
-        logprob_p = torch.sum(logprob_p * y_expanded, dim=-1).view(-1, *[1] * (logprob_p.dim() - 1))
-        batch_size = q_params.size(0)
-        if q_params is not None:
-            q = Normal(q_mu, q_std)
-            logprob_q = q.log_prob(z).sum(list(range(1, z.dim())))
-            q = [Normal(q_mu_patch, q_std_patch) for q_mu_patch, q_std_patch in zip(q_mu.chunk(batch_size, dim=0), q_std.chunk(batch_size, dim=0))]
-            p = [p_components[idx] for idx in selected_component.squeeze().long()]
-            
-            for idx in range(batch_size):
-                kl_analytical += kl_divergence(q[idx], p[idx])
+        # Compute logprob_p
+        log_probs_p = torch.stack([comp.log_prob(z) for comp in p_components], dim=-1)  # Shape: [512, 32, 8, 8, 4]
+        logprob_p = torch.sum(log_probs_p * y.unsqueeze(1).unsqueeze(1).unsqueeze(1), dim=-1)  # Weighted sum
+
+        # Compute logprob_q
+        q_distribution = Normal(q_mu, q_std)
+        logprob_q = q_distribution.log_prob(z)  # Shape: [512, 32, 8, 8]
     
+        for i in range(len(p_components)):
+        # Compute KL divergence between q and each component in p_components
+            kl_i = kl_divergence(Normal(q_mu, q_std), p_components[i]).mean(dim=(1, 2, 3))
+            kl_divergences.append(kl_i)
+        # Stack KL divergences for all components (Shape: [batch_size, n_components])
+        kl_divergences = torch.stack(kl_divergences, dim=-1)
+
+        # # Separate cases where label matches y_pred and where it doesn't
+        # matching_mask = (y_pred == label).unsqueeze(-1)  # Shape: [batch_size, 1]
+
+        # # Case 1: label is consistent with y_pred
+        # kl_consistent = kl_divergences[range(label.size(0)), label]
+
+        # # Case 2: label is inconsistent with y_pred
+        # kl_inconsistent = kl_divergences[range(label.size(0)), label]  # Use ground truth label
+
+        # # Combine results
+        # kl = torch.where(
+        #     matching_mask.squeeze(-1),  # If consistent
+        #     kl_consistent,             # Use KL divergence with predicted component
+        #     kl_inconsistent             # Use KL divergence with ground truth component
+        # )
+        
+        kl = kl_divergences[range(label.size(0)), label]
+        
+        kl_loss = kl.mean()
+        
+        # Compute analytical KL divergence
+        kl_components = [
+            kl_divergence(Normal(q_mu, q_std), comp).mean(dim=(1, 2, 3)) for comp in p_components
+        ]  # KL for each component
+        kl_analytical = torch.sum(y * torch.stack(kl_components, dim=-1), dim=-1).mean()  # Weighted average
+
+        
         data = {
             "z": z,  # sampled latent variable
             "p_params": p_params,
             "q_params": q_params,
             "logprob_p": logprob_p,
             "logprob_q": logprob_q,
-            "kl": kl_analytical,
+            "kl": kl_loss,
             "repulsive": 0,
-            "mu": q_mu if q_params is not None else p_mu,
-            "logvar": q_lv if q_params is not None else p_lv,
+            "mu": q_mu,
+            "logvar": q_lv,
             "pi": y,  # mixture coefficients
-            "temperature": temperature,  # current Gumbel-Softmax temperature
-        }
+            "cross_entropy": supervised_loss,
+            }
         
         return out, data
 
