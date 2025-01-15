@@ -307,6 +307,7 @@ class LadderVAE(nn.Module):
             "out_sample": likelihood_info["sample"],
             "likelihood_params": likelihood_info["params"],
             "ce": td_data["ce"][-1],
+            "entropy": td_data["entropy"][-1],
         }
         return output
 

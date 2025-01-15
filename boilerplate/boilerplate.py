@@ -122,11 +122,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> 
         kl_loss = model_out["kl"]
         repulsive = model_out["repulsive"]
         cl_loss = model_out["cl"]
-        # cl_loss = model_out["cl_loss"]
-        # cl_pos = model_out["cl_pos"]
-        # cl_neg = model_out["cl_neg"]
-        # cl_neg_terms = model_out["cl_neg_terms"]
-        # thetas = model_out["thetas"]
+        entropy = model_out["entropy"]
 
         output = {
             "inpainting_loss": inpainting_loss,
@@ -140,6 +136,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> 
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
             "ce": model_out["ce"],
+            "entropy": entropy,
         }
 
     else:

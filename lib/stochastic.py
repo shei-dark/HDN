@@ -220,7 +220,9 @@ class MixtureStochasticConvBlock(nn.Module):
 
         label = label.long()
         batch_size = label.size(0)
-        small_batch_size = int(batch_size * self.labeled_ratio)
+        # small_batch_size = int(batch_size * self.labeled_ratio)
+        small_batch_size = int(batch_size * 0.25) # TODO label ratio
+
         qy_logits = self.qy_x(q_params)
         label = label[:small_batch_size]
         supervised_loss = torch.nn.functional.cross_entropy(
@@ -241,6 +243,10 @@ class MixtureStochasticConvBlock(nn.Module):
         q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
         q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
         y, y_pred = self.gumbel_softmax(qy_logits, hard=hard)
+        if small_batch_size < batch_size:
+            entropy = -torch.mean(torch.sum(y[small_batch_size:] * torch.log(y[small_batch_size:] + 1e-10), dim=-1))
+        else:
+            entropy = 0
         z = q_mu + q_std * torch.randn_like(q_std)
 
         out = self.conv_out(z)
@@ -300,6 +306,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "logvar": q_lv,
             "pi": y,  # mixture coefficients
             "cross_entropy": supervised_loss * (1 / self.labeled_ratio),
+            "entropy": entropy,
         }
 
         return out, data

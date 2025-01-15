@@ -130,8 +130,7 @@ def train_network(
         running_kl_loss = []
         running_ce_loss = []
         running_cl_loss = []
-        # running_cl_pos = []
-        # running_cl_neg = []
+        running_entropy_loss= []
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
             x = x.squeeze(0)
@@ -153,9 +152,9 @@ def train_network(
             repulsive = outputs["repulsive"]
             cl_loss = outputs["cl_loss"]
             ce = outputs["ce"]
-            # cl_pos = outputs["cl_pos"]
-            # cl_neg = outputs["cl_neg"]
-            loss = alpha * inpainting_loss + beta * kl_loss + ce
+            entropy = outputs["entropy"]
+
+            loss = alpha * inpainting_loss + beta * kl_loss + ce + entropy
             if model.contrastive_learning:
                 loss += gamma * cl_loss
                 
@@ -181,6 +180,7 @@ def train_network(
                         # "NPL": cl_neg,
                         "Total": loss,
                         "CE": ce,
+                        "EL": entropy,
                     },
                     commit=True,
                 )
@@ -192,6 +192,7 @@ def train_network(
             running_inpainting_loss.append(inpainting_loss)
             running_kl_loss.append(kl_loss)
             running_ce_loss.append(ce)
+            running_entropy_loss.append(entropy)
             if model.contrastive_learning:
                 running_cl_loss.append(cl_loss)
                 # running_cl_pos.append(cl_pos)
@@ -213,6 +214,7 @@ def train_network(
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
                     "ce loss": torch.mean(torch.stack(running_ce_loss)),
+                    "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
@@ -220,8 +222,6 @@ def train_network(
                 run.log(
                     {
                         "cl loss": torch.mean(torch.stack(running_cl_loss)) * gamma,
-                        # "cl pos pair": torch.mean(torch.stack(running_cl_pos)).item(),
-                        # "cl neg pair": torch.mean(torch.stack(running_cl_neg)).item(),
                     }
                 )
 
@@ -231,6 +231,7 @@ def train_network(
         running_val_kl_loss = []
         running_val_ce_loss = []
         running_val_cl_loss = []
+        running_val_entropy_loss = []
         
         model.eval()
         with torch.no_grad():
@@ -247,10 +248,11 @@ def train_network(
                 val_inpainting_loss = val_outputs["inpainting_loss"]
                 val_kl_loss = val_outputs["kl_loss"]
                 val_ce = val_outputs["ce"]
+                val_entropy = val_outputs["entropy"]
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + (val_ce)
+                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + val_ce + val_entropy
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
                     running_val_cl_loss.append(gamma * val_cl_loss)
@@ -259,6 +261,7 @@ def train_network(
                 running_val_inpainting_loss.append(alpha * val_inpainting_loss)
                 running_val_kl_loss.append(beta * val_kl_loss)
                 running_val_ce_loss.append(val_ce)
+                running_val_entropy_loss.append(val_entropy)
 
         if use_wandb:
             run.log(
@@ -273,6 +276,7 @@ def train_network(
                     "val ce": torch.mean(
                         torch.stack(running_val_ce_loss)
                     ).item(),
+                    "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }
             )

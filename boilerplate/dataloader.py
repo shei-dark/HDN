@@ -186,14 +186,7 @@ class Custom2DDataset(Dataset):
 
     def __len__(self):
         """Return dataset size based on mode."""
-        if self.mode == "supervised":
-            return len(self.all_patches)
-        elif self.mode == "unsupervised":
-            return len(self.all_patches)  # Assume same size for simplicity
-        elif self.mode == "mixed":
-            return len(self.all_patches) + int(
-                len(self.all_patches) * (1 - self.ratio) / self.ratio
-            )
+        return len(self.all_patches)
 
     def __getitem__(self, idx):
         if isinstance(idx, list):  # Batch request
