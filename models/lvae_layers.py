@@ -50,6 +50,7 @@ class TopDownLayer(nn.Module):
         stochastic_block_type="normal",  # 'normal' or 'mixture'
         n_components=4,  # Used only for Mixture block
         scale=4,
+        labeled_ratio=1,
     ):
 
         super().__init__()
@@ -111,6 +112,7 @@ class TopDownLayer(nn.Module):
                 c_out=n_filters,
                 conv_mult=conv_mult,
                 n_components=self.n_components,
+                labeled_ratio=labeled_ratio,
             )
         else:
             self.stochastic = NormalStochasticConvBlock(

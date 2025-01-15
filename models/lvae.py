@@ -202,6 +202,7 @@ class LadderVAE(nn.Module):
                     stochastic_block_type=stochastic_block_type,
                     n_components=n_components,
                     scale=scale,
+                    labeled_ratio=labeled_ratio,
                 )
             )
 

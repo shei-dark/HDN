@@ -27,7 +27,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/01/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/02_supervised/"
 noiseModel = None
 
 # Training-specific
@@ -37,7 +37,7 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/TAC/model/EXTAC_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/gmvae/01_supervised/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -56,6 +56,7 @@ lambda_contrastive = 0.5
 
 use_wandb = True
 
+# (supervised, ratio 1), (unsupervised, ratio 0), (mixed, ratio 0.25)
 mode = 'supervised'
 ratio = 1
 
@@ -121,6 +122,7 @@ train_set = Custom2DDataset(
     mask_size,
     label_size,
     train_stride,
+    mode,
 )
 val_set = Custom2DDataset(
     val_images,
@@ -129,6 +131,7 @@ val_set = Custom2DDataset(
     mask_size,
     label_size,
     val_stride,
+    mode,
 )
 
 train_sampler = DynamicSampler(train_set, batch_size)
@@ -142,6 +145,8 @@ img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
+    model.labeled_ratio=ratio
+
 else:
     model = LadderVAE(
         z_dims=z_dims,
