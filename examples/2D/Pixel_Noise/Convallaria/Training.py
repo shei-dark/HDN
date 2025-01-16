@@ -27,7 +27,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/02_mixed/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/03_mixed/"
 noiseModel = None
 
 # Training-specific
@@ -37,7 +37,7 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/gmvae/01_supervised/model/epsilon_seg_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/gmvae/03_supervised/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5

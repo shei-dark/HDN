@@ -131,6 +131,7 @@ class NormalStochasticConvBlock(nn.Module):
             "pi": None,
             "cross_entropy": None,
             "temperature": 0,
+            "entropy": 0,
         }
         return out, data
 
@@ -218,17 +219,18 @@ class MixtureStochasticConvBlock(nn.Module):
                 Normal(mu_chunk, std_chunk)
             )  # Create Gaussian components for p
 
-        label = label.long()
-        batch_size = label.size(0)
-        # small_batch_size = int(batch_size * self.labeled_ratio)
-        small_batch_size = int(batch_size * 0.25) # TODO label ratio
-
+        batch_size = q_params.size(0)
+        small_batch_size = int(batch_size * 0.25) # TODO
         qy_logits = self.qy_x(q_params)
-        label = label[:small_batch_size]
-        supervised_loss = torch.nn.functional.cross_entropy(
-            qy_logits[:small_batch_size], label
-        )
-
+        
+        if label is not None:
+            label = label.long()   
+            label = label[:small_batch_size]
+            supervised_loss = torch.nn.functional.cross_entropy(
+                qy_logits[:small_batch_size], label
+            )
+        else:
+            supervised_loss = 0
         # y = F.softmax(qy_logits, dim=-1)
 
         # Step 2: Compute q(z|x, y)
@@ -279,20 +281,23 @@ class MixtureStochasticConvBlock(nn.Module):
         # # Separate cases where label matches y_pred and where it doesn't
         # matching_mask = (y_pred == label).unsqueeze(-1)  # Shape: [batch_size, 1]
 
-        if small_batch_size < batch_size:
-            kl = torch.cat(
-                [
-                    kl_divergences[range(small_batch_size), label],
-                    kl_divergences[
-                        range(small_batch_size, batch_size), y_pred[small_batch_size:]
-                    ],
-                ],
-                dim=0,
-            )
+        if label is None:
+            kl_loss = 0
         else:
-            kl = kl_divergences[range(batch_size), label]
+            if small_batch_size < batch_size:
+                kl = torch.cat(
+                    [
+                        kl_divergences[range(small_batch_size), label],
+                        kl_divergences[
+                            range(small_batch_size, batch_size), y_pred[small_batch_size:]
+                        ],
+                    ],
+                    dim=0,
+                )
+            else:
+                kl = kl_divergences[range(batch_size), label]
 
-        kl_loss = kl.mean()
+            kl_loss = kl.mean()
 
         data = {
             "z": z,  # sampled latent variable
@@ -305,7 +310,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "mu": q_mu,
             "logvar": q_lv,
             "pi": y,  # mixture coefficients
-            "cross_entropy": supervised_loss * (1 / self.labeled_ratio),
+            "cross_entropy": supervised_loss * (1 / 0.25), # TODO
             "entropy": entropy,
         }
 

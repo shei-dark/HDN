@@ -256,19 +256,20 @@ class TopDownLayer(nn.Module):
 
         # Last top-down block (sequence of residual blocks)
         x = self.deterministic_block(x)
-        keys = [
-            "z",
-            "kl",
-            "repulsive",
-            "logprob_p",
-            "logprob_q",
-            "mu",
-            "logvar",
-            "pi",
-            "cross_entropy",
-            "entropy",
-        ]
-        data = {k: data_stoch[k] for k in keys}
+        # keys = [
+        #     "z",
+        #     "kl",
+        #     "repulsive",
+        #     "logprob_p",
+        #     "logprob_q",
+        #     "mu",
+        #     "logvar",
+        #     "pi",
+        #     "cross_entropy",
+        #     "entropy",
+        # ]
+        # data = {k: data_stoch[k] for k in keys}
+        data = {k: v for k, v in data_stoch.items()}
         return x, x_pre_residual, data
 
 

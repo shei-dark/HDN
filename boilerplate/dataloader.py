@@ -186,7 +186,10 @@ class Custom2DDataset(Dataset):
 
     def __len__(self):
         """Return dataset size based on mode."""
-        return len(self.all_patches)
+        if self.mode == "mixed":
+            return int(len(self.all_patches) / self.ratio)
+        else:
+            return len(self.all_patches)
 
     def __getitem__(self, idx):
         if isinstance(idx, list):  # Batch request

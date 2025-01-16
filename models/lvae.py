@@ -366,7 +366,7 @@ class LadderVAE(nn.Module):
         # KL divergence of each layer
         kl = [None] * self.n_layers
         ce = [None] * self.n_layers
-
+        entropy = [None] * self.n_layers
         repulsive = [None] * self.n_layers
 
         mu = [None] * self.n_layers
@@ -415,6 +415,7 @@ class LadderVAE(nn.Module):
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )
             ce[i] = aux["cross_entropy"]
+            entropy[i] = aux["entropy"]
             repulsive[i] = aux["repulsive"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
@@ -435,6 +436,7 @@ class LadderVAE(nn.Module):
             "logvar": logvar,
             "pi": pi,
             "ce": ce,
+            "entropy": entropy,
         }
         return out, data
 
