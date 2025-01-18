@@ -138,25 +138,111 @@ class NormalStochasticConvBlock(nn.Module):
 
 
 class TransformerQy(nn.Module):
-    def __init__(self, input_dim, embed_dim, n_components, num_heads=4, num_layers=2):
+    def __init__(self, c_in, embed_dim, n_components, num_heads=4, num_layers=2):
+        """
+        Transformer-based q(y|x) where each spatial pixel (H x W) is a token.
+
+        Args:
+            c_in (int): Number of input channels (C).
+            embed_dim (int): Embedding dimension for transformer.
+            n_components (int): Number of GMM components (output classes).
+            num_heads (int): Number of attention heads.
+            num_layers (int): Number of transformer encoder layers.
+        """
         super().__init__()
-        self.embedding = nn.Linear(input_dim, embed_dim)  # Optional embedding
-        self.encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
-        self.transformer_encoder = TransformerEncoder(
-            self.encoder_layer, num_layers=num_layers
-        )
-        self.output = nn.Linear(
-            embed_dim, n_components
-        )  # Predict logits for Gumbel-Softmax
+        # Embedding layer for channel tokens
+        self.embedding = nn.Linear(c_in, embed_dim)
+
+        # Transformer Encoder
+        encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
+        self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Output layer to predict logits for each token
+        self.output = nn.Linear(embed_dim, n_components)
 
     def forward(self, x):
-        # Embed and transpose for transformer input
-        x = self.embedding(x).permute(
-            1, 0, 2
-        )  # (Batch, Seq, Features) -> (Seq, Batch, Features)
-        x = self.transformer_encoder(x)  # Transformer processing
-        x = x.mean(dim=0)  # Aggregate over sequence (optional)
+        """
+        Forward pass through Transformer-based q(y|x).
+
+        Args:
+            x (Tensor): Input feature map of shape [B, C, H, W].
+
+        Returns:
+            Tensor: Logits for q(y|x), shape [B, n_components].
+        """
+        # B, C, H, W = x.shape
+        # seq_len = H * W Sequence length is the number of spatial tokens
+
+        # Flatten spatial dimensions: [B, C, H, W] -> [B, C, seq_len]
+        x = x.flatten(2)  # Combine H and W into one dimension
+
+        # Transpose for transformer input: [B, C, seq_len] -> [seq_len, B, C]
+        x = x.permute(2, 0, 1)
+
+        # Apply embedding: [seq_len, B, C] -> [seq_len, B, embed_dim]
+        x = self.embedding(x)
+
+        # Pass through transformer: [seq_len, B, embed_dim]
+        x = self.transformer(x)
+
+        # Aggregate sequence into a single embedding per batch (e.g., mean pooling)
+        x = x.mean(dim=0)  # [seq_len, B, embed_dim] -> [B, embed_dim]
+
+        # Predict logits: [B, embed_dim] -> [B, n_components]
         return self.output(x)
+
+
+class TransformerQz(nn.Module):
+    def __init__(self, c_in, embed_dim, num_heads=4, num_layers=2):
+        """
+        Transformer-based q(z|x, y), where each spatial pixel (H x W) is a token.
+
+        Args:
+            c_in (int): Number of input channels (C).
+            embed_dim (int): Embedding dimension for transformer.
+            num_heads (int): Number of attention heads.
+            num_layers (int): Number of transformer encoder layers.
+        """
+        super().__init__()
+        # Embedding layer for pixel tokens
+        self.embedding = nn.Linear(c_in, embed_dim)
+
+        # Transformer Encoder
+        encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
+        self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Output convolution for Gaussian parameters (mu, logvar)
+        self.output_conv = nn.Conv2d(embed_dim, c_in, kernel_size=1)
+
+    def forward(self, x):
+        """
+        Forward pass through Transformer-based q(z|x, y).
+
+        Args:
+            x (Tensor): Input feature map of shape [B, C, H, W].
+
+        Returns:
+            Tensor: Gaussian parameters (mu, logvar) of shape [B, 2 * C, H, W].
+        """
+        B, C, H, W = x.shape
+
+        # Flatten spatial dimensions: [B, C, H, W] -> [B, C, seq_len]
+        x = x.flatten(2)
+
+        # Transpose for transformer input: [B, C, seq_len] -> [seq_len, B, C]
+        x = x.permute(2, 0, 1)
+
+        # Apply embedding: [seq_len, B, C] -> [seq_len, B, embed_dim]
+        x = self.embedding(x)
+
+        # Pass through transformer: [seq_len, B, embed_dim]
+        x = self.transformer(x)
+
+        # Reshape back to feature map: [seq_len, B, embed_dim] -> [B, embed_dim, H, W]
+        x = x.permute(1, 2, 0).view(B, -1, H, W)
+
+        # Output Gaussian parameters (mu, logvar): [B, 2 * C, H, W]
+        return self.output_conv(x)
 
 
 class MixtureStochasticConvBlock(nn.Module):
@@ -195,14 +281,18 @@ class MixtureStochasticConvBlock(nn.Module):
         #     nn.Flatten(),
         #     nn.Linear(c_vars * 8 * 8, n_components),
         # )
-        self.qy_x = TransformerQy(c_in * 8 * 8, 128, n_components)  # Example: embed_dim=128
+        self.qy_x = TransformerQy(
+            c_in, 128, n_components
+        )  # Example: embed_dim=128
 
         # q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
-        self.qz_xy = nn.Sequential(
-            conv_type(c_in, 2 * c_vars, kernel, padding=pad),
-            nn.ReLU(),
-            conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
-        )
+        # self.qz_xy = nn.Sequential(
+        #     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
+        #     nn.ReLU(),
+        #     conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
+        # )
+        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=2)
+
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
         # Linear layers to compute gamma and beta from the component mode vector
@@ -245,8 +335,7 @@ class MixtureStochasticConvBlock(nn.Module):
 
         batch_size = q_params.size(0)
         small_batch_size = int(batch_size * self.labeled_ratio)
-        # qy_logits = self.qy_x(q_params)
-        qy_logits = self.qy_x(q_params.flatten(1))
+        qy_logits = self.qy_x(q_params)
 
         if label is not None:
             label = label.long()

@@ -27,7 +27,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/unsupervised/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/unsupervised-transformer/"
 noiseModel = None
 
 # Training-specific
