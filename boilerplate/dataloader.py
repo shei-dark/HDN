@@ -776,6 +776,38 @@ class CombinedBatchSampler(Sampler):
         max_class_size = max(len(indices) for indices in self.label_to_indices.values())
         return (max_class_size * self.num_labels) // self.small_batch_size
 
+
+class UnsupervisedSampler(Sampler):
+    """
+    A custom sampler that generates batches containing random samples from the dataset.
+    """
+
+    def __init__(self, dataset, batch_size):
+        """
+        Initializes the UnsupervisedSampler.
+
+        Parameters:
+        -----------
+        dataset : Dataset
+            The dataset from which samples are drawn.
+
+        """
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.max_batch = len(dataset) // batch_size
+
+    def __iter__(self):
+        indices = range(len(self.dataset))
+        num_batches_generated = 0
+        while num_batches_generated < self.max_batch:
+            batch = random.sample(indices, self.batch_size)
+            num_batches_generated += 1
+            yield batch
+
+    def __len__(self):
+        return self.max_batch
+
+
 class DynamicSampler(Sampler):
     def __init__(self, dataset, batch_size, labeled_ratio=0.25):
         self.dataset = dataset
@@ -786,9 +818,11 @@ class DynamicSampler(Sampler):
         if self.dataset.mode == "supervised":
             sampler = BalancedBatchSampler(self.dataset, self.batch_size)
         elif self.dataset.mode == "unsupervised":
-            sampler = CombinedBatchSampler(self.dataset, self.batch_size, labeled_ratio=0)
+            sampler = UnsupervisedSampler(self.dataset, self.batch_size)
         elif self.dataset.mode == "mixed":
-            sampler = CombinedBatchSampler(self.dataset, self.batch_size, labeled_ratio=0.25)
+            sampler = CombinedBatchSampler(
+                self.dataset, self.batch_size, labeled_ratio=0.25
+            )
 
         yield from iter(sampler)
 

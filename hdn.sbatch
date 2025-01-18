@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/gmvae/02_mixed/train.log
+#SBATCH --output=/group/jug/Sheida/HVAE/gmvae/unsupervised/train.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
@@ -9,7 +9,7 @@
 #SBATCH --mem=32GB
 #SBATCH --ntasks=8
 #SBATCH --job-name=epsilon-seg
-#SBATCH --time=3-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --no-requeue
 
 

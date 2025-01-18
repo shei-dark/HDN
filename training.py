@@ -213,7 +213,7 @@ def train_network(
                     "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
-                    "ce loss": torch.mean(torch.stack(running_ce_loss)),
+                    # "ce loss": torch.mean(torch.stack(running_ce_loss)),
                     "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
@@ -260,7 +260,7 @@ def train_network(
                 running_validation_loss.append(val_loss)
                 running_val_inpainting_loss.append(alpha * val_inpainting_loss)
                 running_val_kl_loss.append(beta * val_kl_loss)
-                running_val_ce_loss.append(val_ce)
+                # running_val_ce_loss.append(val_ce)
                 running_val_entropy_loss.append(val_entropy)
 
         if use_wandb:
@@ -273,9 +273,9 @@ def train_network(
                         torch.stack(running_val_inpainting_loss)
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    "val ce": torch.mean(
-                        torch.stack(running_val_ce_loss)
-                    ).item(),
+                    # "val ce": torch.mean(
+                        # torch.stack(running_val_ce_loss)
+                    # ).item(),
                     "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }

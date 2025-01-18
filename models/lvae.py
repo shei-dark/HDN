@@ -92,6 +92,8 @@ class LadderVAE(nn.Module):
         self.margin = margin
         self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
+        if labeled_ratio == 0:
+            self.contrastive_learning = False
         self.prior_type = stochastic_block_type
         self.n_components = n_components
         self.scale = scale
@@ -308,6 +310,7 @@ class LadderVAE(nn.Module):
             "likelihood_params": likelihood_info["params"],
             "ce": td_data["ce"][-1],
             "entropy": td_data["entropy"][-1],
+            "pi": td_data["pi"][-1] if "pi" in td_data else None,
         }
         return output
 

@@ -5,7 +5,6 @@ sys.path.append("/home/sheida.rahnamai/GIT/HDN/")
 import torch
 import numpy as np
 from tqdm import tqdm
-from sklearn.cluster import MiniBatchKMeans
 
 # from lib.dataloader import CustomTestDataset
 from boilerplate.dataloader import CustomTestDataset
@@ -38,9 +37,9 @@ print(test_img_path)
 # Load test ground truth images
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
-model_dir = "/group/jug/Sheida/HVAE/TAC/"
+model_dir = "/group/jug/Sheida/HVAE/gmvae/"
 img_idx = [626]
-model_versions = ["ex_15"]
+model_versions = ["02_mixed", "02_mixed_soft", "03_mixed", "03_mixed_soft"]
 batch_size = 1024
 
 
@@ -54,7 +53,7 @@ for test_index in tqdm(img_idx):
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model/EXTAC_best_vae.net")
+        model = torch.load(model_dir + model_v + "/model/epsilon_seg_best_vae.net")
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True
@@ -63,32 +62,40 @@ for test_index in tqdm(img_idx):
         print(f"Processing image slice {test_index} with model version {model_v}")
         index = 0
         
-        all_mus = np.zeros(
-            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
-            dtype=np.float16,
-        )
         # all_mus = np.zeros(
-        #     ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
+        #     ((test_dataset.num_patches_y * test_dataset.num_patches_x), 49152),
         #     dtype=np.float16,
         # )
+        all_mus = np.zeros(
+            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
+            dtype=np.float16,
+        )
+        pred = []
         with torch.no_grad():
             for batch in tqdm(dataloader):
                 batch = batch.to(device)
                 batch = (batch - data_mean) / data_std
                 output = model(batch)
-                mu_test = torch.cat([output["mu"][i].reshape(batch.shape[0], -1) for i in range(hierarchy_level)], dim=1)
-                mu_test = np.array(mu_test.cpu().numpy())
-                all_mus[index : index + batch.shape[0]] = mu_test
-                index += batch.shape[0]
+                # mu_test = torch.cat([output["mu"][i].reshape(batch.shape[0], -1) for i in range(hierarchy_level)], dim=1)
+                y_pred = output["pi"].argmax(dim=-1)
+                # mu_test = np.array(mu_test.cpu().numpy())
+                # all_mus[index : index + batch.shape[0]] = mu_test
+                # index += batch.shape[0]
+                pred.extend(y_pred.cpu().numpy())
 
         # Perform K-means clustering
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-        print("Fitting K-means")
-        start_time = time.time()
-        cluster_labels = kmeans.fit_predict(all_mus)
-        end_time = time.time()
-        print("K-means fitted in {:.2f} seconds".format(end_time - start_time))
-        clusters = cluster_labels.reshape(
+        # kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        # print("Fitting K-means")
+        # start_time = time.time()
+        # cluster_labels = kmeans.fit_predict(all_mus)
+        # end_time = time.time()
+        # print("K-means fitted in {:.2f} seconds".format(end_time - start_time))
+        # clusters = cluster_labels.reshape(
+        #     test_dataset.num_patches_y, test_dataset.num_patches_x
+        # )
+        pred_array = np.array(pred)
+
+        clusters = pred_array.reshape(
             test_dataset.num_patches_y, test_dataset.num_patches_x
         )
         tiff.imwrite(f"{model_dir}{model_v}/seg/{test_index}.tif", clusters)

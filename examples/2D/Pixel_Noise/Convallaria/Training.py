@@ -27,7 +27,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/03_mixed/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/unsupervised/"
 noiseModel = None
 
 # Training-specific
@@ -36,7 +36,7 @@ lr = 3e-5
 max_epochs = 100
 
 # Model-specific
-load_checkpoint = True
+load_checkpoint = False
 checkpoint = "/group/jug/Sheida/HVAE/gmvae/03_supervised/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
@@ -47,8 +47,8 @@ alpha = 1
 beta = 1e-4
 gamma = 1e-1
 # contrastive
-mask_size = 1
-label_size = 1
+mask_size = 5
+label_size = 5
 mode = "1x1"
 contrastive_learning = True
 margin = 50
@@ -57,8 +57,8 @@ lambda_contrastive = 0.5
 use_wandb = True
 
 # (supervised, ratio 1), (unsupervised, ratio 0), (mixed, ratio 0.25)
-mode = 'mixed'
-ratio = 0.25
+mode = 'unsupervised'
+ratio = 0
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block

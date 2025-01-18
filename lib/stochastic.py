@@ -162,7 +162,7 @@ class MixtureStochasticConvBlock(nn.Module):
         self.c_vars = c_vars
         self.temperature = 1.0
         self.labeled_ratio = labeled_ratio
-
+        self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
         # q(y|x): Outputs logits for the categorical distribution
@@ -220,11 +220,11 @@ class MixtureStochasticConvBlock(nn.Module):
             )  # Create Gaussian components for p
 
         batch_size = q_params.size(0)
-        small_batch_size = int(batch_size * 0.25) # TODO
+        small_batch_size = int(batch_size * self.labeled_ratio)
         qy_logits = self.qy_x(q_params)
-        
+
         if label is not None:
-            label = label.long()   
+            label = label.long()
             label = label[:small_batch_size]
             supervised_loss = torch.nn.functional.cross_entropy(
                 qy_logits[:small_batch_size], label
@@ -244,9 +244,26 @@ class MixtureStochasticConvBlock(nn.Module):
         q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
         q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
         q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
-        y, y_pred = self.gumbel_softmax(qy_logits, hard=hard)
+
+        y = torch.nn.functional.gumbel_softmax(
+            qy_logits, tau=self.temperature, hard=False
+        )
+
+        m = 0.5 * (y + self.prior_probs)
+        js_div = 0.5 * torch.sum(
+            y * torch.log(y / (m + 1e-10)), dim=-1
+        ) + 0.5 * torch.sum(self.prior_probs * torch.log(self.prior_probs / (m + 1e-10)), dim=-1)
+
+        self.temperature = max(0.5, self.temperature * 0.999)
+
+        y_pred = y.argmax(dim=-1)
         if small_batch_size < batch_size:
-            entropy = -torch.mean(torch.sum(y[small_batch_size:] * torch.log(y[small_batch_size:] + 1e-10), dim=-1))
+            entropy = -torch.mean(
+                torch.sum(
+                    y[small_batch_size:] * torch.log(y[small_batch_size:] + 1e-10),
+                    dim=-1,
+                )
+            )
         else:
             entropy = 0
         z = q_mu + q_std * torch.randn_like(q_std)
@@ -289,7 +306,8 @@ class MixtureStochasticConvBlock(nn.Module):
                     [
                         kl_divergences[range(small_batch_size), label],
                         kl_divergences[
-                            range(small_batch_size, batch_size), y_pred[small_batch_size:]
+                            range(small_batch_size, batch_size),
+                            y_pred[small_batch_size:],
                         ],
                     ],
                     dim=0,
@@ -297,7 +315,7 @@ class MixtureStochasticConvBlock(nn.Module):
             else:
                 kl = kl_divergences[range(batch_size), label]
 
-            kl_loss = kl.mean()
+            kl_loss = kl.mean() + js_div.mean()
 
         data = {
             "z": z,  # sampled latent variable
@@ -310,30 +328,15 @@ class MixtureStochasticConvBlock(nn.Module):
             "mu": q_mu,
             "logvar": q_lv,
             "pi": y,  # mixture coefficients
-            "cross_entropy": supervised_loss * (1 / 0.25), # TODO
+            "cross_entropy": (
+                supervised_loss * (1 / self.labeled_ratio)
+                if self.labeled_ratio > 0
+                else 0
+            ),
             "entropy": entropy,
         }
 
         return out, data
-
-    def gumbel_softmax(self, logits, hard=True):
-
-        # Hard Sampling with Straight-Through Estimator:
-        # Provides discrete indices during the forward pass and differentiable soft outputs during the backward pass.
-        # Add Gumbel noise for sampling
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + 1e-10) + 1e-10)
-        y_soft = F.softmax((logits + gumbel_noise) / self.temperature, dim=-1)
-        self.temperature = max(0.5, self.temperature * 0.999)
-
-        if hard:
-            # Convert soft probabilities to hard one-hot representation
-            y_hard = torch.zeros_like(y_soft)
-            y_hard.scatter_(1, y_soft.argmax(dim=-1, keepdim=True), 1)
-            y_soft = y_hard.detach() + y_soft - y_hard.detach()
-
-        # Get indices during forward pass
-        y_indices = y_soft.argmax(dim=-1)
-        return y_soft, y_indices
 
 
 def kl_normal_mc(z, p_mulv, q_mulv):

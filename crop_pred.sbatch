@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/TAC/crop.log
+#SBATCH --output=/group/jug/Sheida/HVAE/TAC/crop_2.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
-#SBATCH --mem=512GB
+#SBATCH --mem=32GB
 #SBATCH --ntasks=8
 #SBATCH --job-name=extac
-#SBATCH --time=3:00:00
+#SBATCH --time=01:00:00
 #SBATCH --no-requeue
 
 
