@@ -4,6 +4,7 @@ from torch.distributions import kl_divergence, Categorical, MultivariateNormal
 from torch.distributions.normal import Normal
 from typing import Type, Union
 import torch.nn.functional as F
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 
 class NormalStochasticConvBlock(nn.Module):
@@ -136,6 +137,28 @@ class NormalStochasticConvBlock(nn.Module):
         return out, data
 
 
+class TransformerQy(nn.Module):
+    def __init__(self, input_dim, embed_dim, n_components, num_heads=4, num_layers=2):
+        super().__init__()
+        self.embedding = nn.Linear(input_dim, embed_dim)  # Optional embedding
+        self.encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
+        self.transformer_encoder = TransformerEncoder(
+            self.encoder_layer, num_layers=num_layers
+        )
+        self.output = nn.Linear(
+            embed_dim, n_components
+        )  # Predict logits for Gumbel-Softmax
+
+    def forward(self, x):
+        # Embed and transpose for transformer input
+        x = self.embedding(x).permute(
+            1, 0, 2
+        )  # (Batch, Seq, Features) -> (Seq, Batch, Features)
+        x = self.transformer_encoder(x)  # Transformer processing
+        x = x.mean(dim=0)  # Aggregate over sequence (optional)
+        return self.output(x)
+
+
 class MixtureStochasticConvBlock(nn.Module):
     """
     Stochastic block with GMM for p(z) and q(z), handling both p(z) and q(z) parameters.
@@ -166,12 +189,13 @@ class MixtureStochasticConvBlock(nn.Module):
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
         # q(y|x): Outputs logits for the categorical distribution
-        self.qy_x = nn.Sequential(
-            conv_type(c_in, c_vars, kernel, padding=pad),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(c_vars * 8 * 8, n_components),
-        )
+        # self.qy_x = nn.Sequential(
+        #     conv_type(c_in, c_vars, kernel, padding=pad),
+        #     nn.ReLU(),
+        #     nn.Flatten(),
+        #     nn.Linear(c_vars * 8 * 8, n_components),
+        # )
+        self.qy_x = TransformerQy(c_in * 8 * 8, 128, n_components)  # Example: embed_dim=128
 
         # q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
         self.qz_xy = nn.Sequential(
@@ -221,7 +245,8 @@ class MixtureStochasticConvBlock(nn.Module):
 
         batch_size = q_params.size(0)
         small_batch_size = int(batch_size * self.labeled_ratio)
-        qy_logits = self.qy_x(q_params)
+        # qy_logits = self.qy_x(q_params)
+        qy_logits = self.qy_x(q_params.flatten(1))
 
         if label is not None:
             label = label.long()
@@ -252,7 +277,9 @@ class MixtureStochasticConvBlock(nn.Module):
         m = 0.5 * (y + self.prior_probs)
         js_div = 0.5 * torch.sum(
             y * torch.log(y / (m + 1e-10)), dim=-1
-        ) + 0.5 * torch.sum(self.prior_probs * torch.log(self.prior_probs / (m + 1e-10)), dim=-1)
+        ) + 0.5 * torch.sum(
+            self.prior_probs * torch.log(self.prior_probs / (m + 1e-10)), dim=-1
+        )
 
         self.temperature = max(0.5, self.temperature * 0.999)
 
