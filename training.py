@@ -176,8 +176,6 @@ def train_network(
                         "KL": kl_loss * beta,
                         "Repulsive": repulsive,
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
-                        # "PPL": cl_pos,
-                        # "NPL": cl_neg,
                         "Total": loss,
                         "CE": ce,
                         "EL": entropy,
@@ -195,8 +193,6 @@ def train_network(
             running_entropy_loss.append(entropy)
             if model.contrastive_learning:
                 running_cl_loss.append(cl_loss)
-                # running_cl_pos.append(cl_pos)
-                # running_cl_neg.append(cl_neg)
 
             scaler.step(optimizer)
             scaler.update()
@@ -213,8 +209,8 @@ def train_network(
                     "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
-                    # "ce loss": torch.mean(torch.stack(running_ce_loss)),
-                    "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
+                    "ce loss": torch.mean(torch.stack(running_ce_loss)),
+                    # "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
@@ -260,7 +256,7 @@ def train_network(
                 running_validation_loss.append(val_loss)
                 running_val_inpainting_loss.append(alpha * val_inpainting_loss)
                 running_val_kl_loss.append(beta * val_kl_loss)
-                # running_val_ce_loss.append(val_ce)
+                running_val_ce_loss.append(val_ce)
                 running_val_entropy_loss.append(val_entropy)
 
         if use_wandb:
@@ -273,10 +269,10 @@ def train_network(
                         torch.stack(running_val_inpainting_loss)
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    # "val ce": torch.mean(
-                        # torch.stack(running_val_ce_loss)
-                    # ).item(),
-                    "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
+                    "val ce": torch.mean(
+                        torch.stack(running_val_ce_loss)
+                    ).item(),
+                    # "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
                     "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
                 }
             )

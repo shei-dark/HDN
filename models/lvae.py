@@ -249,6 +249,7 @@ class LadderVAE(nn.Module):
         return self._global_step
     # TODO: check forward function
     def forward(self, x, y=None, x_orig=None, epoch=0):
+        
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x, self.conv_mult)

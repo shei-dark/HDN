@@ -154,6 +154,7 @@ class TransformerQy(nn.Module):
         self.embedding = nn.Linear(c_in, embed_dim)
 
         # Transformer Encoder
+        # embed_dim = num_heads * dead_dim
         encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
 
@@ -222,7 +223,7 @@ class TransformerQz(nn.Module):
             x (Tensor): Input feature map of shape [B, C, H, W].
 
         Returns:
-            Tensor: Gaussian parameters (mu, logvar) of shape [B, 2 * C, H, W].
+            Tensor: Gaussian parameters (mu, logvar) of shape [B, C, H, W].
         """
         B, C, H, W = x.shape
 
@@ -274,24 +275,24 @@ class MixtureStochasticConvBlock(nn.Module):
         self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-        # q(y|x): Outputs logits for the categorical distribution
+        # #q(y|x): Outputs logits for the categorical distribution
         # self.qy_x = nn.Sequential(
         #     conv_type(c_in, c_vars, kernel, padding=pad),
         #     nn.ReLU(),
         #     nn.Flatten(),
         #     nn.Linear(c_vars * 8 * 8, n_components),
         # )
-        self.qy_x = TransformerQy(
-            c_in, 128, n_components
-        )  # Example: embed_dim=128
-
-        # q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
+        # #q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
         # self.qz_xy = nn.Sequential(
         #     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
         #     nn.ReLU(),
         #     conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
         # )
-        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=2)
+        
+        self.qy_x = TransformerQy(
+            c_in=c_in, embed_dim=128, n_components=n_components, num_heads=4, num_layers=2
+        )
+        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6)
 
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
@@ -314,7 +315,7 @@ class MixtureStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         hard=True,  # Use hard Gumbel-Softmax
     ):
-
+        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
         assert (forced_latent is None) or (not use_mode)
 
         # Separate mu and logvar for each component of the gmm prior
@@ -436,7 +437,7 @@ class MixtureStochasticConvBlock(nn.Module):
         data = {
             "z": z,  # sampled latent variable
             "p_params": p_params,
-            "q_params": q_params,
+            "q_params": qz_params,
             "logprob_p": logprob_p,
             "logprob_q": logprob_q,
             "kl": kl_loss,
