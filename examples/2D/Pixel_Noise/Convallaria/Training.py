@@ -26,7 +26,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/increasing_label_size/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/"
 noiseModel = None
 
 # Training-specific
@@ -47,7 +47,7 @@ beta = 1e-4
 gamma = 1e-1
 # contrastive
 mask_size = 1
-label_size = 1
+label_size = 6
 mode = "1x1"
 contrastive_learning = True
 margin = 50

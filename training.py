@@ -134,8 +134,8 @@ def train_network(
         running_entropy_loss = []
 
         # Parameters
-        initial_size = 1
-        final_size = 6
+        initial_size = 6
+        final_size = 1
         step_interval = 5  # Change every 5 steps
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
