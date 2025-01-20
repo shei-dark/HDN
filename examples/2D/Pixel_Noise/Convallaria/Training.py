@@ -1,18 +1,17 @@
 import os
 import warnings
+
 warnings.filterwarnings("ignore")
 # We import all our dependencies.
 import numpy as np
 import torch
 import sys
+
 sys.path.insert(0, "/home/sheida.rahnamai/GIT/HDN/")
 from torch.utils.data import DataLoader
 from boilerplate import boilerplate
 from models.lvae import LadderVAE
-from boilerplate.dataloader import (
-    Custom2DDataset,
-    DynamicSampler
-)
+from boilerplate.dataloader import Custom2DDataset, DynamicSampler
 import training
 from tqdm import tqdm
 import tifffile as tiff
@@ -27,7 +26,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/supervised_transformer_qzparams/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/increasing_label_size/"
 noiseModel = None
 
 # Training-specific
@@ -37,7 +36,7 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/gmvae/supervised_transformer/model/epsilon_seg_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/gmvae/supervised_transformer_qzparams/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -47,8 +46,8 @@ alpha = 1
 beta = 1e-4
 gamma = 1e-1
 # contrastive
-mask_size = 5
-label_size = 5
+mask_size = 1
+label_size = 1
 mode = "1x1"
 contrastive_learning = True
 margin = 50
@@ -57,7 +56,7 @@ lambda_contrastive = 0.5
 use_wandb = True
 
 # (supervised, ratio 1), (unsupervised, ratio 0), (mixed, ratio 0.25)
-mode = 'supervised'
+mode = "supervised"
 ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
@@ -145,7 +144,7 @@ img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
-    model.labeled_ratio=ratio
+    model.labeled_ratio = ratio
 
 else:
     model = LadderVAE(

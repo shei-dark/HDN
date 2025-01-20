@@ -24,6 +24,7 @@ from boilerplate import boilerplate
 from models.lvae import LadderVAE
 import lib.utils as utils
 import wandb
+
 # import optuna
 
 wandb.require("core")
@@ -130,9 +131,15 @@ def train_network(
         running_kl_loss = []
         running_ce_loss = []
         running_cl_loss = []
-        running_entropy_loss= []
+        running_entropy_loss = []
+
+        # Parameters
+        initial_size = 1
+        final_size = 6
+        step_interval = 5  # Change every 5 steps
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
+
             x = x.squeeze(0)
             y = y.squeeze(0)
             x = x.to(device=device, dtype=torch.float)
@@ -157,7 +164,6 @@ def train_network(
             loss = alpha * inpainting_loss + beta * kl_loss + ce + entropy
             if model.contrastive_learning:
                 loss += gamma * cl_loss
-                
 
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
@@ -198,7 +204,7 @@ def train_network(
             scaler.update()
             model.increment_global_step()
             step = model.global_step
-        
+
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
 
@@ -228,10 +234,11 @@ def train_network(
         running_val_ce_loss = []
         running_val_cl_loss = []
         running_val_entropy_loss = []
-        
+
         model.eval()
         with torch.no_grad():
             for i, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
+
                 x = x.squeeze(0)
                 y = y.squeeze(0)
                 z = z.squeeze(0)
@@ -248,7 +255,12 @@ def train_network(
                 val_cl_loss = (
                     val_outputs["cl_loss"] if model.contrastive_learning else 0
                 )
-                val_loss = alpha * val_inpainting_loss + beta * val_kl_loss + val_ce + val_entropy
+                val_loss = (
+                    alpha * val_inpainting_loss
+                    + beta * val_kl_loss
+                    + val_ce
+                    + val_entropy
+                )
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
                     running_val_cl_loss.append(gamma * val_cl_loss)
@@ -269,11 +281,13 @@ def train_network(
                         torch.stack(running_val_inpainting_loss)
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    "val ce": torch.mean(
-                        torch.stack(running_val_ce_loss)
-                    ).item(),
+                    "val ce": torch.mean(torch.stack(running_val_ce_loss)).item(),
                     # "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
-                    "val cl loss": torch.mean(torch.stack(running_val_cl_loss)).item() if model.contrastive_learning else 0,
+                    "val cl loss": (
+                        torch.mean(torch.stack(running_val_cl_loss)).item()
+                        if model.contrastive_learning
+                        else 0
+                    ),
                 }
             )
         # beta /= 5
@@ -281,12 +295,21 @@ def train_network(
         # if trial is not None:
         #     trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
         #     if trial.should_prune():
-        #         raise optuna.exceptions.TrialPruned()    
-        
+        #         raise optuna.exceptions.TrialPruned()
+
         model.train()
 
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
         scheduler.step(total_epoch_loss_val)
+
+        label_size = boilerplate.label_size_scheduler(
+            initial_size=initial_size,
+            final_size=final_size,
+            step_interval=step_interval,
+            current_step=epoch,
+        )
+        train_loader.dataset.update_patches(label_size)
+        val_loader.dataset.update_patches(label_size)
 
         ### Save validation losses
         loss_val_history.append(total_epoch_loss_val.item())
@@ -353,4 +376,6 @@ def train_unet(unet, train_loader, val_loader, epochs=50, lr=3e-4, device="cuda"
                 center_preds = unet(patches)
                 val_loss += criterion(center_preds, labels).item()
 
-        print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print(
+            f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+        )

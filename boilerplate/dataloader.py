@@ -153,8 +153,10 @@ class Custom2DDataset(Dataset):
         """Set the current mode of the dataset."""
         self.mode = mode
 
-    def _compute_valid_patches(self):
+    def _compute_valid_patches(self, label_size=None):
         """Precompute metadata for valid patches."""
+        if label_size is None:
+            label_size = self.label_size
         all_patches = []
         index = 0
         patches_by_label = {}
@@ -169,10 +171,10 @@ class Custom2DDataset(Dataset):
                             i : i + self.patch_size,
                             j : j + self.patch_size,
                         ]
-                        start = (self.patch_size - self.label_size) // 2
+                        start = (self.patch_size - label_size) // 2
                         unique_label_area = patch_label[
-                            start : start + self.label_size,
-                            start : start + self.label_size,
+                            start : start + label_size,
+                            start : start + label_size,
                         ]
                         unique_labels = np.unique(unique_label_area)
                         if len(unique_labels) == 1 and unique_labels[0] != -1:
@@ -183,6 +185,10 @@ class Custom2DDataset(Dataset):
                             patches_by_label[unique_labels[0]].append(index)
                             index += 1
         return all_patches, patches_by_label
+
+    def update_patches(self, new_label_size):
+        self.label_size = new_label_size
+        self.all_patches, self.patches_by_label = self._compute_valid_patches(label_size=new_label_size)
 
     def __len__(self):
         """Return dataset size based on mode."""
