@@ -26,7 +26,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/orientation_invariant/"
 noiseModel = None
 
 # Training-specific
@@ -36,7 +36,7 @@ max_epochs = 100
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/gmvae/supervised_transformer_qzparams/model/epsilon_seg_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -47,7 +47,7 @@ beta = 1e-4
 gamma = 1e-1
 # contrastive
 mask_size = 1
-label_size = 6
+label_size = 1
 mode = "1x1"
 contrastive_learning = True
 margin = 50
@@ -167,6 +167,7 @@ else:
         stochastic_block_type=stochastic_block_type,
         n_components=n_components,
         scale=scale,
+        use_equivariant=True,
     ).cuda()
 print(model)
 model.train()  # Model set in training mode

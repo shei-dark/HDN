@@ -17,6 +17,9 @@ from .lvae_layers import (
     TopDownDeterministicResBlock,
     BottomUpDeterministicResBlock,
 )
+from e2cnn import gspaces
+from e2cnn.nn import R2Conv, FieldType, GeometricTensor
+
 
 
 class LadderVAE(nn.Module):
@@ -55,6 +58,7 @@ class LadderVAE(nn.Module):
         stochastic_block_type="normal",
         n_components=4,
         scale=4,
+        use_equivariant=False,
     ):
 
         super().__init__()
@@ -62,13 +66,39 @@ class LadderVAE(nn.Module):
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
         # Get class of convolutional layer
+        self.use_equivariant = use_equivariant
         self.conv_mult = conv_mult
-        self.conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(
-            nn, f"Conv{self.conv_mult}d"
-        )
-        self.up_conv_type: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = (
-            getattr(nn, f"ConvTranspose{self.conv_mult}d")
-        )
+        if self.use_equivariant:
+            from e2cnn import gspaces
+            from e2cnn.nn import R2Conv, FieldType, R2ConvTransposed
+
+            # Define the geometric space (O(2) symmetry for rotations/reflections)
+            self.r2_act = gspaces.Rot2dOnR2(N=32)
+
+            # Define equivariant convolution type
+            self.conv_type = lambda c_in, c_out, kernel_size, padding, stride=1: R2Conv(
+                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
+                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
+                kernel_size=kernel_size,
+                padding=padding,
+                stride=stride,
+            )
+            self.up_conv_type = lambda c_in, c_out, kernel_size, padding, stride=2: R2ConvTransposed(
+                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
+                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
+                kernel_size=kernel_size,
+                padding=padding,
+                stride=stride
+            )
+        else:
+            # Standard convolution
+            self.conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(
+                nn, f"Conv{self.conv_mult}d"
+            )
+            self.up_conv_type: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = (
+                getattr(nn, f"ConvTranspose{self.conv_mult}d")
+            )
+        
         # Get class of nonlinear activation from string description
         self.nonlin: Type[Union[nn.ReLU, nn.LeakyReLU, nn.ELU, nn.SELU]] = nonlin
         self.n_layers = len(self.z_dims)
@@ -101,6 +131,7 @@ class LadderVAE(nn.Module):
         assert self.data_std is not None, "Data std is not specified"
         assert self.data_mean is not None, "Data mean is not specified"
         assert self.conv_mult in [
+            0,
             2,
             3,
         ], "Please specify correct conv layers dimension, 2 or 3"
@@ -205,6 +236,7 @@ class LadderVAE(nn.Module):
                     n_components=n_components,
                     scale=scale,
                     labeled_ratio=labeled_ratio,
+                    r2_act=self.r2_act if self.use_equivariant else None,
                 )
             )
 
@@ -230,10 +262,10 @@ class LadderVAE(nn.Module):
 
         # Define likelihood
         if self.likelihood_form == "gaussian":
-            self.likelihood = GaussianLikelihood(n_filters, color_ch, conv_mult)
+            self.likelihood = GaussianLikelihood(n_filters, color_ch, conv_mult, self.r2_act)
         elif self.likelihood_form == "noise_model":
             self.likelihood = NoiseModelLikelihood(
-                n_filters, color_ch, conv_mult, data_mean, data_std, noiseModel
+                n_filters, color_ch, conv_mult, data_mean, data_std, noiseModel, self.r2_act
             )
         else:
             msg = "Unrecognized likelihood '{}'".format(self.likelihood_form)
@@ -253,6 +285,7 @@ class LadderVAE(nn.Module):
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x, self.conv_mult)
+        # x_pad = x
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
@@ -499,7 +532,7 @@ class LadderVAE(nn.Module):
         c = self.z_dims[-1] * 2  # mu and logvar
         if self.prior_type == "mixture":
             c *= self.n_components
-        if self.conv_mult == 2:
+        if self.conv_mult == 2 or self.conv_mult == 0:
             h = sz[0] // dwnsc
             w = sz[1] // dwnsc
             top_layer_shape = (n_imgs, c, h, w)

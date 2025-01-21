@@ -46,7 +46,8 @@ class CropImage(nn.Module):
         self.size = size
 
     def forward(self, x):
-        return crop_img_tensor(x, self.size)
+        return crop_img_tensor(x, self.size) # tODO: Fix this assertion error assert len(size) in [2, 3], "Invalid input depth dimension"
+        # return x
 
 
 def normalize(img, mean, std):

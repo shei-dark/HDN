@@ -5,6 +5,7 @@ from torch.distributions.normal import Normal
 from typing import Type, Union
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from e2cnn.nn import R2Conv, FieldType
 
 
 class NormalStochasticConvBlock(nn.Module):
@@ -16,7 +17,7 @@ class NormalStochasticConvBlock(nn.Module):
     """
 
     def __init__(
-        self, c_in, c_vars, c_out, conv_mult, kernel=3, transform_p_params=True
+        self, c_in, c_vars, c_out, conv_mult, kernel=3, transform_p_params=True, r2_act=None,
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -26,12 +27,30 @@ class NormalStochasticConvBlock(nn.Module):
         self.c_out = c_out
         self.c_vars = c_vars
 
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        if conv_mult == 0:
+            # Orientation-invariant case
+            assert r2_act is not None, "r2_act must be provided for equivariant convolutions"
 
-        if transform_p_params:
-            self.conv_in_p = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
-        self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
-        self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
+            # Define field types for equivariant convolutions
+            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * c_in)
+            self.var_type = FieldType(r2_act, [r2_act.regular_repr] * c_vars)
+            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_out)
+
+            # Define equivariant convolution layers
+            if transform_p_params:
+                self.conv_in_p = R2Conv(self.input_type, self.var_type, kernel_size=kernel, padding=pad)
+            self.conv_in_q = R2Conv(self.input_type, self.var_type, kernel_size=kernel, padding=pad)
+            self.conv_out = R2Conv(self.var_type, self.output_type, kernel_size=kernel, padding=pad)
+
+        else:
+            # Standard convolution case
+            conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+
+            if transform_p_params:
+                self.conv_in_p = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
+            self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
+            self.conv_out = conv_type(c_vars, c_out, kernel_size=kernel, padding=pad)
+
 
     def forward(
         self,
@@ -194,7 +213,7 @@ class TransformerQy(nn.Module):
 
 
 class TransformerQz(nn.Module):
-    def __init__(self, c_in, embed_dim, num_heads=4, num_layers=2):
+    def __init__(self, c_in, embed_dim, num_heads=4, num_layers=2, conv_mult=2, r2_act=None):
         """
         Transformer-based q(z|x, y), where each spatial pixel (H x W) is a token.
 
@@ -212,8 +231,15 @@ class TransformerQz(nn.Module):
         encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
         self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-        # Output convolution for Gaussian parameters (mu, logvar)
-        self.output_conv = nn.Conv2d(embed_dim, c_in, kernel_size=1)
+        if conv_mult == 0 and r2_act is not None:
+            # Orientation-invariant case
+            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * embed_dim)
+            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_in)
+            self.output_conv = R2Conv(self.input_type, self.output_type, kernel_size=1)
+        else:
+            # Standard convolution case
+            self.output_conv = nn.Conv2d(embed_dim, c_in, kernel_size=1)
+
 
     def forward(self, x):
         """
@@ -242,8 +268,13 @@ class TransformerQz(nn.Module):
         # Reshape back to feature map: [seq_len, B, embed_dim] -> [B, embed_dim, H, W]
         x = x.permute(1, 2, 0).view(B, -1, H, W)
 
+        if isinstance(self.output_conv, R2Conv):
+            x = FieldType(self.input_type.gspace, x)  # Wrap as GeometricTensor
+            x = self.output_conv(x).tensor  # Apply R2Conv and unwrap
+        else:
+            x = self.output_conv(x)
         # Output Gaussian parameters (mu, logvar): [B, 2 * C, H, W]
-        return self.output_conv(x)
+        return x
 
 
 class MixtureStochasticConvBlock(nn.Module):
@@ -262,6 +293,7 @@ class MixtureStochasticConvBlock(nn.Module):
         kernel=3,
         n_components=4,
         labeled_ratio=1,
+        r2_act=None,
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -273,7 +305,18 @@ class MixtureStochasticConvBlock(nn.Module):
         self.temperature = 1.0
         self.labeled_ratio = labeled_ratio
         self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        
+        if conv_mult == 0 and r2_act is not None:
+            # Orientation-invariant case
+            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * c_vars)
+            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_out)
+            self.conv_out = R2Conv(self.input_type, self.output_type, kernel_size=kernel, padding=pad)
+        else:
+            # Standard convolution case
+            if conv_mult == 2:
+                self.conv_out = nn.Conv2d(c_vars, c_out, kernel_size=kernel, padding=pad)
+            elif conv_mult == 3:
+                self.conv_out = nn.Conv3d(c_vars, c_out, kernel_size=kernel, padding=pad)
 
         # #q(y|x): Outputs logits for the categorical distribution
         # self.qy_x = nn.Sequential(
@@ -292,15 +335,13 @@ class MixtureStochasticConvBlock(nn.Module):
         self.qy_x = TransformerQy(
             c_in=c_in, embed_dim=128, n_components=n_components, num_heads=4, num_layers=2
         )
-        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6)
+        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, conv_mult=conv_mult, r2_act=r2_act)
 
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
         # Linear layers to compute gamma and beta from the component mode vector
         self.gamma_layer = nn.Linear(4, c_in)
         self.beta_layer = nn.Linear(4, c_in)
-
-        self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
     def forward(
         self,
@@ -315,7 +356,7 @@ class MixtureStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         hard=True,  # Use hard Gumbel-Softmax
     ):
-        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
+        self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
         assert (forced_latent is None) or (not use_mode)
 
         # Separate mu and logvar for each component of the gmm prior
@@ -385,7 +426,11 @@ class MixtureStochasticConvBlock(nn.Module):
             entropy = 0
         z = q_mu + q_std * torch.randn_like(q_std)
 
-        out = self.conv_out(z)
+        if isinstance(self.conv_out, R2Conv):
+            z = FieldType(self.input_type.gspace, z)  # Wrap as GeometricTensor
+            out = self.conv_out(z).tensor  # Apply R2Conv and unwrap
+        else:
+            out = self.conv_out(z)
 
         logprob_p = None
         logprob_q = None

@@ -302,14 +302,15 @@ def train_network(
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
         scheduler.step(total_epoch_loss_val)
 
-        label_size = boilerplate.label_size_scheduler(
-            initial_size=initial_size,
-            final_size=final_size,
-            step_interval=step_interval,
-            current_step=epoch,
-        )
-        train_loader.dataset.update_patches(label_size)
-        val_loader.dataset.update_patches(label_size)
+        # TODO increasing/decreasing the label size
+        # label_size = boilerplate.label_size_scheduler(
+        #     initial_size=initial_size,
+        #     final_size=final_size,
+        #     step_interval=step_interval,
+        #     current_step=epoch,
+        # )
+        # train_loader.dataset.update_patches(label_size)
+        # val_loader.dataset.update_patches(label_size)
 
         ### Save validation losses
         loss_val_history.append(total_epoch_loss_val.item())
