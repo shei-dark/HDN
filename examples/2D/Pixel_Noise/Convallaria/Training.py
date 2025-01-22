@@ -26,7 +26,7 @@ gaussian_noise_std = None
 
 
 model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/orientation_invariant/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/test/"
 noiseModel = None
 
 # Training-specific
@@ -39,7 +39,7 @@ load_checkpoint = False
 checkpoint = "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
-blocks_per_layer = 5
+blocks_per_layer = 3
 batchnorm = True
 free_bits = 0.0
 alpha = 1
@@ -107,8 +107,10 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-train_stride = 64
-val_stride = 40
+# train_stride = 64
+# val_stride = 40
+train_stride = 128
+val_stride = 80
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
@@ -167,7 +169,7 @@ else:
         stochastic_block_type=stochastic_block_type,
         n_components=n_components,
         scale=scale,
-        use_equivariant=True,
+        use_equivariant=False,
     ).cuda()
 print(model)
 model.train()  # Model set in training mode

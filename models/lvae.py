@@ -17,9 +17,6 @@ from .lvae_layers import (
     TopDownDeterministicResBlock,
     BottomUpDeterministicResBlock,
 )
-from e2cnn import gspaces
-from e2cnn.nn import R2Conv, FieldType, GeometricTensor
-
 
 
 class LadderVAE(nn.Module):
@@ -58,7 +55,6 @@ class LadderVAE(nn.Module):
         stochastic_block_type="normal",
         n_components=4,
         scale=4,
-        use_equivariant=False,
     ):
 
         super().__init__()
@@ -66,39 +62,15 @@ class LadderVAE(nn.Module):
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
         # Get class of convolutional layer
-        self.use_equivariant = use_equivariant
         self.conv_mult = conv_mult
-        if self.use_equivariant:
-            from e2cnn import gspaces
-            from e2cnn.nn import R2Conv, FieldType, R2ConvTransposed
+        # Standard convolution
+        self.conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(
+            nn, f"Conv{self.conv_mult}d"
+        )
+        self.up_conv_type: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = (
+            getattr(nn, f"ConvTranspose{self.conv_mult}d")
+        )
 
-            # Define the geometric space (O(2) symmetry for rotations/reflections)
-            self.r2_act = gspaces.Rot2dOnR2(N=32)
-
-            # Define equivariant convolution type
-            self.conv_type = lambda c_in, c_out, kernel_size, padding, stride=1: R2Conv(
-                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
-                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
-                kernel_size=kernel_size,
-                padding=padding,
-                stride=stride,
-            )
-            self.up_conv_type = lambda c_in, c_out, kernel_size, padding, stride=2: R2ConvTransposed(
-                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
-                FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
-                kernel_size=kernel_size,
-                padding=padding,
-                stride=stride
-            )
-        else:
-            # Standard convolution
-            self.conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(
-                nn, f"Conv{self.conv_mult}d"
-            )
-            self.up_conv_type: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = (
-                getattr(nn, f"ConvTranspose{self.conv_mult}d")
-            )
-        
         # Get class of nonlinear activation from string description
         self.nonlin: Type[Union[nn.ReLU, nn.LeakyReLU, nn.ELU, nn.SELU]] = nonlin
         self.n_layers = len(self.z_dims)
@@ -122,8 +94,6 @@ class LadderVAE(nn.Module):
         self.margin = margin
         self.lambda_contrastive = lambda_contrastive
         self.labeled_ratio = labeled_ratio
-        if labeled_ratio == 0:
-            self.contrastive_learning = False
         self.prior_type = stochastic_block_type
         self.n_components = n_components
         self.scale = scale
@@ -131,7 +101,6 @@ class LadderVAE(nn.Module):
         assert self.data_std is not None, "Data std is not specified"
         assert self.data_mean is not None, "Data mean is not specified"
         assert self.conv_mult in [
-            0,
             2,
             3,
         ], "Please specify correct conv layers dimension, 2 or 3"
@@ -200,17 +169,7 @@ class LadderVAE(nn.Module):
             )
 
             # Add top-down stochastic layer at level i.
-            # The architecture when doing inference is roughly as follows:
-            #    p_params = output of top-down layer above
-            #    bu = inferred bottom-up value at this layer
-            #    q_params = merge(bu, p_params)
-            #    z = stochastic_layer(q_params)
-            #    possibly get skip connection from previous top-down layer
-            #    top-down deterministic ResNet
-            #
-            # When doing generation only, the value bu is not available, the
-            # merge layer is not used, and z is sampled directly from p_params.
-            #
+
             self.top_down_layers.append(
                 TopDownLayer(
                     z_dim=z_dims[i],
@@ -235,8 +194,6 @@ class LadderVAE(nn.Module):
                     stochastic_block_type=stochastic_block_type,
                     n_components=n_components,
                     scale=scale,
-                    labeled_ratio=labeled_ratio,
-                    r2_act=self.r2_act if self.use_equivariant else None,
                 )
             )
 
@@ -262,10 +219,15 @@ class LadderVAE(nn.Module):
 
         # Define likelihood
         if self.likelihood_form == "gaussian":
-            self.likelihood = GaussianLikelihood(n_filters, color_ch, conv_mult, self.r2_act)
+            self.likelihood = GaussianLikelihood(n_filters, color_ch, conv_mult)
         elif self.likelihood_form == "noise_model":
             self.likelihood = NoiseModelLikelihood(
-                n_filters, color_ch, conv_mult, data_mean, data_std, noiseModel, self.r2_act
+                n_filters,
+                color_ch,
+                conv_mult,
+                data_mean,
+                data_std,
+                noiseModel,
             )
         else:
             msg = "Unrecognized likelihood '{}'".format(self.likelihood_form)
@@ -279,13 +241,13 @@ class LadderVAE(nn.Module):
     def global_step(self) -> int:
         """Global step."""
         return self._global_step
+
     # TODO: check forward function
     def forward(self, x, y=None, x_orig=None, epoch=0):
-        
+
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
         x_pad = self.pad_input(x, self.conv_mult)
-        # x_pad = x
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
@@ -296,7 +258,6 @@ class LadderVAE(nn.Module):
 
         cl = None
         kl = None
-        repulsive = 0
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -305,13 +266,8 @@ class LadderVAE(nn.Module):
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
             kl = torch.stack(td_data["kl"]).mean(0)
-            if self.prior_type == "all_mixture":
-                repulsive = torch.stack(td_data["repulsive"]).mean(0)
-            elif self.prior_type == "mixture":
-                repulsive = td_data["repulsive"][-1]
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
-
 
         if self.contrastive_learning and self.mode_pred is False:
             cl = compute_cl_loss(
@@ -322,7 +278,7 @@ class LadderVAE(nn.Module):
                 margin=self.margin,
                 lambda_contrastive=self.lambda_contrastive,
                 labeled_ratio=self.labeled_ratio,
-                prior = self.prior_type,
+                prior=self.prior_type,
             )
 
         output = {
@@ -330,13 +286,7 @@ class LadderVAE(nn.Module):
             "z": td_data["z"],
             "mu": td_data["mu"],
             "kl": kl,
-            "repulsive": repulsive,
             "cl": cl,
-            # "cl_loss": cl["cl_loss"] if cl is not None else None,
-            # "cl_pos": cl["pos_pair_loss"] if cl is not None else None,
-            # "cl_neg": cl["neg_pair_loss"] if cl is not None else None,
-            # "cl_neg_terms": cl["neg_pair_terms"] if cl is not None else None,
-            # "thetas": cl["thetas"] if cl is not None else None,
             "logp": td_data["logprob_p"],
             "out_mean": likelihood_info["mean"],
             "out_mode": likelihood_info["mode"],
@@ -404,7 +354,6 @@ class LadderVAE(nn.Module):
         kl = [None] * self.n_layers
         ce = [None] * self.n_layers
         entropy = [None] * self.n_layers
-        repulsive = [None] * self.n_layers
 
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
@@ -417,7 +366,7 @@ class LadderVAE(nn.Module):
         logprob_p = 0.0
 
         # Top-down inference/generation loop
-        out = out_pre_residual = None
+        out = None
         for i in reversed(range(self.n_layers)):
 
             # If available, get deterministic node from bottom-up inference
@@ -435,7 +384,7 @@ class LadderVAE(nn.Module):
             skip_input = out  # TODO or out_pre_residual? or both?
 
             # Full top-down layer, including sampling and deterministic part
-            out, out_pre_residual, aux = self.top_down_layers[i](
+            out, _, aux = self.top_down_layers[i](
                 label,
                 out,
                 skip_connection_input=skip_input,
@@ -453,7 +402,6 @@ class LadderVAE(nn.Module):
             kl[i] = aux["kl"]  # (batch, )
             ce[i] = aux["cross_entropy"]
             entropy[i] = aux["entropy"]
-            repulsive[i] = aux["repulsive"]
             mu[i] = aux["mu"]
             logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
@@ -467,7 +415,6 @@ class LadderVAE(nn.Module):
         data = {
             "z": z,  # list of tensors with shape (batch, ch[i], h[i], w[i])
             "kl": kl,  # list of tensors with shape (batch, )
-            "repulsive": repulsive,
             "logprob_p": logprob_p,  # scalar, mean over batch
             "mu": mu,
             "logvar": logvar,
@@ -532,7 +479,7 @@ class LadderVAE(nn.Module):
         c = self.z_dims[-1] * 2  # mu and logvar
         if self.prior_type == "mixture":
             c *= self.n_components
-        if self.conv_mult == 2 or self.conv_mult == 0:
+        if self.conv_mult == 2:
             h = sz[0] // dwnsc
             w = sz[1] // dwnsc
             top_layer_shape = (n_imgs, c, h, w)

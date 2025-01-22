@@ -449,7 +449,7 @@ class ResBlockWithResampling(nn.Module):
             gated=gated,
             block_type=res_block_type,
             grad_checkpoint=grad_checkpoint,
-            r2_act=self.r2_act if conv_mult == 0 else None,
+            # r2_act=self.r2_act if conv_mult == 0 else None,
         )
 
         # Define last conv layer to get correct num output channels

@@ -7,7 +7,6 @@ from typing import Type, Union
 def no_cp(func, inp):
     return func(inp)
 
-
 class ResidualBlock(nn.Module):
     """
     Residual block with 2 convolutional layers.
@@ -41,7 +40,6 @@ class ResidualBlock(nn.Module):
         dropout=None,
         gated=None,
         grad_checkpoint=False,
-        r2_act=None,
     ):
         super().__init__()
         if kernel is None:
@@ -57,87 +55,53 @@ class ResidualBlock(nn.Module):
         self.cp = checkpoint if grad_checkpoint else no_cp
         # TODO Might need to update batchnorm stats calculation for grad checkpointing
 
-        if conv_mult == 0:
-            # Orientation-invariant case
-            assert r2_act is not None, "r2_act must be provided when conv_mult == 0"
-            from e2cnn.nn import R2Conv, FieldType
-
-            # Define field types for equivariant convolutions
-            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * channels)
-            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * channels)
-
-            conv_layer = lambda c_in, c_out, kernel_size, padding: R2Conv(
-                FieldType(r2_act, [r2_act.regular_repr] * c_in),
-                FieldType(r2_act, [r2_act.regular_repr] * c_out),
-                kernel_size=kernel_size,
-                padding=padding
-            )
-            batchnorm_layer = None  # No batchnorm for equivariant convolutions
-            dropout_layer = None if dropout is None else nn.Dropout(dropout)
-        else:
-            conv_layer: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-            batchnorm_layer_type: Type[Union[nn.BatchNorm2d, nn.BatchNorm3d]] = getattr(
-                nn, f"BatchNorm{conv_mult}d"
-            )
-            dropout_layer_type: Type[Union[nn.Dropout2d, nn.Dropout3d]] = getattr(
-                nn, f"Dropout{conv_mult}d"
-            )
+        conv_layer: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        batchnorm_layer_type: Type[Union[nn.BatchNorm2d, nn.BatchNorm3d]] = getattr(
+            nn, f"BatchNorm{conv_mult}d"
+        )
+        dropout_layer_type: Type[Union[nn.Dropout2d, nn.Dropout3d]] = getattr(
+            nn, f"Dropout{conv_mult}d"
+        )
         modules = []
 
-        # Define block based on block_type
         if block_type == "cabdcabd":
             for i in range(2):
-                if conv_mult == 0:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i]
-                    )
-                else:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i], groups=groups
-                    )
+                conv = conv_layer(
+                    channels, channels, kernel[i], padding=pad[i], groups=groups
+                )
                 modules.append(conv)
                 modules.append(nonlin())
-                if batchnorm and conv_mult != 0:
-                    modules.append(batchnorm_layer(channels))
-                if dropout and conv_mult != 0:
-                    modules.append(dropout_layer(dropout))
+                if batchnorm:
+                    modules.append(batchnorm_layer_type(channels))
+                if dropout is not None:
+                    modules.append(dropout_layer_type(dropout))
 
         elif block_type == "bacdbac":
             for i in range(2):
-                if batchnorm and conv_mult != 0:
-                    modules.append(batchnorm_layer(channels))
+                if batchnorm:
+                    modules.append(batchnorm_layer_type(channels))
                 modules.append(nonlin())
-                if conv_mult == 0:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i]
-                    )
-                else:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i], groups=groups
-                    )
+                conv = conv_layer(
+                    channels, channels, kernel[i], padding=pad[i], groups=groups
+                )
                 modules.append(conv)
-                if dropout is not None and i == 0 and conv_mult != 0:
-                    modules.append(dropout_layer(dropout))
+                if dropout is not None and i == 0:
+                    modules.append(dropout_layer_type(dropout))
 
         elif block_type == "bacdbacd":
             for i in range(2):
-                if batchnorm and conv_mult != 0:
-                    modules.append(batchnorm_layer(channels))
+                if batchnorm:
+                    modules.append(batchnorm_layer_type(channels))
                 modules.append(nonlin())
-                if conv_mult == 0:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i]
-                    )
-                else:
-                    conv = conv_layer(
-                        channels, channels, kernel[i], padding=pad[i], groups=groups
-                    )
+                conv = conv_layer(
+                    channels, channels, kernel[i], padding=pad[i], groups=groups
+                )
                 modules.append(conv)
-                if dropout is not None and conv_mult != 0:
-                    modules.append(dropout_layer(dropout))
+                if dropout is not None:
+                    modules.append(dropout_layer_type(dropout))
 
         else:
-            raise ValueError(f"Unrecognized block type '{block_type}'")
+            raise ValueError("unrecognized block type '{}'".format(block_type))
 
         if gated:
             modules.append(GateLayer(channels, 1, conv_layer, nonlin))
@@ -145,8 +109,6 @@ class ResidualBlock(nn.Module):
 
     def forward(self, inp):
         return self.cp(self.block, inp) + inp
-
-
 class ResidualGatedBlock(ResidualBlock):
 
     def __init__(self, *args, **kwargs):

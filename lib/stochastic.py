@@ -356,7 +356,7 @@ class MixtureStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         hard=True,  # Use hard Gumbel-Softmax
     ):
-        self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
+        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
         assert (forced_latent is None) or (not use_mode)
 
         # Separate mu and logvar for each component of the gmm prior
