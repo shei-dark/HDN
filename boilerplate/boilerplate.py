@@ -126,19 +126,13 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> 
             conv=model.conv_mult,
         ).mean()
         kl_loss = model_out["kl"]
-        repulsive = model_out["repulsive"]
         cl_loss = model_out["cl"]
         entropy = model_out["entropy"]
 
         output = {
             "inpainting_loss": inpainting_loss,
             "kl_loss": kl_loss,
-            "repulsive": repulsive,
             "cl_loss": cl_loss,
-            # "cl_pos": cl_pos,
-            # "cl_neg": cl_neg,
-            # "cl_neg_terms": cl_neg_terms,
-            # "thetas": thetas,
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
             "ce": model_out["ce"],

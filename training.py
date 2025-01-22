@@ -78,11 +78,6 @@ def train_network(
     model_folder = directory_path + "model/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
-    loss_train_history = []
-    inpainting_loss_train_history = []
-    kl_loss_train_history = []
-    cross_entropy_loss_train_history = []
-    cl_loss_train_history = []
     loss_val_history = []
 
     patience_ = 0
@@ -292,10 +287,6 @@ def train_network(
             )
         # beta /= 5
         # gamma /= 5
-        # if trial is not None:
-        #     trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
-        #     if trial.should_prune():
-        #         raise optuna.exceptions.TrialPruned()
 
         model.train()
 
@@ -349,34 +340,3 @@ def train_network(
         )
 
         print("----------------------------------------", flush=True)
-    # return torch.mean(torch.stack(running_val_cl_loss)).item()
-
-
-def train_unet(unet, train_loader, val_loader, epochs=50, lr=3e-4, device="cuda"):
-    unet.to(device)
-    optimizer = optim.Adam(unet.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-
-    for epoch in range(epochs):
-        unet.train()
-        train_loss = 0
-        for patches, labels in tqdm(train_loader, desc=f"Training Epoch {epoch+1}"):
-            patches, labels = patches.to(device), labels.to(device)
-            optimizer.zero_grad()
-            center_preds = unet(patches)
-            loss = criterion(center_preds, labels)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-
-        val_loss = 0
-        unet.eval()
-        with torch.no_grad():
-            for patches, labels in tqdm(val_loader, desc="Validating"):
-                patches, labels = patches.to(device), labels.to(device)
-                center_preds = unet(patches)
-                val_loss += criterion(center_preds, labels).item()
-
-        print(
-            f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
-        )

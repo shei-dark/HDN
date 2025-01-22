@@ -27,16 +27,18 @@ gaussian_noise_std = None
 
 model_name = "epsilon_seg"
 directory_path = "/group/jug/Sheida/HVAE/gmvae/test/"
+# Model-specific
+load_checkpoint = False
+checkpoint = (
+    "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/model/epsilon_seg_best_vae.net"
+)
+
 noiseModel = None
 
 # Training-specific
 batch_size = 512
 lr = 3e-5
 max_epochs = 100
-
-# Model-specific
-load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/model/epsilon_seg_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 3
@@ -45,27 +47,22 @@ free_bits = 0.0
 alpha = 1
 beta = 1e-4
 gamma = 1e-1
-# contrastive
 mask_size = 1
 label_size = 1
-mode = "1x1"
 contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
-# (supervised, ratio 1), (unsupervised, ratio 0), (mixed, ratio 0.25)
+# (supervised, ratio 1), (mixed, ratio 0.25)
 mode = "supervised"
 ratio = 1
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 n_components = 4  # Used only for Mixture block
 
-percent_labeled = "10_percent"
-
 # train data
-
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
 keys = ["high_c1", "high_c2", "high_c3"]
 
@@ -107,10 +104,8 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-# train_stride = 64
-# val_stride = 40
-train_stride = 128
-val_stride = 80
+train_stride = 192  # should be a multiple of 32
+val_stride = 120  # should be a multiple of 20
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
@@ -137,7 +132,6 @@ val_set = Custom2DDataset(
 
 train_sampler = DynamicSampler(train_set, batch_size)
 val_sampler = DynamicSampler(val_set, batch_size)
-
 
 train_loader = DataLoader(train_set, sampler=train_sampler)
 val_loader = DataLoader(val_set, sampler=val_sampler)
@@ -168,13 +162,11 @@ else:
         labeled_ratio=ratio,
         stochastic_block_type=stochastic_block_type,
         n_components=n_components,
-        scale=scale,
-        use_equivariant=False,
     ).cuda()
 print(model)
 model.train()  # Model set in training mode
 
-val_cl = training.train_network(
+training.train_network(
     model=model,
     lr=lr,
     max_epochs=max_epochs,
@@ -191,5 +183,4 @@ val_cl = training.train_network(
     gradient_scale=256,
     use_wandb=use_wandb,
     max_grad_norm=1,
-    trial=None,
 )

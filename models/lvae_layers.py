@@ -1,10 +1,8 @@
 import torch
 from torch import nn
 from typing import Type, Union
-import math
 from lib.nn import ResidualBlock, ResidualGatedBlock
 from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
-import numpy as np
 
 
 class TopDownLayer(nn.Module):
@@ -49,9 +47,6 @@ class TopDownLayer(nn.Module):
         analytical_kl=False,
         stochastic_block_type="normal",  # 'normal' or 'mixture'
         n_components=4,  # Used only for Mixture block
-        scale=4,
-        labeled_ratio=1,
-        r2_act=None,
     ):
 
         super().__init__()
@@ -113,8 +108,6 @@ class TopDownLayer(nn.Module):
                 c_out=n_filters,
                 conv_mult=conv_mult,
                 n_components=self.n_components,
-                labeled_ratio=labeled_ratio,
-                r2_act=r2_act if conv_mult == 0 else None,
             )
         else:
             self.stochastic = NormalStochasticConvBlock(
@@ -123,7 +116,6 @@ class TopDownLayer(nn.Module):
                 c_out=n_filters,
                 conv_mult=conv_mult,
                 transform_p_params=(not is_top_layer),
-                r2_act=r2_act if conv_mult == 0 else None,
             )
 
         if not is_top_layer:
@@ -139,7 +131,6 @@ class TopDownLayer(nn.Module):
                 dropout=dropout,
                 res_block_type=res_block_type,
                 grad_checkpoint=grad_checkpoint,
-                r2_act=r2_act if conv_mult == 0 else None,
             )
 
             # Skip connection that goes around the stochastic top-down layer
@@ -152,42 +143,49 @@ class TopDownLayer(nn.Module):
                     dropout=dropout,
                     res_block_type=res_block_type,
                     grad_checkpoint=grad_checkpoint,
-                    r2_act=r2_act if conv_mult == 0 else None,
                 )
 
     def _initialize_gmm_prior(
         self, n_components, top_prior_param_shape, learn_top_prior
     ):
         # Extract spatial dimensions and channels
-        total_channels = top_prior_param_shape[1]  # Total number of channels 
-        spatial_res = top_prior_param_shape[2]  # Spatial resolution 
-        
+        total_channels = top_prior_param_shape[1]  # Total number of channels
+        spatial_res = top_prior_param_shape[2]  # Spatial resolution
+
         # Each GMM component uses an equal fraction of the channels
-        channels_per_component = total_channels // (2 * n_components)  # Half for mus, half for sigmas
+        channels_per_component = total_channels // (
+            2 * n_components
+        )  # Half for mus, half for sigmas
 
         # Initialize the tensor for means (mus)
-        chunk_values = torch.zeros((n_components, channels_per_component, spatial_res, spatial_res))
+        chunk_values = torch.zeros(
+            (n_components, channels_per_component, spatial_res, spatial_res)
+        )
 
         # Dynamically assign values to means
         chunk_size = channels_per_component // n_components
         for i in range(n_components):
             start_idx = i * chunk_size
             end_idx = (i + 1) * chunk_size
-            chunk_values[i, start_idx:end_idx] = 2.0  # Equidistant initialization for means
+            chunk_values[i, start_idx:end_idx] = (
+                2.0  # Equidistant initialization for means
+            )
 
         # Reshape means into the required format
-        mus = chunk_values.view(1, n_components * channels_per_component, spatial_res, spatial_res)
+        mus = chunk_values.view(
+            1, n_components * channels_per_component, spatial_res, spatial_res
+        )
 
         # Initialize standard deviations (sigmas) as zeros (or another value if needed)
         sigmas = torch.zeros_like(mus)
 
         # Concatenate mus and sigmas along the channel dimension
         prior_params = torch.cat([mus, sigmas], dim=1)
-        
+
         # Convert to nn.Parameter
         # Convert prior_params to nn.Parameter
         prior_params = nn.Parameter(prior_params, requires_grad=learn_top_prior)
-        
+
         return prior_params
 
     def forward(
@@ -203,7 +201,6 @@ class TopDownLayer(nn.Module):
         force_constant_output=False,
         mode_pred=False,
         use_uncond_mode=False,
-        epoch=0,
     ):
 
         # Check consistency of arguments
@@ -261,19 +258,6 @@ class TopDownLayer(nn.Module):
 
         # Last top-down block (sequence of residual blocks)
         x = self.deterministic_block(x)
-        # keys = [
-        #     "z",
-        #     "kl",
-        #     "repulsive",
-        #     "logprob_p",
-        #     "logprob_q",
-        #     "mu",
-        #     "logvar",
-        #     "pi",
-        #     "cross_entropy",
-        #     "entropy",
-        # ]
-        # data = {k: data_stoch[k] for k in keys}
         data = {k: v for k, v in data_stoch.items()}
         return x, x_pre_residual, data
 
@@ -370,72 +354,36 @@ class ResBlockWithResampling(nn.Module):
             min_inner_channels = 0
         inner_filters = max(c_out, min_inner_channels)
 
-        if conv_mult == 0:
-            from e2cnn import gspaces
-            from e2cnn.nn import R2Conv, R2ConvTransposed, FieldType
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        upsample_conv: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = getattr(
+            nn, f"ConvTranspose{conv_mult}d"
+        )
 
-            # O(2) symmetry group with 32 discrete rotations
-            self.r2_act = gspaces.Rot2dOnR2(N=32)
-
-            if resample:
-                if mode == "bottom-up":  # downsample
-                    self.pre_conv = lambda c_in, c_out, kernel_size=3, padding=1, stride=2: R2Conv(
-                        FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
-                        FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
-                        kernel_size=kernel_size,
-                        padding=padding,
-                        stride=stride
-                    )
-                elif mode == "top-down":  # upsample
-                    self.pre_conv = lambda c_in, c_out, kernel_size=3, padding=1, stride=2: R2ConvTransposed(
-                        FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
-                        FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
-                        kernel_size=kernel_size,
-                        padding=padding,
-                        stride=stride
-                    )
-            elif c_in != inner_filters:
-                self.pre_conv = lambda c_in, c_out, kernel_size=3, padding=1, stride=2: R2Conv(
-                    FieldType(self.r2_act, [self.r2_act.regular_repr] * c_in),
-                    FieldType(self.r2_act, [self.r2_act.regular_repr] * c_out),
-                    kernel_size=kernel_size,
-                    padding=padding,
-                    stride=stride
+        # Define first conv layer to change channels and/or up/downsample
+        if resample:
+            if mode == "bottom-up":  # downsample
+                self.pre_conv = conv_type(
+                    in_channels=c_in,
+                    out_channels=inner_filters,
+                    kernel_size=3,
+                    padding=1,
+                    stride=2,
+                    groups=groups,
                 )
-            else:
-                self.pre_conv = None
-
+            elif mode == "top-down":  # upsample
+                self.pre_conv = upsample_conv(
+                    in_channels=c_in,
+                    out_channels=inner_filters,
+                    kernel_size=3,
+                    padding=1,
+                    stride=2,
+                    groups=groups,
+                    output_padding=1,
+                )
+        elif c_in != inner_filters:
+            self.pre_conv = conv_type(c_in, inner_filters, 1, groups=groups)
         else:
-            conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-            upsample_conv: Type[Union[nn.ConvTranspose2d, nn.ConvTranspose3d]] = getattr(
-                nn, f"ConvTranspose{conv_mult}d"
-            )
-
-            # Define first conv layer to change channels and/or up/downsample
-            if resample:
-                if mode == "bottom-up":  # downsample
-                    self.pre_conv = conv_type(
-                        in_channels=c_in,
-                        out_channels=inner_filters,
-                        kernel_size=3,
-                        padding=1,
-                        stride=2,
-                        groups=groups,
-                    )
-                elif mode == "top-down":  # upsample
-                    self.pre_conv = upsample_conv(
-                        in_channels=c_in,
-                        out_channels=inner_filters,
-                        kernel_size=3,
-                        padding=1,
-                        stride=2,
-                        groups=groups,
-                        output_padding=1,
-                    )
-            elif c_in != inner_filters:
-                self.pre_conv = conv_type(c_in, inner_filters, 1, groups=groups)
-            else:
-                self.pre_conv = None
+            self.pre_conv = None
 
         # Residual block
         self.res = ResidualBlock(
@@ -449,7 +397,6 @@ class ResBlockWithResampling(nn.Module):
             gated=gated,
             block_type=res_block_type,
             grad_checkpoint=grad_checkpoint,
-            # r2_act=self.r2_act if conv_mult == 0 else None,
         )
 
         # Define last conv layer to get correct num output channels
@@ -497,7 +444,6 @@ class MergeLayer(nn.Module):
         dropout=None,
         res_block_type=None,
         grad_checkpoint=False,
-        r2_act=None,
     ):
         super().__init__()
         try:
@@ -509,31 +455,23 @@ class MergeLayer(nn.Module):
                 channels = [channels[0]] * 3
         assert len(channels) == 3
 
-        if conv_mult == 0:
-            # Orientation-invariant case
-            assert r2_act is not None, "r2_act must be provided for equivariant convolutions"
-            from e2cnn.nn import R2Conv, FieldType
-
-            # Define equivariant convolution layer
-            def conv_type(c_in, c_out, kernel_size, padding=0):
-                input_type = FieldType(r2_act, [r2_act.regular_repr] * c_in)
-                output_type = FieldType(r2_act, [r2_act.regular_repr] * c_out)
-                return R2Conv(input_type, output_type, kernel_size=kernel_size, padding=padding)
-
-        else:
-            # Standard convolution case
-            conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        # Standard convolution case
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
         # Handle the "merge_type" logic
         if merge_type == "linear":
             if conv_mult == 0:
-                self.layer = conv_type(channels[0] + channels[1], channels[2], kernel_size=1, padding=0)
+                self.layer = conv_type(
+                    channels[0] + channels[1], channels[2], kernel_size=1, padding=0
+                )
             else:
                 self.layer = conv_type(channels[0] + channels[1], channels[2], 1)
         elif merge_type == "residual":
             if conv_mult == 0:
                 self.layer = nn.Sequential(
-                    conv_type(channels[0] + channels[1], channels[2], kernel_size=1, padding=0),
+                    conv_type(
+                        channels[0] + channels[1], channels[2], kernel_size=1, padding=0
+                    ),
                     ResidualGatedBlock(
                         channels[2],
                         conv_mult,
@@ -542,7 +480,6 @@ class MergeLayer(nn.Module):
                         dropout=dropout,
                         block_type=res_block_type,
                         grad_checkpoint=grad_checkpoint,
-                        r2_act=r2_act,  # Pass r2_act for equivariant convolutions
                     ),
                 )
             else:
@@ -580,7 +517,6 @@ class SkipConnectionMerger(MergeLayer):
         dropout,
         res_block_type,
         grad_checkpoint=False,
-        r2_act=None,
     ):
         super().__init__(
             channels,
@@ -591,5 +527,4 @@ class SkipConnectionMerger(MergeLayer):
             dropout=dropout,
             res_block_type=res_block_type,
             grad_checkpoint=grad_checkpoint,
-            r2_act=r2_act,
         )

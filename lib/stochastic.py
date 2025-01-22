@@ -17,7 +17,7 @@ class NormalStochasticConvBlock(nn.Module):
     """
 
     def __init__(
-        self, c_in, c_vars, c_out, conv_mult, kernel=3, transform_p_params=True, r2_act=None,
+        self, c_in, c_vars, c_out, conv_mult, kernel=3, transform_p_params=True
     ):
         super().__init__()
         assert kernel % 2 == 1
@@ -27,29 +27,13 @@ class NormalStochasticConvBlock(nn.Module):
         self.c_out = c_out
         self.c_vars = c_vars
 
-        if conv_mult == 0:
-            # Orientation-invariant case
-            assert r2_act is not None, "r2_act must be provided for equivariant convolutions"
+        # Standard convolution case
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-            # Define field types for equivariant convolutions
-            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * c_in)
-            self.var_type = FieldType(r2_act, [r2_act.regular_repr] * c_vars)
-            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_out)
-
-            # Define equivariant convolution layers
-            if transform_p_params:
-                self.conv_in_p = R2Conv(self.input_type, self.var_type, kernel_size=kernel, padding=pad)
-            self.conv_in_q = R2Conv(self.input_type, self.var_type, kernel_size=kernel, padding=pad)
-            self.conv_out = R2Conv(self.var_type, self.output_type, kernel_size=kernel, padding=pad)
-
-        else:
-            # Standard convolution case
-            conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-
-            if transform_p_params:
-                self.conv_in_p = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
-            self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
-            self.conv_out = conv_type(c_vars, c_out, kernel_size=kernel, padding=pad)
+        if transform_p_params:
+            self.conv_in_p = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
+        self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
+        self.conv_out = conv_type(c_vars, c_out, kernel_size=kernel, padding=pad)
 
 
     def forward(
@@ -65,14 +49,6 @@ class NormalStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         epoch=0,
     ):
-
-        # assert (forced_latent is None) or (not use_mode)
-
-        # if self.transform_p_params:
-        #     p_params = self.conv_in_p(p_params)
-        # else:
-        #     # TODO better assertion logic
-        #     assert max(p_params.shape) == 2 * self.c_vars
 
         # Define p(z)
         p_mu, p_lv = p_params.chunk(2, dim=1)
@@ -101,7 +77,6 @@ class NormalStochasticConvBlock(nn.Module):
                 if mode_pred:
                     if use_uncond_mode:
                         z = sampling_distrib.mean
-                    #                         z = sampling_distrib.rsample()
                     else:
                         z = sampling_distrib.rsample()
                 else:
@@ -145,7 +120,6 @@ class NormalStochasticConvBlock(nn.Module):
             "logprob_p": logprob_p,  # (batch, )
             "logprob_q": logprob_q,  # (batch, )
             "kl": kl_analytical,  # (batch, )
-            "repulsive": None,
             "mu": q_mu,
             "logvar": q_lv,
             "pi": None,
