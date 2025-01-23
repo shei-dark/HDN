@@ -56,10 +56,12 @@ lambda_contrastive = 0.5
 use_wandb = False
 
 # (supervised, ratio 1), (mixed, ratio 0.25)
-mode = "supervised"
-ratio = 1
+mode = "mixed"
+ratio = 0.25
 
-stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+stochastic_block_type = "normal"  # 'normal' or 'mixture'
+conditional = True # True for conditional LVAE
+condition_type = "mlp" # 'mlp' or 'transformer'
 n_components = 4  # Used only for Mixture block
 
 # train data
@@ -161,6 +163,8 @@ else:
         lambda_contrastive=lambda_contrastive,
         labeled_ratio=ratio,
         stochastic_block_type=stochastic_block_type,
+        conditional=conditional,
+        condition_type=condition_type,
         n_components=n_components,
     ).cuda()
 print(model)
@@ -179,7 +183,6 @@ training.train_network(
     val_loader=val_loader,
     gaussian_noise_std=gaussian_noise_std,
     model_name=model_name,
-    nrows=2,
     gradient_scale=256,
     use_wandb=use_wandb,
     max_grad_norm=1,

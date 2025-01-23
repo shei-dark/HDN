@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from typing import Type, Union
 from lib.nn import ResidualBlock, ResidualGatedBlock
-from lib.stochastic import NormalStochasticConvBlock, MixtureStochasticConvBlock
+from lib.stochastic import StochasticConvBlock
 
 
 class TopDownLayer(nn.Module):
@@ -46,6 +46,8 @@ class TopDownLayer(nn.Module):
         top_prior_param_shape=None,
         analytical_kl=False,
         stochastic_block_type="normal",  # 'normal' or 'mixture'
+        conditional=False,
+        condition_type='mlp',
         n_components=4,  # Used only for Mixture block
     ):
 
@@ -102,20 +104,24 @@ class TopDownLayer(nn.Module):
         # Define stochastic block with convolutions
         # Select stochastic block based on the argument
         if is_top_layer and stochastic_block_type == "mixture":
-            self.stochastic = MixtureStochasticConvBlock(
+            self.stochastic = StochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,
                 c_out=n_filters,
                 conv_mult=conv_mult,
                 n_components=self.n_components,
+                conditional=conditional,
+                condition_type=condition_type,
             )
         else:
-            self.stochastic = NormalStochasticConvBlock(
+            self.stochastic = StochasticConvBlock(
                 c_in=n_filters,
                 c_vars=z_dim,
                 c_out=n_filters,
                 conv_mult=conv_mult,
-                transform_p_params=(not is_top_layer),
+                is_top_layer=is_top_layer,
+                conditional=conditional,
+                condition_type=condition_type,
             )
 
         if not is_top_layer:
@@ -201,6 +207,7 @@ class TopDownLayer(nn.Module):
         force_constant_output=False,
         mode_pred=False,
         use_uncond_mode=False,
+        labeled_ratio=1,
     ):
 
         # Check consistency of arguments
@@ -240,12 +247,9 @@ class TopDownLayer(nn.Module):
             label=label,
             p_params=p_params,
             q_params=q_params,
-            forced_latent=forced_latent,
-            use_mode=use_mode,
-            force_constant_output=force_constant_output,
-            analytical_kl=self.analytical_kl,
-            mode_pred=mode_pred,
-            use_uncond_mode=use_uncond_mode,
+            # mode_pred=mode_pred,
+            # use_uncond_mode=use_uncond_mode,
+            labeled_ratio=labeled_ratio,
         )
 
         # Skip connection from previous layer

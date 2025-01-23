@@ -1,31 +1,14 @@
 import os
-import glob
-import random
 import numpy as np
-import math
 import time
 import datetime
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import TensorDataset
-from torch.utils.data import Dataset, DataLoader
-from torchvision.utils import save_image
-from torch.nn import init
-from torch.optim.optimizer import Optimizer
 from torch.cuda.amp import GradScaler
-
-from tifffile import imread
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from boilerplate import boilerplate
-from models.lvae import LadderVAE
-import lib.utils as utils
 import wandb
 
-# import optuna
 
 wandb.require("core")
 
@@ -43,12 +26,10 @@ def train_network(
     alpha=1,
     beta=1,
     gamma=1,
-    nrows=4,
     max_grad_norm=None,
     amp=True,
     gradient_scale=8192,
     use_wandb=True,
-    trial=None,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -129,9 +110,9 @@ def train_network(
         running_entropy_loss = []
 
         # Parameters
-        initial_size = 6
-        final_size = 1
-        step_interval = 5  # Change every 5 steps
+        # initial_size = 6
+        # final_size = 1
+        # step_interval = 5  # Change every 5 steps
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
 
@@ -151,9 +132,8 @@ def train_network(
 
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
-            repulsive = outputs["repulsive"]
             cl_loss = outputs["cl_loss"]
-            ce = outputs["ce"]
+            ce = outputs["ce"] if outputs["ce"] is not None else 0
             entropy = outputs["entropy"]
 
             loss = alpha * inpainting_loss + beta * kl_loss + ce + entropy
@@ -175,7 +155,6 @@ def train_network(
                         "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
-                        "Repulsive": repulsive,
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
                         "Total": loss,
                         "CE": ce,
@@ -211,7 +190,7 @@ def train_network(
                     * alpha,
                     "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
                     "ce loss": torch.mean(torch.stack(running_ce_loss)),
-                    # "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
+                    "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
                     "total loss": torch.mean(torch.stack(running_training_loss)),
                 }
             )
@@ -277,7 +256,9 @@ def train_network(
                     ).item(),
                     "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
                     "val ce": torch.mean(torch.stack(running_val_ce_loss)).item(),
-                    # "val entropy": torch.mean(torch.stack(running_val_entropy_loss)).item(),
+                    "val entropy": torch.mean(
+                        torch.stack(running_val_entropy_loss)
+                    ).item(),
                     "val cl loss": (
                         torch.mean(torch.stack(running_val_cl_loss)).item()
                         if model.contrastive_learning
@@ -285,8 +266,6 @@ def train_network(
                     ),
                 }
             )
-        # beta /= 5
-        # gamma /= 5
 
         model.train()
 

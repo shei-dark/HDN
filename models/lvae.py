@@ -53,6 +53,8 @@ class LadderVAE(nn.Module):
         lambda_contrastive=0.5,
         labeled_ratio=1,
         stochastic_block_type="normal",
+        conditional=False,
+        condition_type='mlp',
         n_components=4,
     ):
 
@@ -190,6 +192,8 @@ class LadderVAE(nn.Module):
                     grad_checkpoint=grad_checkpoint,
                     analytical_kl=analytical_kl,
                     stochastic_block_type=stochastic_block_type,
+                    conditional=conditional,
+                    condition_type=condition_type,
                     n_components=n_components,
                 )
             )
@@ -248,7 +252,7 @@ class LadderVAE(nn.Module):
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(y, bu_values, epoch=epoch)
+        out, td_data = self.topdown_pass(y, bu_values, labeled_ratio=self.labeled_ratio)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
@@ -316,7 +320,7 @@ class LadderVAE(nn.Module):
         mode_layers=None,
         constant_layers=None,
         forced_latent=None,
-        epoch=0,
+        labeled_ratio=1,
     ):
 
         # Default: no layer is sampled from the distribution's mode
@@ -393,6 +397,7 @@ class LadderVAE(nn.Module):
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
                 use_uncond_mode=use_uncond_mode,
+                labeled_ratio=labeled_ratio,
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )

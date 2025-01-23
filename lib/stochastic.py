@@ -1,261 +1,17 @@
 import torch
 from torch import nn
-from torch.distributions import kl_divergence, Categorical, MultivariateNormal
+from torch.distributions import kl_divergence
 from torch.distributions.normal import Normal
 from typing import Type, Union
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from e2cnn.nn import R2Conv, FieldType
 
 
-class NormalStochasticConvBlock(nn.Module):
+class StochasticConvBlock(nn.Module):
     """
-    Transform input parameters to q(z) with a convolution, optionally do the
-    same for p(z), then sample z ~ q(z) and return conv(z).
-
-    If q's parameters are not given, do the same but sample from p(z).
-    """
-
-    def __init__(
-        self, c_in, c_vars, c_out, conv_mult, kernel=3, transform_p_params=True
-    ):
-        super().__init__()
-        assert kernel % 2 == 1
-        pad = kernel // 2
-        self.transform_p_params = transform_p_params
-        self.c_in = c_in
-        self.c_out = c_out
-        self.c_vars = c_vars
-
-        # Standard convolution case
-        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-
-        if transform_p_params:
-            self.conv_in_p = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
-        self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel_size=kernel, padding=pad)
-        self.conv_out = conv_type(c_vars, c_out, kernel_size=kernel, padding=pad)
-
-
-    def forward(
-        self,
-        label,
-        p_params,
-        q_params=None,
-        forced_latent=None,
-        use_mode=False,
-        force_constant_output=False,
-        analytical_kl=False,
-        mode_pred=False,
-        use_uncond_mode=False,
-        epoch=0,
-    ):
-
-        # Define p(z)
-        p_mu, p_lv = p_params.chunk(2, dim=1)
-        p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
-        p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
-        p = Normal(p_mu, (p_lv / 2).exp())
-
-        if q_params is not None:
-            # Define q(z)
-            q_params = self.conv_in_q(q_params)
-            q_mu, q_lv = q_params.chunk(2, dim=1)
-            q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
-            q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
-            q = Normal(q_mu, (q_lv / 2).exp())
-            # Sample from q(z)
-            sampling_distrib = q
-        else:
-            # Sample from p(z)
-            sampling_distrib = p
-
-        # Generate latent variable (typically by sampling)
-        if forced_latent is None:
-            if use_mode:
-                z = sampling_distrib.mean
-            else:
-                if mode_pred:
-                    if use_uncond_mode:
-                        z = sampling_distrib.mean
-                    else:
-                        z = sampling_distrib.rsample()
-                else:
-                    z = sampling_distrib.rsample()
-        else:
-            z = forced_latent
-
-        # Copy one sample (and distrib parameters) over the whole batch.
-        # This is used when doing experiment from the prior - q is not used.
-        if force_constant_output:
-            z = z[0:1].expand_as(z).clone()
-            p_params = p_params[0:1].expand_as(p_params).clone()
-
-        # Output of stochastic layer
-        out = self.conv_out(z)
-
-        logprob_p = None
-        logprob_q = None
-        kl_analytical = None
-
-        # Compute log p(z)
-        if mode_pred is False:
-            # Summing over all dims but batch
-            logprob_p = p.log_prob(z).sum(list(range(1, z.dim())))
-
-        if q_params is not None:
-            # Compute log q(z)
-            logprob_q = q.log_prob(z).sum(list(range(1, z.dim())))
-
-            if mode_pred is False:  # if not predicting
-                # Compute KL (analytical or MC estimate)
-                kl_analytical = kl_divergence(q, p)
-                kl_analytical = kl_analytical.sum(
-                    list(range(1, kl_analytical.dim()))
-                ).mean()
-
-        data = {
-            "z": z,  # sampled variable at this layer (batch, ch, h, w)
-            "p_params": p_params,  # (b, ch, h, w) where b is 1 or batch size
-            "q_params": q_params,  # (batch, ch, h, w)
-            "logprob_p": logprob_p,  # (batch, )
-            "logprob_q": logprob_q,  # (batch, )
-            "kl": kl_analytical,  # (batch, )
-            "mu": q_mu,
-            "logvar": q_lv,
-            "pi": None,
-            "cross_entropy": None,
-            "temperature": 0,
-            "entropy": 0,
-        }
-        return out, data
-
-
-class TransformerQy(nn.Module):
-    def __init__(self, c_in, embed_dim, n_components, num_heads=4, num_layers=2):
-        """
-        Transformer-based q(y|x) where each spatial pixel (H x W) is a token.
-
-        Args:
-            c_in (int): Number of input channels (C).
-            embed_dim (int): Embedding dimension for transformer.
-            n_components (int): Number of GMM components (output classes).
-            num_heads (int): Number of attention heads.
-            num_layers (int): Number of transformer encoder layers.
-        """
-        super().__init__()
-        # Embedding layer for channel tokens
-        self.embedding = nn.Linear(c_in, embed_dim)
-
-        # Transformer Encoder
-        # embed_dim = num_heads * dead_dim
-        encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
-        self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-        # Output layer to predict logits for each token
-        self.output = nn.Linear(embed_dim, n_components)
-
-    def forward(self, x):
-        """
-        Forward pass through Transformer-based q(y|x).
-
-        Args:
-            x (Tensor): Input feature map of shape [B, C, H, W].
-
-        Returns:
-            Tensor: Logits for q(y|x), shape [B, n_components].
-        """
-        # B, C, H, W = x.shape
-        # seq_len = H * W Sequence length is the number of spatial tokens
-
-        # Flatten spatial dimensions: [B, C, H, W] -> [B, C, seq_len]
-        x = x.flatten(2)  # Combine H and W into one dimension
-
-        # Transpose for transformer input: [B, C, seq_len] -> [seq_len, B, C]
-        x = x.permute(2, 0, 1)
-
-        # Apply embedding: [seq_len, B, C] -> [seq_len, B, embed_dim]
-        x = self.embedding(x)
-
-        # Pass through transformer: [seq_len, B, embed_dim]
-        x = self.transformer(x)
-
-        # Aggregate sequence into a single embedding per batch (e.g., mean pooling)
-        x = x.mean(dim=0)  # [seq_len, B, embed_dim] -> [B, embed_dim]
-
-        # Predict logits: [B, embed_dim] -> [B, n_components]
-        return self.output(x)
-
-
-class TransformerQz(nn.Module):
-    def __init__(self, c_in, embed_dim, num_heads=4, num_layers=2, conv_mult=2, r2_act=None):
-        """
-        Transformer-based q(z|x, y), where each spatial pixel (H x W) is a token.
-
-        Args:
-            c_in (int): Number of input channels (C).
-            embed_dim (int): Embedding dimension for transformer.
-            num_heads (int): Number of attention heads.
-            num_layers (int): Number of transformer encoder layers.
-        """
-        super().__init__()
-        # Embedding layer for pixel tokens
-        self.embedding = nn.Linear(c_in, embed_dim)
-
-        # Transformer Encoder
-        encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
-        self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-        if conv_mult == 0 and r2_act is not None:
-            # Orientation-invariant case
-            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * embed_dim)
-            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_in)
-            self.output_conv = R2Conv(self.input_type, self.output_type, kernel_size=1)
-        else:
-            # Standard convolution case
-            self.output_conv = nn.Conv2d(embed_dim, c_in, kernel_size=1)
-
-
-    def forward(self, x):
-        """
-        Forward pass through Transformer-based q(z|x, y).
-
-        Args:
-            x (Tensor): Input feature map of shape [B, C, H, W].
-
-        Returns:
-            Tensor: Gaussian parameters (mu, logvar) of shape [B, C, H, W].
-        """
-        B, C, H, W = x.shape
-
-        # Flatten spatial dimensions: [B, C, H, W] -> [B, C, seq_len]
-        x = x.flatten(2)
-
-        # Transpose for transformer input: [B, C, seq_len] -> [seq_len, B, C]
-        x = x.permute(2, 0, 1)
-
-        # Apply embedding: [seq_len, B, C] -> [seq_len, B, embed_dim]
-        x = self.embedding(x)
-
-        # Pass through transformer: [seq_len, B, embed_dim]
-        x = self.transformer(x)
-
-        # Reshape back to feature map: [seq_len, B, embed_dim] -> [B, embed_dim, H, W]
-        x = x.permute(1, 2, 0).view(B, -1, H, W)
-
-        if isinstance(self.output_conv, R2Conv):
-            x = FieldType(self.input_type.gspace, x)  # Wrap as GeometricTensor
-            x = self.output_conv(x).tensor  # Apply R2Conv and unwrap
-        else:
-            x = self.output_conv(x)
-        # Output Gaussian parameters (mu, logvar): [B, 2 * C, H, W]
-        return x
-
-
-class MixtureStochasticConvBlock(nn.Module):
-    """
-    Stochastic block with GMM for p(z) and q(z), handling both p(z) and q(z) parameters.
-    Each component in the mixture has its own set of mu and log-variance.
-    Gumbel-Softmax is used to approximate the categorical distribution.
+    Stochastic Conv Block to handle both normal and mixture models,
+    for both conditional and unconditional cases.
+    This also can replace transformer blocks in the model (only in the topmost level).
     """
 
     def __init__(
@@ -265,75 +21,63 @@ class MixtureStochasticConvBlock(nn.Module):
         c_out,
         conv_mult,
         kernel=3,
-        n_components=4,
-        labeled_ratio=1,
-        r2_act=None,
+        block_type="normal",
+        n_components=1,
+        top_layer=False,
+        conditional=False,
+        condition_type="mlp",
+        labeled_ratio=1.0,
     ):
         super().__init__()
         assert kernel % 2 == 1
         pad = kernel // 2
-        self.n_components = n_components
         self.c_in = c_in
         self.c_out = c_out
         self.c_vars = c_vars
-        self.temperature = 1.0
+        self.block_type = block_type
+        self.n_components = n_components
+        self.top_layer = top_layer
+        self.conditional = conditional
+        self.condition_type = condition_type
         self.labeled_ratio = labeled_ratio
-        self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
-        
-        if conv_mult == 0 and r2_act is not None:
-            # Orientation-invariant case
-            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * c_vars)
-            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * c_out)
-            self.conv_out = R2Conv(self.input_type, self.output_type, kernel_size=kernel, padding=pad)
-        else:
-            # Standard convolution case
-            if conv_mult == 2:
-                self.conv_out = nn.Conv2d(c_vars, c_out, kernel_size=kernel, padding=pad)
-            elif conv_mult == 3:
-                self.conv_out = nn.Conv3d(c_vars, c_out, kernel_size=kernel, padding=pad)
+        self.temperature = 1.0
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-        # #q(y|x): Outputs logits for the categorical distribution
-        # self.qy_x = nn.Sequential(
-        #     conv_type(c_in, c_vars, kernel, padding=pad),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     nn.Linear(c_vars * 8 * 8, n_components),
-        # )
-        # #q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
-        # self.qz_xy = nn.Sequential(
-        #     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
-        #     nn.ReLU(),
-        #     conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
-        # )
-        
-        self.qy_x = TransformerQy(
-            c_in=c_in, embed_dim=128, n_components=n_components, num_heads=4, num_layers=2
-        )
-        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, conv_mult=conv_mult, r2_act=r2_act)
+        if not top_layer or (block_type == "normal" and not conditional):
+            self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
+        elif conditional:
+            if condition_type == "mlp":
+                self.qy_x = nn.Sequential(
+                    conv_type(c_in, c_vars, kernel, padding=pad),
+                    nn.ReLU(),
+                    nn.Flatten(),
+                    nn.Linear(c_vars * 8 * 8, n_components),
+                )
+                self.qz_xy = nn.Sequential(
+                    conv_type(c_in, 2 * c_vars, kernel, padding=pad),
+                    nn.ReLU(),
+                    conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
+                )
+            elif condition_type == "transformer":
+                self.qy_x = TransformerQ(
+                    c_in=c_in,
+                    embed_dim=128,
+                    n_components=n_components,
+                    num_heads=4,
+                    num_layers=3,
+                    mode="mlp",
+                )
+                self.qz_xy = TransformerQ(
+                    c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv"
+                )
+        else:  # Top layer, mixture, unconditional
+            self.conv_in_q = conv_type(
+                c_in, 2 * c_vars * n_components, kernel, padding=pad
+            )
+        self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
-        # Feature Modulation (FiLM Layer)
-        # learning parameters to scale and shift the feature map based on the component mode vector.
-        # Linear layers to compute gamma and beta from the component mode vector
-        self.gamma_layer = nn.Linear(4, c_in)
-        self.beta_layer = nn.Linear(4, c_in)
+    def forward(self, label, p_params, q_params):
 
-    def forward(
-        self,
-        label,
-        p_params,
-        q_params=None,
-        forced_latent=None,
-        use_mode=False,
-        force_constant_output=False,
-        analytical_kl=False,
-        mode_pred=False,
-        use_uncond_mode=False,
-        hard=True,  # Use hard Gumbel-Softmax
-    ):
-        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
-        assert (forced_latent is None) or (not use_mode)
-
-        # Separate mu and logvar for each component of the gmm prior
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
         p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
@@ -345,134 +89,102 @@ class MixtureStochasticConvBlock(nn.Module):
         p_components = []
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
-            p_components.append(
-                Normal(mu_chunk, std_chunk)
-            )  # Create Gaussian components for p
+            p_components.append(Normal(mu_chunk, std_chunk))
 
-        batch_size = q_params.size(0)
-        small_batch_size = int(batch_size * self.labeled_ratio)
-        qy_logits = self.qy_x(q_params)
+        if not self.top_layer or (self.block_type == "normal" and not self.conditional):
+            # Define q(z)
+            q_params = self.conv_in_q(q_params)
+            q_mu, q_lv = q_params.chunk(2, dim=1)
+            q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
+            q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
+            q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
+            q = Normal(q_mu, q_std)
 
-        if label is not None:
-            label = label.long()
-            label = label[:small_batch_size]
-            supervised_loss = torch.nn.functional.cross_entropy(
-                qy_logits[:small_batch_size], label
-            )
-        else:
-            supervised_loss = 0
-        # y = F.softmax(qy_logits, dim=-1)
-
-        # Step 2: Compute q(z|x, y)
-        gamma = self.gamma_layer(qy_logits)  # Shape: (batch_size, c_in)
-        beta = self.beta_layer(qy_logits)
-        gamma = gamma.unsqueeze(-1).unsqueeze(-1)  # Shape: (batch_size, c_in, 1, 1)
-        beta = beta.unsqueeze(-1).unsqueeze(-1)
-        x_modulated = gamma * q_params + beta
-        qz_params = self.qz_xy(x_modulated)
-        q_mu, q_lv = torch.chunk(qz_params, 2, dim=1)
-        q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)  # Clamp q_mu
-        q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)  # Clamp q_lv
-        q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
-
-        y = torch.nn.functional.gumbel_softmax(
-            qy_logits, tau=self.temperature, hard=False
-        )
-
-        m = 0.5 * (y + self.prior_probs)
-        js_div = 0.5 * torch.sum(
-            y * torch.log(y / (m + 1e-10)), dim=-1
-        ) + 0.5 * torch.sum(
-            self.prior_probs * torch.log(self.prior_probs / (m + 1e-10)), dim=-1
-        )
-
-        self.temperature = max(0.5, self.temperature * 0.999)
-
-        y_pred = y.argmax(dim=-1)
-        if small_batch_size < batch_size:
-            entropy = -torch.mean(
-                torch.sum(
-                    y[small_batch_size:] * torch.log(y[small_batch_size:] + 1e-10),
-                    dim=-1,
-                )
-            )
-        else:
-            entropy = 0
-        z = q_mu + q_std * torch.randn_like(q_std)
-
-        if isinstance(self.conv_out, R2Conv):
-            z = FieldType(self.input_type.gspace, z)  # Wrap as GeometricTensor
-            out = self.conv_out(z).tensor  # Apply R2Conv and unwrap
-        else:
+            z = q.rsample()
             out = self.conv_out(z)
-
-        logprob_p = None
-        logprob_q = None
-        kl_divergences = []
-
-        # Compute logprob_p
-        log_probs_p = torch.stack(
-            [comp.log_prob(z) for comp in p_components], dim=-1
-        )  # Shape: [batch_size, 32, 8, 8, 4]
-        logprob_p = torch.sum(
-            log_probs_p * y.unsqueeze(1).unsqueeze(1).unsqueeze(1), dim=-1
-        )  # Weighted sum
-
-        # Compute logprob_q
-        q_distribution = Normal(q_mu, q_std)
-        logprob_q = q_distribution.log_prob(z)  # Shape: [512, 32, 8, 8]
-
-        for i in range(len(p_components)):
-            # Compute KL divergence between q and each component in p_components
-            kl_i = kl_divergence(Normal(q_mu, q_std), p_components[i]).mean(
-                dim=(1, 2, 3)
-            )
-            kl_divergences.append(kl_i)
-        # Stack KL divergences for all components (Shape: [batch_size, n_components])
-        kl_divergences = torch.stack(kl_divergences, dim=-1)
-
-        # # Separate cases where label matches y_pred and where it doesn't
-        # matching_mask = (y_pred == label).unsqueeze(-1)  # Shape: [batch_size, 1]
-
-        if label is None:
-            kl_loss = 0
-        else:
-            if small_batch_size < batch_size:
-                kl = torch.cat(
-                    [
-                        kl_divergences[range(small_batch_size), label],
-                        kl_divergences[
-                            range(small_batch_size, batch_size),
-                            y_pred[small_batch_size:],
-                        ],
-                    ],
-                    dim=0,
-                )
-            else:
-                kl = kl_divergences[range(batch_size), label]
-
-            kl_loss = kl.mean() + js_div.mean()
+            kl = self._compute_kl(q, p_components)
+            logprob_p = self._compute_logprob(p_components, z)
+            logprob_q = self._compute_logprob(q, z)
+        else:  # Top layer
+            if self.conditional:
+                qy_logits = self.qy_x(q_params)
+                # FiLM layer
+                gamma = self.gamma_layer(qy_logits)
+                beta = self.beta_layer(qy_logits)
+                gamma = gamma.unsqueeze(-1).unsqueeze(-1)
+                beta = beta.unsqueeze(-1).unsqueeze(-1)
+                x_modulated = gamma * q_params + beta
+                qz_params = self.qz_xy(x_modulated)
+                q_mu, q_lv = torch.chunk(qz_params, 2, dim=1)
+                q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
+                q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
+                q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
+                q = Normal(q_mu, q_std)
+                z = q.rsample()
+                
+                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                self._update_temperature(js_div)
+                y_pred = y.argmax(dim=1)
+                
+                js_div = self._compute_js_div(y)
+                kl = self._compute_kl(q, p_components, label, y_pred)
+                entropy = self._compute_entropy(y)
+                cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                logprob_p = self._compute_logprob(p_components, z)
+                logprob_q = self._compute_logprob(q, z)
 
         data = {
-            "z": z,  # sampled latent variable
+            "z": z,
             "p_params": p_params,
-            "q_params": qz_params,
+            "q_params": q_params,
             "logprob_p": logprob_p,
             "logprob_q": logprob_q,
-            "kl": kl_loss,
-            "repulsive": 0,
+            "kl": kl + js_div,
             "mu": q_mu,
-            "logvar": q_lv,
-            "pi": y,  # mixture coefficients
-            "cross_entropy": (
-                supervised_loss * (1 / self.labeled_ratio)
-                if self.labeled_ratio > 0
-                else 0
-            ),
+            "lv": q_lv,
+            "pi": y,
+            "cross_entropy": cross_entropy,
             "entropy": entropy,
         }
 
         return out, data
+
+
+class TransformerQ(nn.Module):
+    def __init__(
+        self, c_in, embed_dim, n_components=1, num_heads=4, num_layers=2, mode="mlp"
+    ):
+        super().__init__()
+        # Embedding layer for channel tokens
+        self.embedding = nn.Linear(c_in, embed_dim)
+
+        # Transformer Encoder
+        # embed_dim = num_heads * head_dim
+        encoder_layer = TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
+        self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        if mode == "mlp":
+            # Output layer to predict logits for each token
+            self.output = nn.Linear(embed_dim, n_components)
+        else:  # mode == "conv"
+            self.output = nn.Conv2d(embed_dim, c_in, kernel_size=1)
+
+        self.mode = mode
+
+    def forward(self, x):
+
+        B, C, H, W = x.shape
+        x = x.flatten(2)  # Combine H and W into one dimension
+        x = x.permute(2, 0, 1)
+        x = self.embedding(x)
+        x = self.transformer(x)
+        # [seq_len, B, embed_dim] -> [B, embed_dim]
+
+        if self.mode == "mlp":
+            x = x.mean(dim=0)
+        else:
+            x = x.permute(1, 2, 0).view(B, -1, H, W)
+        return self.output(x)
 
 
 def kl_normal_mc(z, p_mulv, q_mulv):
