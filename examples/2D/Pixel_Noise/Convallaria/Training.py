@@ -56,13 +56,13 @@ lambda_contrastive = 0.5
 use_wandb = False
 
 # (supervised, ratio 1), (mixed, ratio 0.25)
-mode = "mixed"
-ratio = 0.25
+mode = "supervised"
+ratio = 1
 
 stochastic_block_type = "normal"  # 'normal' or 'mixture'
-conditional = True # True for conditional LVAE
+conditional = False # True for conditional LVAE
 condition_type = "mlp" # 'mlp' or 'transformer'
-n_components = 4  # Used only for Mixture block
+n_components = 1 # number of components in the mixture, if normal then 1
 
 # train data
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"

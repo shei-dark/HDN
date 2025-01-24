@@ -119,7 +119,7 @@ class TopDownLayer(nn.Module):
                 c_vars=z_dim,
                 c_out=n_filters,
                 conv_mult=conv_mult,
-                is_top_layer=is_top_layer,
+                top_layer=is_top_layer,
                 conditional=conditional,
                 condition_type=condition_type,
             )
@@ -247,8 +247,6 @@ class TopDownLayer(nn.Module):
             label=label,
             p_params=p_params,
             q_params=q_params,
-            # mode_pred=mode_pred,
-            # use_uncond_mode=use_uncond_mode,
             labeled_ratio=labeled_ratio,
         )
 
