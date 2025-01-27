@@ -277,7 +277,7 @@ def train_network(
                 }
             )
         # beta /= 5
-        gamma /= 5
+        # gamma /= 5
         # if trial is not None:
         #     trial.report(torch.mean(torch.stack(running_val_cl_loss)).item(), epoch)
         #     if trial.should_prune():
