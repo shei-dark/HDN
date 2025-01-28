@@ -81,12 +81,6 @@ def _make_datamanager(
     return train_loader, val_loader, test_loader, data_mean, data_std
 
 
-def _filter_slices(image, label):
-    # 23, 53, 13 number of slices for c1, c2 and c3 respectively are invalid
-    valid_indices = ~np.all(label == -1, axis=(1, 2))
-    return image[valid_indices], label[valid_indices], valid_indices
-
-
 def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     """
     Implements Adamax optimizer and learning rate scheduler.
@@ -101,12 +95,15 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     )
     return optimizer, scheduler
 
+
 def label_size_scheduler(initial_size, final_size, step_interval, current_step):
     direction = 1 if final_size > initial_size else -1
     intervals = current_step // step_interval
     new_size = initial_size + intervals * direction
-    return max(min(initial_size, final_size), min(max(initial_size, final_size), new_size))
-        
+    return max(
+        min(initial_size, final_size), min(max(initial_size, final_size), new_size)
+    )
+
 
 def forward_pass(x, y, device, model, gaussian_noise_std, amp=True, epoch=0) -> dict:
 
