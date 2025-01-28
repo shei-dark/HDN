@@ -237,6 +237,7 @@ def train_network(
                 z = z.squeeze(0)
                 x = x.to(device=device, dtype=torch.float)
                 y = y.to(device=device, dtype=torch.float)
+                model.top_down_layers[2].stochastic.geo = False
                 val_outputs = boilerplate.forward_pass(
                     x, y, device, model, gaussian_noise_std
                 )
@@ -258,7 +259,7 @@ def train_network(
                 running_val_kl_loss.append(beta * val_kl_loss)
                 running_val_ce_loss.append(val_ce)
                 running_val_entropy_loss.append(val_entropy)
-
+        model.top_down_layers[2].stochastic.geo = True
         if use_wandb:
             run.log(
                 {

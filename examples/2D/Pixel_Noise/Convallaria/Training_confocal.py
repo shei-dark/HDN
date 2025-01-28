@@ -26,7 +26,7 @@ gaussian_noise_std = None
 
 
 model_name = "confocal"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/confocal/"
+directory_path = "/group/jug/Sheida/HVAE/gmvae/confocal_mlp_semi/"
 noiseModel = None
 
 # Training-specific
@@ -36,7 +36,7 @@ max_epochs = 200
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/gmvae/supervised_transformer/model/epsilon_seg_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/gmvae/confocal_mlp/model/confocal_best_vae.net"
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -53,7 +53,7 @@ contrastive_learning = True
 margin = 50
 lambda_contrastive = 0.5
 
-use_wandb = True
+use_wandb = False
 
 # (supervised, ratio 1), (unsupervised, ratio 0), (mixed, ratio 0.25)
 mode = 'supervised'

@@ -136,10 +136,12 @@ class Custom2DDataset(Dataset):
         mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
         ratio=0.25,  # For 'mixed' mode, labeled data ratio in each batch
     ):
-        
-        assert images.shape == labels.shape, "Images and labels must have the same shape."
+
+        assert (
+            images.shape == labels.shape
+        ), "Images and labels must have the same shape."
         assert len(images.shape) == 4, "Images and labels must be 4D arrays."
-        
+
         self.patch_size = patch_size
         self.mask_size = mask_size
         self.label_size = label_size
@@ -162,7 +164,7 @@ class Custom2DDataset(Dataset):
         index = 0
         patches_by_label = {}
         num_channels, z_dim, height, width = self.labels.shape
-        
+
         for z in range(0, z_dim):
             for i in range(0, height - self.patch_size + 1, self.stride):
                 for j in range(0, width - self.patch_size + 1, self.stride):
@@ -171,7 +173,9 @@ class Custom2DDataset(Dataset):
                     ]
                     start = (self.patch_size - self.label_size) // 2
                     unique_label_area = patch_label[
-                        :, start : start + self.label_size, start : start + self.label_size
+                        :,
+                        start : start + self.label_size,
+                        start : start + self.label_size,
                     ]
                     if len(np.unique(unique_label_area.flatten())) == 1:
                         all_patches.append((z, i, j))
@@ -179,14 +183,18 @@ class Custom2DDataset(Dataset):
                             patches_by_label[unique_label_area.flatten()[0]] = []
                         patches_by_label[unique_label_area.flatten()[0]].append(index)
                         index += 1
-                    elif len(np.unique(unique_label_area.flatten())) == 2 and 0 in np.unique(unique_label_area.flatten()):
-                        non_zero_label = [x for x in np.unique(unique_label_area.flatten()) if x != 0][0]
+                    elif len(
+                        np.unique(unique_label_area.flatten())
+                    ) == 2 and 0 in np.unique(unique_label_area.flatten()):
+                        non_zero_label = [
+                            x for x in np.unique(unique_label_area.flatten()) if x != 0
+                        ][0]
                         all_patches.append((z, i, j))
                         if non_zero_label not in patches_by_label:
                             patches_by_label[non_zero_label] = []
                         patches_by_label[non_zero_label].append(index)
                         index += 1
-                    
+
         for key in patches_by_label:
             shuffle(patches_by_label[key])
         return all_patches, patches_by_label
@@ -251,19 +259,24 @@ class Custom2DDataset(Dataset):
     def _get_patch_by_metadata(self, metadata):
         """Extract a patch dynamically based on metadata."""
         z, y, x = metadata
-        img = self.images[:,z]
-        lbl = self.labels[:,z]
+        img = self.images[:, z]
+        lbl = self.labels[:, z]
         patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
         patch_label = lbl[:, y : y + self.patch_size, x : x + self.patch_size]
         start = (self.patch_size - self.label_size) // 2
-        unique_label_area = patch_label[:, 
+        unique_label_area = patch_label[
+            :,
             start : start + self.label_size,
             start : start + self.label_size,
         ]
         if len(np.unique(unique_label_area.flatten())) == 1:
             center_label = 0.0
-        elif len(np.unique(unique_label_area.flatten())) == 2 and 0 in np.unique(unique_label_area.flatten()):
-            non_zero_label = [x for x in np.unique(unique_label_area.flatten()) if x != 0][0]
+        elif len(np.unique(unique_label_area.flatten())) == 2 and 0 in np.unique(
+            unique_label_area.flatten()
+        ):
+            non_zero_label = [
+                x for x in np.unique(unique_label_area.flatten()) if x != 0
+            ][0]
             center_label = non_zero_label
         return (
             torch.tensor(patch),
@@ -273,20 +286,18 @@ class Custom2DDataset(Dataset):
 
     def _get_random_patch(self):
 
-        keys = list(self.images.keys())
-        key = random.choice(keys)
-        z = random.randrange(0, len(self.images[key]))
-        img = self.images[key][z]
-        lbl = self.labels[key][z]
-        height, width = img.shape
+        z = random.randrange(0, len(self.images[0]))
+        img = self.images[:,z]
+        lbl = self.labels[:,z]
+        _, height, width = img.shape
         x = random.randrange(0, width - self.patch_size)
         y = random.randrange(0, height - self.patch_size)
-        patch = img[y : y + self.patch_size, x : x + self.patch_size]
-        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+        patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[:, y : y + self.patch_size, x : x + self.patch_size]
         return (
-            torch.tensor(patch).unsqueeze(0),
+            torch.tensor(patch),
             torch.tensor(-2),
-            torch.tensor(patch_label).unsqueeze(0),
+            torch.tensor(patch_label),
         )
 
 
@@ -438,11 +449,15 @@ class CustomTestDataset(Dataset):
             assert len(patch_size) == 2, "2D model requires a 2D patch size."
             self.patch_size = (1, *patch_size)  # Add a dummy depth for uniform handling
             self.depth = index  # Fixed slice for 2D patches
+        elif model == "4D":
+            assert len(patch_size) == 3, "4D model requires a 3D patch size."
+            self.patch_size = patch_size
+            self.depth = index
         else:
             raise ValueError("Model type must be '2D' or '3D'.")
 
-        _, self.height, self.width = (
-            image.shape if model == "3D" else (1, *image.shape[1:])
+        _, _, self.height, self.width = (
+            image.shape if (model == "3D" or model == "4D") else (1, *image.shape[1:])
         )
         self.num_patches_y = (self.height - self.patch_size[1]) // stride + 1
         self.num_patches_x = (self.width - self.patch_size[2]) // stride + 1
@@ -470,6 +485,13 @@ class CustomTestDataset(Dataset):
                 y : y + self.patch_size[1],
                 x : x + self.patch_size[2],
             ]
+        elif self.model == "4D":
+            patch = self.image[
+                :,
+                self.depth,
+                y : y + self.patch_size[1],
+                x : x + self.patch_size[2],
+            ]
         else:  # For 2D
             patch = self.image[
                 self.depth,
@@ -479,6 +501,8 @@ class CustomTestDataset(Dataset):
 
         # Add a channel dimension for PyTorch compatibility
         patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dim
+        if self.model == "4D":
+            patch_tensor = patch_tensor.squeeze(0).to(torch.float32)
         return patch_tensor
 
 

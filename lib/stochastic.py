@@ -275,31 +275,31 @@ class MixtureStochasticConvBlock(nn.Module):
         self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
-        # #q(y|x): Outputs logits for the categorical distribution
-        # self.qy_x = nn.Sequential(
-        #     conv_type(c_in, c_vars, kernel, padding=pad),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     nn.Linear(c_vars * 8 * 8, n_components),
-        # )
-        # #q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
-        # self.qz_xy = nn.Sequential(
-        #     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
-        #     nn.ReLU(),
-        #     conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
-        # )
-        
-        self.qy_x = TransformerQy(
-            c_in=c_in, embed_dim=128, n_components=n_components, num_heads=4, num_layers=2
+        #q(y|x): Outputs logits for the categorical distribution
+        self.qy_x = nn.Sequential(
+            conv_type(c_in, c_vars, kernel, padding=pad),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(c_vars * 8 * 8, n_components),
         )
-        self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6)
+        #q(z|x, y): Outputs parameters (mu, logvar) for the Gaussian distribution
+        self.qz_xy = nn.Sequential(
+            conv_type(c_in, 2 * c_vars, kernel, padding=pad),
+            nn.ReLU(),
+            conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
+        )
+        
+        # self.qy_x = TransformerQy(
+        #     c_in=c_in, embed_dim=128, n_components=n_components, num_heads=4, num_layers=2
+        # )
+        # self.qz_xy = TransformerQz(c_in=c_in, embed_dim=128, num_heads=4, num_layers=6)
 
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
         # Linear layers to compute gamma and beta from the component mode vector
         self.gamma_layer = nn.Linear(4, c_in)
         self.beta_layer = nn.Linear(4, c_in)
-
+        # self.geo = True
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
     def forward(
@@ -315,7 +315,7 @@ class MixtureStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         hard=True,  # Use hard Gumbel-Softmax
     ):
-        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
+        self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
         assert (forced_latent is None) or (not use_mode)
 
         # Separate mu and logvar for each component of the gmm prior
@@ -387,6 +387,14 @@ class MixtureStochasticConvBlock(nn.Module):
 
         out = self.conv_out(z)
 
+        # if self.geo:
+        #     g_x_hat = F.gumbel_softmax(self.qy_x(out), tau=self.temperature, hard=False)
+        #     grad_g = torch.autograd.grad(outputs=g_x_hat, inputs=q_params, grad_outputs=torch.ones_like(g_x_hat), create_graph=True, retain_graph=True)
+        #     grad_g = grad_g[0].view(batch_size, -1)
+        #     R_geo = torch.mean((grad_g - 1).pow(2))
+        # else:
+        #     R_geo = 0
+
         logprob_p = None
         logprob_q = None
         kl_divergences = []
@@ -446,7 +454,7 @@ class MixtureStochasticConvBlock(nn.Module):
             "logvar": q_lv,
             "pi": y,  # mixture coefficients
             "cross_entropy": (
-                supervised_loss * (1 / self.labeled_ratio)
+                (supervised_loss * (1 / self.labeled_ratio)) #+ R_geo
                 if self.labeled_ratio > 0
                 else 0
             ),
