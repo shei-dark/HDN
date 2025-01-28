@@ -134,25 +134,21 @@ class Custom2DDataset(Dataset):
         label_size=5,
         stride=64,
         mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
-        ratio=0.25,  # For 'mixed' mode, labeled data ratio in each batch
+        ratio=0.25,
+        n_classes=4,# For 'mixed' mode, labeled data ratio in each batch
     ):
-
-        assert (
-            images.shape == labels.shape
-        ), "Images and labels must have the same shape."
-        assert len(images.shape) == 4, "Images and labels must be 4D arrays."
-
         self.patch_size = patch_size
         self.mask_size = mask_size
         self.label_size = label_size
         self.stride = stride
         self.images = images
         self.labels = labels
-        self.mode = mode
-        self.ratio = ratio
+        self.n_classes = n_classes
         self.all_patches, self.patches_by_label = (
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
+        self.mode = mode
+        self.ratio = ratio
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
@@ -163,40 +159,29 @@ class Custom2DDataset(Dataset):
         all_patches = []
         index = 0
         patches_by_label = {}
-        num_channels, z_dim, height, width = self.labels.shape
-
-        for z in range(0, z_dim):
-            for i in range(0, height - self.patch_size + 1, self.stride):
-                for j in range(0, width - self.patch_size + 1, self.stride):
-                    patch_label = self.labels[
-                        :, z, i : i + self.patch_size, j : j + self.patch_size
+        for c in range(self.n_classes):
+            patches_by_label[c] = []
+        for img_idx, (img, lbl) in enumerate(
+            zip(self.images, self.labels)
+        ):
+            height, width = img.shape
+            for i in range(0, height - self.patch_size, self.stride):
+                for j in range(0, width - self.patch_size, self.stride):
+                    patch_label = lbl[
+                        i : i + self.patch_size,
+                        j : j + self.patch_size,
                     ]
                     start = (self.patch_size - self.label_size) // 2
                     unique_label_area = patch_label[
-                        :,
                         start : start + self.label_size,
                         start : start + self.label_size,
                     ]
-                    if len(np.unique(unique_label_area.flatten())) == 1:
-                        all_patches.append((z, i, j))
-                        if unique_label_area.flatten()[0] not in patches_by_label:
-                            patches_by_label[unique_label_area.flatten()[0]] = []
-                        patches_by_label[unique_label_area.flatten()[0]].append(index)
+                    unique_labels = np.unique(unique_label_area)
+                    if len(unique_labels) == 1 and unique_labels[0] != -1 and unique_labels[0] in patches_by_label.keys():
+                        # Store metadata: (key, img_idx, top-left y, top-left x)
+                        all_patches.append((img_idx, i, j))
+                        patches_by_label[unique_labels[0]].append(index)
                         index += 1
-                    elif len(
-                        np.unique(unique_label_area.flatten())
-                    ) == 2 and 0 in np.unique(unique_label_area.flatten()):
-                        non_zero_label = [
-                            x for x in np.unique(unique_label_area.flatten()) if x != 0
-                        ][0]
-                        all_patches.append((z, i, j))
-                        if non_zero_label not in patches_by_label:
-                            patches_by_label[non_zero_label] = []
-                        patches_by_label[non_zero_label].append(index)
-                        index += 1
-
-        for key in patches_by_label:
-            shuffle(patches_by_label[key])
         return all_patches, patches_by_label
 
     def __len__(self):
@@ -243,63 +228,55 @@ class Custom2DDataset(Dataset):
 
         else:  # Single index
             if self.mode == "supervised":
-                z, y, x = self.all_patches[idx]
-                return self._get_patch_by_metadata((z, y, x))
+                img_idx, y, x = self.all_patches[idx]
+                return self._get_patch_by_metadata((img_idx, y, x))
 
             elif self.mode == "unsupervised":
                 return self._get_random_patch()
 
             elif self.mode == "mixed":
                 if idx < len(self.all_patches):
-                    z, y, x = self.all_patches[idx]
-                    return self._get_patch_by_metadata((z, y, x))
+                    img_idx, y, x = self.all_patches[idx]
+                    return self._get_patch_by_metadata((img_idx, y, x))
                 else:
                     return self._get_random_patch()
 
     def _get_patch_by_metadata(self, metadata):
         """Extract a patch dynamically based on metadata."""
-        z, y, x = metadata
-        img = self.images[:, z]
-        lbl = self.labels[:, z]
-        patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
-        patch_label = lbl[:, y : y + self.patch_size, x : x + self.patch_size]
+        img_idx, y, x = metadata
+        img = self.images[img_idx]
+        lbl = self.labels[img_idx]
+        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
         start = (self.patch_size - self.label_size) // 2
         unique_label_area = patch_label[
-            :,
             start : start + self.label_size,
             start : start + self.label_size,
         ]
-        if len(np.unique(unique_label_area.flatten())) == 1:
-            center_label = 0.0
-        elif len(np.unique(unique_label_area.flatten())) == 2 and 0 in np.unique(
-            unique_label_area.flatten()
-        ):
-            non_zero_label = [
-                x for x in np.unique(unique_label_area.flatten()) if x != 0
-            ][0]
-            center_label = non_zero_label
+        center_label = unique_label_area[0, 0]  # Valid by definition of valid_patches
         return (
-            torch.tensor(patch),
+            torch.tensor(patch).unsqueeze(0),
             torch.tensor(center_label),
-            torch.tensor(patch_label),
+            torch.tensor(patch_label).unsqueeze(0),
         )
 
     def _get_random_patch(self):
 
-        z = random.randrange(0, len(self.images[0]))
-        img = self.images[:,z]
-        lbl = self.labels[:,z]
-        _, height, width = img.shape
+        keys = list(self.images.keys())
+        key = random.choice(keys)
+        z = random.randrange(0, len(self.images[key]))
+        img = self.images[key][z]
+        lbl = self.labels[key][z]
+        height, width = img.shape
         x = random.randrange(0, width - self.patch_size)
         y = random.randrange(0, height - self.patch_size)
-        patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
-        patch_label = lbl[:, y : y + self.patch_size, x : x + self.patch_size]
+        patch = img[y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
         return (
-            torch.tensor(patch),
+            torch.tensor(patch).unsqueeze(0),
             torch.tensor(-2),
-            torch.tensor(patch_label),
+            torch.tensor(patch_label).unsqueeze(0),
         )
-
 
 class Custom3DDataset(Dataset):
     """

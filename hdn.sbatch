@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/gmvae/confocal_mlp_semi/train.log
+#SBATCH --output=/group/jug/Sheida/HVAE/gmvae/damian/train.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
@@ -17,4 +17,4 @@ source $HOME/.bashrc
 conda activate emseg
 cd examples/2D/Pixel_Noise/Convallaria/
 # cd examples/3D/Pixel_Noise/
-python Training_confocal.py
+python Training_damian.py

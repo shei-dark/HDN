@@ -272,7 +272,7 @@ class MixtureStochasticConvBlock(nn.Module):
         self.c_vars = c_vars
         self.temperature = 1.0
         self.labeled_ratio = labeled_ratio
-        self.prior_probs = torch.tensor([0.58, 0.13, 0.22, 0.07]).cuda()
+        self.prior_probs = torch.tensor([0.68, 0.13, 0.04, 0.04, 0.07, 0.04]).cuda()
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
         #q(y|x): Outputs logits for the categorical distribution
@@ -297,8 +297,8 @@ class MixtureStochasticConvBlock(nn.Module):
         # Feature Modulation (FiLM Layer)
         # learning parameters to scale and shift the feature map based on the component mode vector.
         # Linear layers to compute gamma and beta from the component mode vector
-        self.gamma_layer = nn.Linear(4, c_in)
-        self.beta_layer = nn.Linear(4, c_in)
+        self.gamma_layer = nn.Linear(6, c_in)
+        self.beta_layer = nn.Linear(6, c_in)
         # self.geo = True
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
@@ -315,7 +315,7 @@ class MixtureStochasticConvBlock(nn.Module):
         use_uncond_mode=False,
         hard=True,  # Use hard Gumbel-Softmax
     ):
-        self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
+        # self.labeled_ratio = 0.25 #TODO it is added because moving from supervised to semisupervised didn't work
         assert (forced_latent is None) or (not use_mode)
 
         # Separate mu and logvar for each component of the gmm prior
