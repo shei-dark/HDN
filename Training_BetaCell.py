@@ -56,12 +56,11 @@ lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning
 use_wandb = True
 
 mode = "supervised"
-ratio = 1
 
 stochastic_block_type = "normal"  # 'normal' or 'mixture'
-conditional = True  # True for conditional LVAE (conditioned on gt label)
+conditional = False  # True for conditional LVAE (conditioned on gt label)
 condition_type = "mlp"  # 'mlp' or 'transformer'
-n_components = 1  # number of components / classes
+n_components = 4  # number of components / classes
 
 # train data
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
@@ -73,16 +72,26 @@ imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
 lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
 train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
 
+np.random.seed(42)
 for key in keys:
-    train_images[key] = imgs[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_images[key] = imgs[key][
-        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
-    ]
-    train_labels[key] = lbls[key][np.arange(0, int(0.8 * imgs[key].shape[0]))]
-    val_labels[key] = lbls[key][
-        np.arange(int(0.8 * imgs[key].shape[0]), imgs[key].shape[0])
-    ]
+    total_samples = imgs[key].shape[0]
+    
+    # Create shuffled indices
+    indices = np.arange(total_samples)
+    np.random.shuffle(indices)  # Shuffles in place
 
+    # Compute split index
+    split_idx = int(0.8 * total_samples)
+
+    # Split the indices
+    train_idx, val_idx = indices[:split_idx], indices[split_idx:]
+
+    # Use shuffled indices to assign train/val splits
+    train_images[key] = imgs[key][train_idx]
+    val_images[key] = imgs[key][val_idx]
+    train_labels[key] = lbls[key][train_idx]
+    val_labels[key] = lbls[key][val_idx]
+    
 valid_train = {}
 valid_val = {}
 
@@ -102,8 +111,7 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-train_stride = 192  # should be a multiple of 32
-val_stride = 120  # should be a multiple of 20
+sample_ratio = 0.0001
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
@@ -111,20 +119,25 @@ for key in tqdm(keys, "Normalizing data"):
     val_images[key] = (val_images[key] - data_mean) / data_std
 
 train_set = Custom2DDataset(
-    train_images,
-    train_labels,
-    patch_size,
-    initial_label_size,
-    train_stride,
-    mode,
+    images=train_images,
+    labels=train_labels,
+    patch_size=patch_size,
+    label_size=initial_label_size,
+    mode=mode,
+    n_classes=n_components,
+    sampling_ratio=sample_ratio,
+    ignore_lbl=-1,
 )
+
 val_set = Custom2DDataset(
-    val_images,
-    val_labels,
-    patch_size,
-    initial_label_size,
-    val_stride,
-    mode,
+    images=val_images,
+    labels=val_labels,
+    patch_size=patch_size,
+    label_size=initial_label_size,
+    mode=mode,
+    n_classes=n_components,
+    sampling_ratio=sample_ratio,
+    ignore_lbl=-1,
 )
 
 train_sampler = DynamicSampler(train_set, batch_size)
@@ -137,7 +150,6 @@ img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
-    model.labeled_ratio = ratio
 
 else:
     model = LadderVAE(
@@ -156,11 +168,11 @@ else:
         contrastive_learning=contrastive_learning,
         margin=margin,
         lambda_contrastive=lambda_contrastive,
-        labeled_ratio=ratio,
         stochastic_block_type=stochastic_block_type,
         conditional=conditional,
         condition_type=condition_type,
         n_components=n_components,
+        training_mode=mode,
     ).cuda()
 print(model)
 model.train()  # Model set in training mode

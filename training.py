@@ -105,7 +105,6 @@ def train_network(
                 "contrastive learning weight": gamma,
                 "lambda (cl)": model.lambda_contrastive,
                 "margin": model.margin,
-                "labeled ratio": model.labeled_ratio,
             },
         )
         run.config.update(dict(epochs=max_epochs))
@@ -137,7 +136,7 @@ def train_network(
                 continue
 
             outputs = boilerplate.forward_pass(
-                x, y, device, model, gaussian_noise_std, amp=amp, epoch=epoch
+                x, y, device, model, gaussian_noise_std, amp=amp
             )
 
             inpainting_loss = outputs["inpainting_loss"]
@@ -260,6 +259,17 @@ def train_network(
             "Min validation loss:",
             np.min(loss_val_history),
         )
+        
+        if patience_ > 10:
+            train_loader.dataset.switch_mode()
+            val_loader.dataset.switch_mode()
+            if model.training_mode == "supervised":
+                model.training_mode = "semisupervised"
+            elif model.training_mode == "semisupervised":
+                model.training_mode = "unsupervised"
+            elif model.training_mode == "unsupervised":
+                model.training_mode = "supervised"
+            patience_ = 0
 
         seconds = time.time()
         secondsElapsed = float(seconds - seconds_last)

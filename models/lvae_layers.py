@@ -49,10 +49,11 @@ class TopDownLayer(nn.Module):
         conditional=False,
         condition_type='mlp',
         n_components=4,  # Used only for Mixture block
+        training_mode="supervised",
     ):
 
         super().__init__()
-
+        self.training_mode = training_mode
         self.is_top_layer = is_top_layer
         self.z_dim = z_dim
         self.stochastic_skip = stochastic_skip
@@ -151,6 +152,11 @@ class TopDownLayer(nn.Module):
                     grad_checkpoint=grad_checkpoint,
                 )
 
+    def update_mode(self, mode):
+        self.training_mode = mode
+        self.stochastic.update_mode(mode)
+
+
     def _initialize_gmm_prior(
         self, n_components, top_prior_param_shape, learn_top_prior
     ):
@@ -207,7 +213,6 @@ class TopDownLayer(nn.Module):
         force_constant_output=False,
         mode_pred=False,
         use_uncond_mode=False,
-        labeled_ratio=1,
     ):
 
         # Check consistency of arguments
@@ -247,7 +252,6 @@ class TopDownLayer(nn.Module):
             label=label,
             p_params=p_params,
             q_params=q_params,
-            labeled_ratio=labeled_ratio,
         )
 
         # Skip connection from previous layer

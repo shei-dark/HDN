@@ -51,14 +51,15 @@ class LadderVAE(nn.Module):
         contrastive_learning=False,
         margin=50,
         lambda_contrastive=0.5,
-        labeled_ratio=1,
         stochastic_block_type="normal",
         conditional=False,
         condition_type='mlp',
         n_components=4,
+        training_mode='supervised',
     ):
 
         super().__init__()
+        self.training_mode = training_mode
         self.color_ch = color_ch
         self.z_dims = z_dims
         self.blocks_per_layer = blocks_per_layer
@@ -94,7 +95,6 @@ class LadderVAE(nn.Module):
         self.contrastive_learning = contrastive_learning
         self.margin = margin
         self.lambda_contrastive = lambda_contrastive
-        self.labeled_ratio = labeled_ratio
         self.prior_type = stochastic_block_type
         self.n_components = n_components
 
@@ -195,6 +195,7 @@ class LadderVAE(nn.Module):
                     conditional=conditional,
                     condition_type=condition_type,
                     n_components=n_components,
+                    training_mode=training_mode,
                 )
             )
 
@@ -238,13 +239,19 @@ class LadderVAE(nn.Module):
         """Increments global step by 1."""
         self._global_step += 1
 
+    def update_mode(self, mode):
+        """Update training mode and propagate to all submodules."""
+        self.training_mode = mode
+        for layer in self.top_down_layers:
+            layer.update_mode(mode)
+    
     @property
     def global_step(self) -> int:
         """Global step."""
         return self._global_step
 
     # TODO: check forward function
-    def forward(self, x, y=None, x_orig=None, epoch=0):
+    def forward(self, x, y=None, x_orig=None):
 
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
@@ -252,7 +259,7 @@ class LadderVAE(nn.Module):
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(y, bu_values, labeled_ratio=self.labeled_ratio)
+        out, td_data = self.topdown_pass(y, bu_values)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
@@ -278,7 +285,7 @@ class LadderVAE(nn.Module):
                 labels=y,
                 margin=self.margin,
                 lambda_contrastive=self.lambda_contrastive,
-                labeled_ratio=self.labeled_ratio,
+                training_mode=self.training_mode,
                 prior=self.prior_type,
             )
 
@@ -320,7 +327,6 @@ class LadderVAE(nn.Module):
         mode_layers=None,
         constant_layers=None,
         forced_latent=None,
-        labeled_ratio=1,
     ):
 
         # Default: no layer is sampled from the distribution's mode
@@ -397,7 +403,6 @@ class LadderVAE(nn.Module):
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
                 use_uncond_mode=use_uncond_mode,
-                labeled_ratio=labeled_ratio,
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )

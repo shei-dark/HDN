@@ -26,9 +26,10 @@ class StochasticConvBlock(nn.Module):
         top_layer=False,
         conditional=False,
         condition_type="mlp",
-        labeled_ratio=1.0,
+        training_mode="supervised"
     ):
         super().__init__()
+        self.training_mode = training_mode        
         assert kernel % 2 == 1
         pad = kernel // 2
         self.c_in = c_in
@@ -39,7 +40,6 @@ class StochasticConvBlock(nn.Module):
         self.top_layer = top_layer
         self.conditional = conditional
         self.condition_type = condition_type
-        self.labeled_ratio = labeled_ratio
         self.temperature = 1.0
         self.batch_size = 0
         self.small_batch_size = 0
@@ -72,6 +72,8 @@ class StochasticConvBlock(nn.Module):
                 self.qz_xy = TransformerQ(
                     c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv"
                 )
+            self.gamma_layer = nn.Linear(n_components, c_in)
+            self.beta_layer = nn.Linear(n_components, c_in)
         else:  # Top layer, mixture, unconditional
             self.y_logits = TransformerQ(c_in=c_in, embed_dim=128, n_components=n_components, mode="mlp")
             self.conv_in_q = conv_type(
@@ -79,10 +81,18 @@ class StochasticConvBlock(nn.Module):
             )
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
-    def forward(self, label, p_params, q_params, labeled_ratio=1.0):
+    def update_mode(self, mode):
+            self.training_mode = mode
+
+    def forward(self, label, p_params, q_params):
 
         self.batch_size = q_params.shape[0]
-        self.small_batch_size = int(self.batch_size * labeled_ratio)
+        if self.training_mode == 'supervised':
+            self.small_batch_size = self.batch_size
+        elif self.training_mode == 'semi_supervised':
+            self.small_batch_size = int(self.batch_size * 0.25)
+        elif self.training_mode == 'unsupervised':
+            self.small_batch_size = self.batch_size
 
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu

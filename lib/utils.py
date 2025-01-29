@@ -382,20 +382,16 @@ def compute_cl_loss(
     labels,
     margin=50,
     lambda_contrastive=0.5,
-    labeled_ratio=1,
+    training_mode='supervised',
     prior="normal",
 ):
-
+    if training_mode == 'supervised':
+        labeled_ratio = 1
+    elif training_mode == 'semisupervised':
+        labeled_ratio = 0.25
+    elif training_mode == 'unsupervised':
+        labeled_ratio = 0
     if prior == "mixture":
-        ### Mixture Model
-        # lin_based_loss = pos_neg_loss_pi(
-        #     mus[2],
-        #     logvars[2],
-        #     pis[2],
-        #     labels=labels,
-        #     labeled_ratio=labeled_ratio,
-        # )
-        # return lin_based_loss
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             mus, labels, margin=margin, labeled_ratio=labeled_ratio
         )
@@ -409,59 +405,7 @@ def compute_cl_loss(
     contrastive_loss = (
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
-    # if prior == "mixture":
-    #     contrastive_loss += lin_based_loss * 10
     return contrastive_loss
-
-
-def pos_neg_loss_pi(
-    mus, logvars, pis, labels, labeled_ratio=1, temperature=0.5
-):
-
-    batch_size = len(labels)
-    small_batch_size = int(batch_size * labeled_ratio)
-
-    labels = labels[:small_batch_size]
-    num_classes = torch.unique(labels).size(0)
-    n_components = num_classes
-
-    stds = (logvars / 2).exp()
-    mu_chunks = mus.chunk(n_components, dim=1)
-    std_chunks = stds.chunk(n_components, dim=1)
-
-    mu_stack = torch.stack(mu_chunks, dim=1)[:small_batch_size].view(
-        small_batch_size, n_components, -1
-    )
-
-    # Flatten to (batch_size * num_components, feature_dim)
-    mu_flat = mu_stack.view(-1, mu_stack.size(-1))
-
-    # Pass through the linear layer
-    outputs_flat = linear(mu_flat)  # Shape: (batch_size * num_components, num_classes)
-
-    # Reshape to (batch_size, num_components, num_classes)
-    outputs = outputs_flat.view(
-        small_batch_size, n_components, -1
-    )  # Shape: (batch_size, num_components, num_classes)
-
-    # Create target tensor of zeros
-    targets = torch.zeros_like(
-        outputs
-    )  # Shape: (batch_size, num_components, num_classes)
-
-    # Set targets[s, l, l] = 1 for each sample s with label l
-    for s in range(small_batch_size):
-        l = labels[s].item()
-        targets[s, l, l] = 1.0
-
-    # Flatten outputs and targets for loss computation
-    outputs_flat = outputs.view(small_batch_size, -1)
-    targets_flat = targets.view(small_batch_size, -1)
-
-    # Compute binary cross-entropy loss with logits
-    loss = F.binary_cross_entropy_with_logits(outputs_flat, targets_flat)
-
-    return loss
 
 
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
