@@ -404,7 +404,6 @@ class LadderVAE(nn.Module):
             ce[i] = aux["cross_entropy"]
             entropy[i] = aux["entropy"]
             mu[i] = aux["mu"]
-            logvar[i] = aux["logvar"]
             pi[i] = aux["pi"] if "pi" in aux else None
             if self.mode_pred is False:
                 logprob_p += aux["logprob_p"].mean()  # mean over batch

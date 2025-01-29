@@ -14,80 +14,18 @@ import struct
 from array import array
 
 
-class CustomMnistDataset(Dataset):
-    def __init__(
-        self,
-        images,
-        labels,
-        patch_size=28,
-        mask_size=5,
-        semi_supervised=False,
-        ratio=0.5,
-    ):
-        self.images = images
-        self.labels = labels
-        self.patch_size = patch_size
-        self.mask_size = mask_size
-        self.semi_supervised = semi_supervised
-        if ratio is None:
-            self.ratio = 1
-        self.patches_by_label = self._compute_valid_patches()
-
-    def _compute_valid_patches(self):
-        """Precompute metadata for valid patches."""
-        patches_by_label = {}
-        for index, lbl in enumerate(self.labels):
-            if lbl not in patches_by_label:
-                patches_by_label[lbl] = []
-            patches_by_label[lbl].append(index)
-        return patches_by_label
-
-    def __len__(self):
-        """Return the number of valid patches."""
-        if self.semi_supervised:
-            return int(len(self.images) / self.ratio)
-        else:
-            return len(self.images)
-
-    def __getitem__(self, idx):
-        if isinstance(idx, list):  # Check if idx is a list of indices
-            # Fetch all patches corresponding to the indices in the list
-            patches = [
-                (self.images[i], self.labels[i])
-                for i in idx
-                if i < int(len(self.images) / self.ratio)
-            ]
-            if self.semi_supervised:
-                random_patches = [
-                    (self.images[i], -2)
-                    for i in idx
-                    if i >= int(len(self.images) / self.ratio)
-                ]
-                patches += random_patches
-            patches, labels = zip(*patches)  # Unpack the tuples into separate lists
-
-            return torch.unsqueeze(torch.tensor(patches), 1), torch.tensor(labels)
-        else:  # Single index
-            # Fetch the patch corresponding to a single index
-            x = self.images[idx]
-            y = self.labels[idx]
-            return torch.unsqueeze(torch.tensor(x), 1), torch.tensor(y)
-
-
 class Custom2DDataset(Dataset):
     def __init__(
         self,
         images,
         labels,
         patch_size=64,
-        mask_size=5,
         label_size=5,
         stride=64,
         mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
         ratio=0.25,  # For 'mixed' mode, labeled data ratio in each batch
     ):
         self.patch_size = patch_size
-        self.mask_size = mask_size
         self.label_size = label_size
         self.stride = stride
         self.images = images
@@ -138,7 +76,9 @@ class Custom2DDataset(Dataset):
 
     def update_patches(self, new_label_size):
         self.label_size = new_label_size
-        self.all_patches, self.patches_by_label = self._compute_valid_patches(label_size=new_label_size)
+        self.all_patches, self.patches_by_label = self._compute_valid_patches(
+            label_size=new_label_size
+        )
 
     def __len__(self):
         """Return dataset size based on mode."""

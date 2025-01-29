@@ -30,6 +30,11 @@ def train_network(
     amp=True,
     gradient_scale=8192,
     use_wandb=True,
+    initial_label_size=1,
+    final_label_size=10,
+    initial_mask_size=1,
+    final_mask_size=10,
+    step_interval=5,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -59,6 +64,17 @@ def train_network(
     model_folder = directory_path + "model/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
+    mask_size_scheduler = boilerplate.LabelSizeScheduler(
+        initial_size=initial_mask_size,
+        final_size=final_mask_size,
+        step_interval=step_interval,
+    )
+    label_size_scheduler = boilerplate.LabelSizeScheduler(
+        initial_size=initial_label_size,
+        final_size=final_label_size,
+        step_interval=step_interval,
+    )
+
     loss_val_history = []
 
     patience_ = 0
@@ -98,24 +114,17 @@ def train_network(
             include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"),
         )
 
-    global_idx = 0
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
-        running_training_loss = []
-        running_inpainting_loss = []
-        running_kl_loss = []
-        running_ce_loss = []
-        running_cl_loss = []
-        running_entropy_loss = []
-
-        # Parameters
-        # initial_size = 6
-        # final_size = 1
-        # step_interval = 5  # Change every 5 steps
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-
+            if idx == 5:
+                break
+            train_loader.dataset.update_patches(
+                label_size_scheduler.get_label_size(epoch)
+            )
+            model.mask_size = mask_size_scheduler.get_label_size(epoch)
             x = x.squeeze(0)
             y = y.squeeze(0)
             x = x.to(device=device, dtype=torch.float)
@@ -126,6 +135,7 @@ def train_network(
             if torch.isnan(x).any() or torch.isinf(x).any():
                 print("x has nan or inf")
                 continue
+
             outputs = boilerplate.forward_pass(
                 x, y, device, model, gaussian_noise_std, amp=amp, epoch=epoch
             )
@@ -133,7 +143,7 @@ def train_network(
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
             cl_loss = outputs["cl_loss"]
-            ce = outputs["ce"] if outputs["ce"] is not None else 0
+            ce = outputs["ce"] if outputs["ce"] is not None else torch.zeros(1)
             entropy = outputs["entropy"]
 
             loss = alpha * inpainting_loss + beta * kl_loss + ce + entropy
@@ -151,28 +161,17 @@ def train_network(
             if use_wandb:
                 run.log(
                     {
-                        "global_idx": global_idx,
-                        "idx": idx,
                         "IP": inpainting_loss * alpha,
                         "KL": kl_loss * beta,
                         "CL": cl_loss * gamma if model.contrastive_learning else None,
-                        "Total": loss,
                         "CE": ce,
                         "EL": entropy,
+                        "Total": loss,
                     },
                     commit=True,
                 )
-            global_idx += 1
 
             # Optimization step
-
-            running_training_loss.append(loss)
-            running_inpainting_loss.append(inpainting_loss)
-            running_kl_loss.append(kl_loss)
-            running_ce_loss.append(ce)
-            running_entropy_loss.append(entropy)
-            if model.contrastive_learning:
-                running_cl_loss.append(cl_loss)
 
             scaler.step(optimizer)
             scaler.update()
@@ -182,37 +181,18 @@ def train_network(
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
 
-        if use_wandb:
-            run.log(
-                {
-                    "epoch": epoch,
-                    "inpainting loss": torch.mean(torch.stack(running_inpainting_loss))
-                    * alpha,
-                    "kl loss": torch.mean(torch.stack(running_kl_loss)) * beta,
-                    "ce loss": torch.mean(torch.stack(running_ce_loss)),
-                    "entropy loss": torch.mean(torch.stack(running_entropy_loss)),
-                    "total loss": torch.mean(torch.stack(running_training_loss)),
-                }
-            )
-            if model.contrastive_learning:
-                run.log(
-                    {
-                        "cl loss": torch.mean(torch.stack(running_cl_loss)) * gamma,
-                    }
-                )
-
         ### Validation step
         running_validation_loss = []
-        running_val_inpainting_loss = []
-        running_val_kl_loss = []
-        running_val_ce_loss = []
-        running_val_cl_loss = []
-        running_val_entropy_loss = []
 
         model.eval()
         with torch.no_grad():
-            for i, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
-
+            for idx, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
+                if idx == 5:
+                    break
+                val_loader.dataset.update_patches(
+                    label_size_scheduler.get_label_size(epoch)
+                )
+                model.mask_size = mask_size_scheduler.get_label_size(epoch)
                 x = x.squeeze(0)
                 y = y.squeeze(0)
                 z = z.squeeze(0)
@@ -237,50 +217,29 @@ def train_network(
                 )
                 if model.contrastive_learning:
                     val_loss += gamma * val_cl_loss
-                    running_val_cl_loss.append(gamma * val_cl_loss)
 
                 running_validation_loss.append(val_loss)
-                running_val_inpainting_loss.append(alpha * val_inpainting_loss)
-                running_val_kl_loss.append(beta * val_kl_loss)
-                running_val_ce_loss.append(val_ce)
-                running_val_entropy_loss.append(val_entropy)
-
-        if use_wandb:
-            run.log(
-                {
-                    "val total loss": torch.mean(
-                        torch.stack(running_validation_loss)
-                    ).item(),
-                    "val inpainting loss": torch.mean(
-                        torch.stack(running_val_inpainting_loss)
-                    ).item(),
-                    "val kl loss": torch.mean(torch.stack(running_val_kl_loss)).item(),
-                    "val ce": torch.mean(torch.stack(running_val_ce_loss)).item(),
-                    "val entropy": torch.mean(
-                        torch.stack(running_val_entropy_loss)
-                    ).item(),
-                    "val cl loss": (
-                        torch.mean(torch.stack(running_val_cl_loss)).item()
-                        if model.contrastive_learning
-                        else 0
-                    ),
-                }
-            )
+                
+                if use_wandb:
+                    run.log(
+                        {
+                            "val_IP": alpha * val_inpainting_loss,
+                            "val_KL": beta * val_kl_loss,
+                            "val_CE": val_ce,
+                            "val_EL": val_entropy,
+                            "val_CL": (
+                                gamma * val_cl_loss
+                                if model.contrastive_learning
+                                else None
+                            ),
+                            "val_total": val_loss,
+                        }
+                    )
 
         model.train()
 
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
         scheduler.step(total_epoch_loss_val)
-
-        # TODO increasing/decreasing the label size
-        # label_size = boilerplate.label_size_scheduler(
-        #     initial_size=initial_size,
-        #     final_size=final_size,
-        #     step_interval=step_interval,
-        #     current_step=epoch,
-        # )
-        # train_loader.dataset.update_patches(label_size)
-        # val_loader.dataset.update_patches(label_size)
 
         ### Save validation losses
         loss_val_history.append(total_epoch_loss_val.item())
@@ -306,7 +265,6 @@ def train_network(
         secondsElapsed = float(seconds - seconds_last)
         seconds_last = seconds
         remainingEps = (max_epochs + 1) - (epoch + 1)
-        estRemainSeconds = (secondsElapsed) * (remainingEps)
         estRemainSecondsInt = int(secondsElapsed) * (remainingEps)
         print("Time for epoch: " + str(int(secondsElapsed)) + "seconds")
 

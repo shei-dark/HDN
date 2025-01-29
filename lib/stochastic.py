@@ -93,6 +93,9 @@ class StochasticConvBlock(nn.Module):
         p_std_chunks = p_std.chunk(self.n_components, dim=1)
 
         p_components = []
+        y = None
+        cross_entropy = 0
+        entropy = 0
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(Normal(mu_chunk, std_chunk))
@@ -134,6 +137,7 @@ class StochasticConvBlock(nn.Module):
 
                 js_div = self._compute_js_div(y)
                 kl = self._compute_kl(q, p_components, label, y_pred)
+                kl = kl + js_div
                 entropy = self._compute_entropy(y)
                 cross_entropy = self._compute_cross_entropy(qy_logits, label)
                 logprob_p = self._compute_logprob(p_components, z)
@@ -178,7 +182,7 @@ class StochasticConvBlock(nn.Module):
             "q_params": q_params,
             "logprob_p": logprob_p,
             "logprob_q": logprob_q,
-            "kl": kl + js_div,
+            "kl": kl,
             "mu": q_mu,
             "lv": q_lv,
             "pi": y,
@@ -217,7 +221,7 @@ class StochasticConvBlock(nn.Module):
                         )
                     else:
                         kl = kl_divergences[range(self.batch_size), label]
-        return kl
+        return kl.mean()
 
     def _compute_js_div(self, y):
         m = 0.5 * (y + self.prior_probs)
@@ -226,7 +230,7 @@ class StochasticConvBlock(nn.Module):
         ) + 0.5 * torch.sum(
             self.prior_probs * torch.log(self.prior_probs / (m + 1e-10)), dim=1
         )
-        return js_div
+        return js_div.mean()
 
     def _compute_entropy(self, y):
         if self.small_batch_size < self.batch_size:
@@ -245,7 +249,10 @@ class StochasticConvBlock(nn.Module):
         return cross_entropy
     
     def _compute_logprob(self, p, z):
-        logprob = torch.stack([p_i.log_prob(z) for p_i in p], dim=-1)
+        if isinstance(p, Normal):
+            logprob = p.log_prob(z)
+        else:
+            logprob = torch.stack([p_i.log_prob(z) for p_i in p], dim=-1)
         return logprob
     
 class TransformerQ(nn.Module):

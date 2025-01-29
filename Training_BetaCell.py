@@ -5,9 +5,6 @@ warnings.filterwarnings("ignore")
 # We import all our dependencies.
 import numpy as np
 import torch
-import sys
-
-sys.path.insert(0, "/home/sheida.rahnamai/GIT/HDN/")
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
 from boilerplate.dataloader import Custom2DDataset, DynamicSampler
@@ -15,7 +12,6 @@ import training
 from tqdm import tqdm
 import tifffile as tiff
 
-scale = 8
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -23,14 +19,12 @@ patch_size = 64
 
 gaussian_noise_std = None
 
+model_name = "refactoring"
+directory_path = "/group/jug/Sheida/HVAE/refactoring/test_00/"
 
-model_name = "epsilon_seg"
-directory_path = "/group/jug/Sheida/HVAE/gmvae/test/"
 # Model-specific
 load_checkpoint = False
-checkpoint = (
-    "/group/jug/Sheida/HVAE/gmvae/decreasing_label_size/model/epsilon_seg_best_vae.net"
-)
+checkpoint = "/group/jug/Sheida/HVAE/*_best_vae.net"
 
 noiseModel = None
 
@@ -40,28 +34,34 @@ lr = 3e-5
 max_epochs = 100
 num_latents = 3
 z_dims = [32] * int(num_latents)
-blocks_per_layer = 3
+blocks_per_layer = 5
 batchnorm = True
 free_bits = 0.0
-alpha = 1
-beta = 1e-4
-gamma = 1e-1
-mask_size = 1
-label_size = 1
+
+alpha = 1  # weight of the inpainting loss
+beta = 1e-4  # weight of the KL loss
+gamma = 1e-1  # weight of the contrastive loss
+
+initial_mask_size = 1
+final_mask_size = 1
+initial_label_size = 1
+final_label_size = 1
+step_interval = 5  # Change every 5 steps
+
+
 contrastive_learning = True
-margin = 50
-lambda_contrastive = 0.5
+margin = 50  # distance for negative pairs in contrastive learning
+lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning (1-lambda_contrastive is the weight of the negative pairs)
 
-use_wandb = False
+use_wandb = True
 
-# (supervised, ratio 1), (mixed, ratio 0.25)
 mode = "supervised"
 ratio = 1
 
 stochastic_block_type = "normal"  # 'normal' or 'mixture'
-conditional = False  # True for conditional LVAE
+conditional = True  # True for conditional LVAE (conditioned on gt label)
 condition_type = "mlp"  # 'mlp' or 'transformer'
-n_components = 1  # number of components in the mixture, if normal then 1
+n_components = 1  # number of components / classes
 
 # train data
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
@@ -109,13 +109,12 @@ val_stride = 120  # should be a multiple of 20
 for key in tqdm(keys, "Normalizing data"):
     train_images[key] = (train_images[key] - data_mean) / data_std
     val_images[key] = (val_images[key] - data_mean) / data_std
-    
+
 train_set = Custom2DDataset(
     train_images,
     train_labels,
     patch_size,
-    mask_size,
-    label_size,
+    initial_label_size,
     train_stride,
     mode,
 )
@@ -123,8 +122,7 @@ val_set = Custom2DDataset(
     val_images,
     val_labels,
     patch_size,
-    mask_size,
-    label_size,
+    initial_label_size,
     val_stride,
     mode,
 )
@@ -154,7 +152,7 @@ else:
         free_bits=free_bits,
         img_shape=img_shape,
         grad_checkpoint=True,
-        mask_size=mask_size,
+        mask_size=initial_mask_size,
         contrastive_learning=contrastive_learning,
         margin=margin,
         lambda_contrastive=lambda_contrastive,
@@ -183,4 +181,9 @@ training.train_network(
     gradient_scale=256,
     use_wandb=use_wandb,
     max_grad_norm=1,
+    initial_label_size=initial_label_size,
+    final_label_size=final_label_size,
+    initial_mask_size=initial_mask_size,
+    final_mask_size=final_mask_size,
+    step_interval=step_interval,
 )
