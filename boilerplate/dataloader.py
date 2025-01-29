@@ -135,7 +135,7 @@ class Custom2DDataset(Dataset):
         stride=64,
         mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
         ratio=0.25,
-        n_classes=4,# For 'mixed' mode, labeled data ratio in each batch
+        n_classes=4,  # For 'mixed' mode, labeled data ratio in each batch
     ):
         self.patch_size = patch_size
         self.mask_size = mask_size
@@ -161,9 +161,7 @@ class Custom2DDataset(Dataset):
         patches_by_label = {}
         for c in range(self.n_classes):
             patches_by_label[c] = []
-        for img_idx, (img, lbl) in enumerate(
-            zip(self.images, self.labels)
-        ):
+        for img_idx, (img, lbl) in enumerate(zip(self.images, self.labels)):
             height, width = img.shape
             for i in range(0, height - self.patch_size, self.stride):
                 for j in range(0, width - self.patch_size, self.stride):
@@ -177,11 +175,25 @@ class Custom2DDataset(Dataset):
                         start : start + self.label_size,
                     ]
                     unique_labels = np.unique(unique_label_area)
-                    if len(unique_labels) == 1 and unique_labels[0] != -1 and unique_labels[0] in patches_by_label.keys():
+                    if (
+                        len(unique_labels) == 1
+                        and unique_labels[0] != 0
+                        and unique_labels[0] in patches_by_label.keys()
+                    ):
                         # Store metadata: (key, img_idx, top-left y, top-left x)
                         all_patches.append((img_idx, i, j))
                         patches_by_label[unique_labels[0]].append(index)
                         index += 1
+                    elif (
+                        len(unique_labels) == 1
+                        and unique_labels[0] == 0
+                        and len(patches_by_label[0]) < 3000
+                    ):
+                        all_patches.append((img_idx, i, j))
+                        patches_by_label[0].append(index)
+                        index += 1
+        for k in patches_by_label.keys():
+            shuffle(patches_by_label[k])
         return all_patches, patches_by_label
 
     def __len__(self):
@@ -277,6 +289,7 @@ class Custom2DDataset(Dataset):
             torch.tensor(-2),
             torch.tensor(patch_label).unsqueeze(0),
         )
+
 
 class Custom3DDataset(Dataset):
     """
@@ -433,7 +446,7 @@ class CustomTestDataset(Dataset):
         else:
             raise ValueError("Model type must be '2D' or '3D'.")
 
-        _, _, self.height, self.width = (
+        _, self.height, self.width = (
             image.shape if (model == "3D" or model == "4D") else (1, *image.shape[1:])
         )
         self.num_patches_y = (self.height - self.patch_size[1]) // stride + 1
