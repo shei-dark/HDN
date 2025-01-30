@@ -62,8 +62,8 @@ stochastic_block_type = "normal"  # 'normal' or 'mixture'
 conditional = False  # True for conditional LVAE (conditioned on gt label)
 condition_type = None  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 1  # number of components / classes
-
+n_components = 1  # number of components for prior
+n_classes = 4  # number of classes in the dataset
 # train data
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
 keys = ["high_c1", "high_c2", "high_c3"]
@@ -126,7 +126,7 @@ train_set = Custom2DDataset(
     patch_size=patch_size,
     label_size=initial_label_size,
     mode=mode,
-    n_classes=n_components,
+    n_classes=n_classes,
     sampling_ratio=sample_ratio,
     ignore_lbl=-1,
 )
@@ -137,7 +137,7 @@ val_set = Custom2DDataset(
     patch_size=patch_size,
     label_size=initial_label_size,
     mode=mode,
-    n_classes=n_components,
+    n_classes=n_classes,
     sampling_ratio=sample_ratio,
     ignore_lbl=-1,
 )
