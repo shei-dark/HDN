@@ -19,8 +19,8 @@ patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "refactoring"
-directory_path = "/group/jug/Sheida/HVAE/refactoring/test_00/"
+model_name = "vanilla_lvae"
+directory_path = "/group/jug/Sheida/HVAE/experiments/00/"
 
 # Model-specific
 load_checkpoint = False
@@ -31,7 +31,7 @@ noiseModel = None
 # Training-specific
 batch_size = 512
 lr = 3e-5
-max_epochs = 100
+max_epochs = 300
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -39,7 +39,7 @@ batchnorm = True
 free_bits = 0.0
 
 alpha = 1  # weight of the inpainting loss
-beta = 1e-4  # weight of the KL loss
+beta = 1e-1  # weight of the KL loss
 gamma = 1e-1  # weight of the contrastive loss
 
 initial_mask_size = 1
@@ -48,19 +48,20 @@ initial_label_size = 1
 final_label_size = 1
 step_interval = 5  # Change every 5 steps
 
-
-contrastive_learning = True
+contrastive_learning = False
 margin = 50  # distance for negative pairs in contrastive learning
-lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning (1-lambda_contrastive is the weight of the negative pairs)
+lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
+# (1-lambda_contrastive is the weight of the negative pairs)
 
 use_wandb = True
 
-mode = "supervised"
+mode = "unsupervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
 stochastic_block_type = "normal"  # 'normal' or 'mixture'
 conditional = False  # True for conditional LVAE (conditioned on gt label)
-condition_type = "mlp"  # 'mlp' or 'transformer'
-n_components = 4  # number of components / classes
+condition_type = None  # 'mlp' or 'transformer'
+assert (conditional == True and condition_type != None) or conditional == False
+n_components = 1  # number of components / classes
 
 # train data
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
@@ -75,7 +76,7 @@ train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
 np.random.seed(42)
 for key in keys:
     total_samples = imgs[key].shape[0]
-    
+
     # Create shuffled indices
     indices = np.arange(total_samples)
     np.random.shuffle(indices)  # Shuffles in place
@@ -91,7 +92,7 @@ for key in keys:
     val_images[key] = imgs[key][val_idx]
     train_labels[key] = lbls[key][train_idx]
     val_labels[key] = lbls[key][val_idx]
-    
+
 valid_train = {}
 valid_val = {}
 

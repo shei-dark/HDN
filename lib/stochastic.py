@@ -25,8 +25,8 @@ class StochasticConvBlock(nn.Module):
         n_components=1,
         top_layer=False,
         conditional=False,
-        condition_type="mlp",
-        training_mode="supervised"
+        condition_type=None,
+        training_mode="unsupervised"
     ):
         super().__init__()
         self.training_mode = training_mode        
@@ -43,6 +43,8 @@ class StochasticConvBlock(nn.Module):
         self.temperature = 1.0
         self.batch_size = 0
         self.small_batch_size = 0
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.prior_probs = (torch.ones(n_components, device=self.device) / n_components)
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
 
         if not top_layer or (block_type == "normal" and not conditional):
@@ -211,7 +213,28 @@ class StochasticConvBlock(nn.Module):
             kl = kl_divergence(q, p[0])
         else:
             if self.block_type == "normal":
-                kl = kl_divergence(q, p[0])
+                if self.n_components == 1:
+                    kl = kl_divergence(q, p[0])
+                else:
+                    q = torch.chunk(q, self.n_components, dim=1)
+                    kl_divergences = [
+                        kl_divergence(q_i, p).mean(dim=(1, 2, 3)) for q_i in q
+                    ]
+                    kl_divergences = torch.stack(kl_divergences, dim=-1)
+                    if label is not None:
+                        if self.small_batch_size < self.batch_size:
+                            kl = torch.cat(
+                                [
+                                    kl_divergences[range(self.small_batch_size), label],
+                                    kl_divergences[
+                                        range(self.small_batch_size, self.batch_size),
+                                        y_pred[self.small_batch_size :],
+                                    ],
+                                ],
+                                dim=0,
+                            )
+                        else:
+                            kl = kl_divergences[range(self.batch_size), label]
             else:
                 kl_divergences = [
                     kl_divergence(q, p_i).mean(dim=(1, 2, 3)) for p_i in p
@@ -255,7 +278,7 @@ class StochasticConvBlock(nn.Module):
         return entropy
     
     def _compute_cross_entropy(self, qy_logits, label):
-        cross_entropy = F.cross_entropy(qy_logits[:self.small_batch_size], label)
+        cross_entropy = F.cross_entropy(qy_logits[:self.small_batch_size], label.long())
         return cross_entropy
     
     def _compute_logprob(self, p, z):

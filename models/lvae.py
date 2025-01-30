@@ -273,7 +273,7 @@ class LadderVAE(nn.Module):
         if self.mode_pred is False:
             # kl[i] for each i has length batch_size
             # resulting kl shape: (batch_size, layers)
-            kl = torch.stack(td_data["kl"]).mean(0)
+            kl = torch.stack(td_data["kl"]).sum(0)
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
 

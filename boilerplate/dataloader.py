@@ -21,10 +21,10 @@ class Custom2DDataset(Dataset):
         labels,
         patch_size=64,
         label_size=5,
-        mode="supervised",  # Options: 'supervised', 'unsupervised', 'mixed'
+        mode="supervised",  # Options: 'supervised', 'semisupervised', 'unsupervised'
         n_classes=4,
         sampling_ratio=0.01,
-        ignore_lbl = -1,
+        ignore_lbl=-1,
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -47,49 +47,22 @@ class Custom2DDataset(Dataset):
         """Set the current mode of the dataset."""
         self.mode = mode
 
-    # def _compute_valid_patches(self):
-    #     """Precompute metadata for valid patches and sample a subset."""
-
-    #                 for i in range(height - self.patch_size + 1):
-    #                     for j in range(width - self.patch_size + 1):
-    #                         if self._centre_consistent(lbl[i : i + self.patch_size, j : j + self.patch_size]):
-    #                             label = lbl[i+offset, j+offset]  # Center label
-    #                             valid_patches_by_label[label].append((key, img_idx, i, j))
-    #     else:
-    #         for img_idx, (img, lbl) in enumerate(zip(self.images, self.labels)):
-    #             height, width = img.shape
-    #             for i in range(height - self.patch_size + 1):
-    #                 for j in range(width - self.patch_size + 1):
-    #                     if self._centre_consistent(lbl[i : i + self.patch_size, j : j + self.patch_size]):
-    #                         label = lbl[i+offset, j+offset]  # Center label
-    #                         valid_patches_by_label[label].append((img_idx, i, j))
-
-    #     # Apply sampling per class
-    #     index = 0
-    #     for c in range(self.n_classes):
-    #         num_samples = int(len(valid_patches_by_label[c]) * self.sampling_ratio)
-    #         np.random.seed(42)  # Ensure reproducibility
-    #         sampled_patches = np.random.choice(len(valid_patches_by_label[c]), num_samples, replace=False)
-            
-    #         for idx in sampled_patches:
-    #             patch_metadata = valid_patches_by_label[c][idx]
-    #             all_patches.append(patch_metadata)
-    #             patches_by_label[c].append(index)
-    #             index += 1
-
-    #         # shuffle patches_by_label[c] to avoid bias
-    #         shuffle(patches_by_label[c])
-    #     return all_patches, patches_by_label
-
     def _centre_consistent(self, patch_metadata):
         """Vectorized version to check if the center is label-consistent."""
         if self.keys:
             key, z, x, y = patch_metadata
-            unique_label_area = self.labels[key][z, x:x+self.label_size, y:y+self.label_size]
+            unique_label_area = self.labels[key][
+                z, x : x + self.label_size, y : y + self.label_size
+            ]
         else:
             z, x, y = patch_metadata
-            unique_label_area = self.labels[z, x:x+self.label_size, y:y+self.label_size]
-        return np.all(unique_label_area == unique_label_area[0, 0]) and unique_label_area[0, 0] != self.ignore_lbl
+            unique_label_area = self.labels[
+                z, x : x + self.label_size, y : y + self.label_size
+            ]
+        return (
+            np.all(unique_label_area == unique_label_area[0, 0])
+            and unique_label_area[0, 0] != self.ignore_lbl
+        )
 
     def _compute_valid_patches(self):
         """Fast vectorized patch extraction."""
@@ -100,7 +73,9 @@ class Custom2DDataset(Dataset):
 
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
-            valid_x, valid_y = np.where(lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl)
+            valid_x, valid_y = np.where(
+                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+            )
             valid_x += min_offset
             valid_y += min_offset
 
@@ -109,13 +84,21 @@ class Custom2DDataset(Dataset):
             for c in range(self.n_classes):
                 mask = centers == c
                 np.random.seed(42)  # Ensure reproducibility
-                sampled_indices = np.random.choice(np.where(mask)[0], int(len(valid_x[mask]) * self.sampling_ratio), replace=False)
-                
+                sampled_indices = np.random.choice(
+                    np.where(mask)[0],
+                    int(len(valid_x[mask]) * self.sampling_ratio),
+                    replace=False,
+                )
+
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
                     patch_metadata = (key, img_idx, i, j) if key else (img_idx, i, j)
                     if self._centre_consistent(patch_metadata):
-                        all_patches.append((key, img_idx, i-min_offset, j-min_offset) if key else (img_idx, i-min_offset, j-min_offset))
+                        all_patches.append(
+                            (key, img_idx, i - min_offset, j - min_offset)
+                            if key
+                            else (img_idx, i - min_offset, j - min_offset)
+                        )
                         patches_by_label[c].append(len(all_patches) - 1)
 
         if self.keys:
@@ -125,19 +108,19 @@ class Custom2DDataset(Dataset):
         else:
             for img_idx, lbl in enumerate(self.labels):
                 process_image(lbl, img_idx)
-                
+
         for c in range(self.n_classes):
             shuffle(patches_by_label[c])
 
         return all_patches, patches_by_label
-   
+
     def update_patches(self, new_label_size):
         self.label_size = new_label_size
         self.all_patches, self.patches_by_label = self._compute_valid_patches()
 
     def __len__(self):
         """Return dataset size based on mode."""
-        if self.mode == "mixed":
+        if self.mode == "semisupervised":
             return int(len(self.all_patches) / self.ratio)
         else:
             return len(self.all_patches)
@@ -160,7 +143,7 @@ class Custom2DDataset(Dataset):
                 patches, clss, labels = zip(*random_patches)
                 return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
 
-            elif self.mode == "mixed":
+            elif self.mode == "semisupervised":
                 labeled_count = int(len(idx) * self.ratio)
                 random_count = len(idx) - labeled_count
 
@@ -181,11 +164,11 @@ class Custom2DDataset(Dataset):
             if self.mode == "supervised":
                 key, img_idx, y, x = self.all_patches[idx]
                 return self._get_patch_by_metadata((key, img_idx, y, x))
-            
+
             elif self.mode == "unsupervised":
                 return self._get_random_patch()
 
-            elif self.mode == "mixed":
+            elif self.mode == "semisupervised":
                 if idx < len(self.all_patches):
                     key, img_idx, y, x = self.all_patches[idx]
                     return self._get_patch_by_metadata((key, img_idx, y, x))
@@ -228,14 +211,10 @@ class Custom2DDataset(Dataset):
             torch.tensor(-2),
             torch.tensor(patch_label).unsqueeze(0),
         )
-        
+
     def switch_mode(self):
         if self.mode == "supervised":
-            self.mode = "mixed"
-        elif self.mode == "mixed":
-            self.mode = "unsupervised"
-        elif self.mode == "unsupervised":
-            self.mode = "supervised"
+            self.mode = "semisupervised"
 
 
 class Custom3DDataset(Dataset):
@@ -776,10 +755,12 @@ class DynamicSampler(Sampler):
     def __iter__(self):
         if self.dataset.mode == "supervised":
             sampler = BalancedBatchSampler(self.dataset, self.batch_size)
-        elif self.dataset.mode == "mixed":
+        elif self.dataset.mode == "semisupervised":
             sampler = CombinedBatchSampler(
                 self.dataset, self.batch_size, labeled_ratio=0.25
             )
+        elif self.dataset.mode == "unsupervised":
+            sampler = UnsupervisedSampler(self.dataset, self.batch_size)
         yield from iter(sampler)
 
     def __len__(self):

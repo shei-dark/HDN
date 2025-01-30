@@ -265,10 +265,6 @@ def train_network(
             val_loader.dataset.switch_mode()
             if model.training_mode == "supervised":
                 model.training_mode = "semisupervised"
-            elif model.training_mode == "semisupervised":
-                model.training_mode = "unsupervised"
-            elif model.training_mode == "unsupervised":
-                model.training_mode = "supervised"
             patience_ = 0
 
         seconds = time.time()
