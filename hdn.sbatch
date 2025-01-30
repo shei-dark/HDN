@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=32GB
 #SBATCH --ntasks=8
-#SBATCH --job-name=epsilon-seg
-#SBATCH --time=1-00:00:00
+#SBATCH --job-name=segmentation
+#SBATCH --time=3-00:00:00
 #SBATCH --no-requeue
 
 

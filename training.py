@@ -35,6 +35,7 @@ def train_network(
     initial_mask_size=1,
     final_mask_size=10,
     step_interval=5,
+    overfit_patience=20,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -118,8 +119,9 @@ def train_network(
         print(f"Starting epoch {epoch}")
 
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
-            if idx == 5:
-                break
+            if not use_wandb:
+                if idx == 5:
+                    break
             train_loader.dataset.update_patches(
                 label_size_scheduler.get_label_size(epoch)
             )
@@ -175,7 +177,6 @@ def train_network(
             scaler.step(optimizer)
             scaler.update()
             model.increment_global_step()
-            step = model.global_step
 
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
@@ -186,8 +187,9 @@ def train_network(
         model.eval()
         with torch.no_grad():
             for idx, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
-                if idx == 5:
-                    break
+                if not use_wandb:
+                    if idx == 5:
+                        break
                 val_loader.dataset.update_patches(
                     label_size_scheduler.get_label_size(epoch)
                 )
@@ -248,6 +250,7 @@ def train_network(
             patience_ = 0
             print("saving", model_folder + model_name + "_best_vae.net")
             torch.save(model, model_folder + model_name + "_best_vae.net")
+            torch.save(model.state_dict(), model_folder + model_name + "_best_weights.net")
         else:
             patience_ += 1
 
@@ -260,11 +263,12 @@ def train_network(
             np.min(loss_val_history),
         )
         
-        if patience_ > 10:
+        if patience_ > overfit_patience and model.training_mode == "supervised":
+            print("Overfitting detected. Loading best model and switching to semi-supervised training...")
+            model.load_state_dict(torch.load(model_folder + model_name + "_best_weights.net"))
             train_loader.dataset.switch_mode()
             val_loader.dataset.switch_mode()
-            if model.training_mode == "supervised":
-                model.training_mode = "semisupervised"
+            model.training_mode = "semisupervised"
             patience_ = 0
 
         seconds = time.time()
@@ -283,3 +287,7 @@ def train_network(
         )
 
         print("----------------------------------------", flush=True)
+
+        if patience_ == 100:
+            print("Early stopping")
+            break

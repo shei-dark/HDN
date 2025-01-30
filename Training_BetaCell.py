@@ -15,23 +15,26 @@ import tifffile as tiff
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
+use_wandb = True
+
 patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "vanilla_lvae"
+model_name = "experiments"
 directory_path = "/group/jug/Sheida/HVAE/experiments/00/"
 
 # Model-specific
 load_checkpoint = False
-checkpoint = "/group/jug/Sheida/HVAE/*_best_vae.net"
-
+checkpoint = ""
+ 
 noiseModel = None
 
 # Training-specific
 batch_size = 512
 lr = 3e-5
 max_epochs = 300
+overfit_patience = max_epochs
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -52,8 +55,6 @@ contrastive_learning = False
 margin = 50  # distance for negative pairs in contrastive learning
 lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
 # (1-lambda_contrastive is the weight of the negative pairs)
-
-use_wandb = True
 
 mode = "unsupervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
@@ -199,4 +200,5 @@ training.train_network(
     initial_mask_size=initial_mask_size,
     final_mask_size=final_mask_size,
     step_interval=step_interval,
+    overfit_patience=overfit_patience,
 )
