@@ -22,7 +22,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/04/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/13/"
 
 # Model-specific
 load_checkpoint = False
@@ -51,7 +51,7 @@ initial_label_size = 1
 final_label_size = 1
 step_interval = 5  # Change every 5 steps
 
-contrastive_learning = False
+contrastive_learning = True
 margin = 25  # distance for negative pairs in contrastive learning
 lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
 # (1-lambda_contrastive is the weight of the negative pairs)
