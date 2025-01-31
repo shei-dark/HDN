@@ -22,7 +22,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/13/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/14/"
 
 # Model-specific
 load_checkpoint = False
@@ -58,7 +58,7 @@ lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning
 
 mode = "supervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
-stochastic_block_type = "normal"  # 'normal' or 'mixture'
+stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 conditional = True  # True for conditional LVAE (conditioned on gt label)
 condition_type = 'mlp'  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False

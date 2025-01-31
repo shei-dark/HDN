@@ -236,7 +236,7 @@ class StochasticConvBlock(nn.Module):
                             dim=0,
                         )
                     else:
-                        kl = kl_divergences[range(self.batch_size), label]
+                        kl = kl_divergences[range(self.batch_size), label.long()]
         return kl.mean()
 
     def _compute_js_div(self, y):
