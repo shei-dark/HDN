@@ -22,7 +22,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/00/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/01/"
 
 # Model-specific
 load_checkpoint = False
@@ -51,12 +51,12 @@ initial_label_size = 1
 final_label_size = 1
 step_interval = 5  # Change every 5 steps
 
-contrastive_learning = False
-margin = 50  # distance for negative pairs in contrastive learning
+contrastive_learning = True
+margin = 25  # distance for negative pairs in contrastive learning
 lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
 # (1-lambda_contrastive is the weight of the negative pairs)
 
-mode = "unsupervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
+mode = "supervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
 stochastic_block_type = "normal"  # 'normal' or 'mixture'
 conditional = False  # True for conditional LVAE (conditioned on gt label)
