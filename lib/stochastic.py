@@ -91,7 +91,7 @@ class StochasticConvBlock(nn.Module):
         self.batch_size = q_params.shape[0]
         if self.training_mode == 'supervised':
             self.small_batch_size = self.batch_size
-        elif self.training_mode == 'semi_supervised':
+        elif self.training_mode == 'semisupervised':
             self.small_batch_size = int(self.batch_size * 0.25)
         elif self.training_mode == 'unsupervised':
             self.small_batch_size = self.batch_size
@@ -227,7 +227,7 @@ class StochasticConvBlock(nn.Module):
                     if self.small_batch_size < self.batch_size:
                         kl = torch.cat(
                             [
-                                kl_divergences[range(self.small_batch_size), label],
+                                kl_divergences[range(self.small_batch_size), label[:self.small_batch_size].long()],
                                 kl_divergences[
                                     range(self.small_batch_size, self.batch_size),
                                     y_pred[self.small_batch_size :],
@@ -261,7 +261,7 @@ class StochasticConvBlock(nn.Module):
         return entropy
     
     def _compute_cross_entropy(self, qy_logits, label):
-        cross_entropy = F.cross_entropy(qy_logits[:self.small_batch_size], label.long())
+        cross_entropy = F.cross_entropy(qy_logits[:self.small_batch_size], label[:self.small_batch_size].long())
         return cross_entropy
     
     def _compute_logprob(self, p, z):

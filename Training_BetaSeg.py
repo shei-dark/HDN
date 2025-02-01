@@ -1,4 +1,5 @@
 import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -22,7 +23,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/14/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/16/"
 
 # Model-specific
 load_checkpoint = False
@@ -34,7 +35,7 @@ noiseModel = None
 batch_size = 512
 lr = 3e-5
 max_epochs = 300
-overfit_patience = max_epochs
+overfit_patience = 20
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5

@@ -115,6 +115,7 @@ class TopDownLayer(nn.Module):
                 conditional=conditional,
                 condition_type=condition_type,
                 block_type=stochastic_block_type,
+                training_mode=training_mode,
             )
         else:
             self.stochastic = StochasticConvBlock(

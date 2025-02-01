@@ -6,7 +6,7 @@ from torch import nn
 from torch.distributions import Normal
 from torch.nn import functional as F
 from typing import Type, Union
-from e2cnn.nn import R2Conv, FieldType
+# from e2cnn.nn import R2Conv, FieldType
 
 
 class LikelihoodModule(nn.Module):
@@ -122,26 +122,12 @@ class GaussianLikelihood(LikelihoodModule):
     def __init__(self, ch_in, color_channels, conv_mult=2, r2_act=None):
         super().__init__()
 
-        if conv_mult == 0 and r2_act is not None:
-            # Orientation-invariant case
-            self.input_type = FieldType(r2_act, [r2_act.regular_repr] * ch_in)
-            self.output_type = FieldType(r2_act, [r2_act.regular_repr] * color_channels)
-            self.parameter_net = R2Conv(
-                self.input_type, self.output_type, kernel_size=3, padding=1
-            )
-        else:
-            # Standard convolution
-            conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-            self.parameter_net = conv_type(ch_in, color_channels, kernel_size=3, padding=1)
+        conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        self.parameter_net = conv_type(ch_in, color_channels, kernel_size=3, padding=1)
 
 
     def distr_params(self, x):
-        if isinstance(self.parameter_net, R2Conv):
-            # Wrap input as GeometricTensor
-            x = FieldType(self.input_type.gspace, x)
-            x = self.parameter_net(x).tensor  # Unwrap GeometricTensor
-        else:
-            x = self.parameter_net(x)
+        x = self.parameter_net(x)
         # mean, lv = x.chunk(2, dim=1)
         mean = x
         lv = None
