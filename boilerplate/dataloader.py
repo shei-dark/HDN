@@ -88,9 +88,9 @@ class Custom2DDataset(Dataset):
                     continue
                 if c == 1:
                     sampled_indices = np.random.choice(
-                    np.where(mask)[0],
-                    self.sampling_ratio * 2,
-                    replace=False,
+                        np.where(mask)[0],
+                        self.sampling_ratio * 2,
+                        replace=False,
                     )
                 else:
                     sampled_indices = np.random.choice(
@@ -229,6 +229,86 @@ class Custom2DDataset(Dataset):
     def switch_mode(self):
         if self.mode == "supervised":
             self.mode = "semisupervised"
+
+
+class Custom2DDatasetMarinoLiver(Custom2DDataset):
+    def __init__(
+        self,
+        images,
+        labels,
+        patch_size=64,
+        label_size=5,
+        mode="supervised",  # Options: 'supervised', 'semisupervised', 'unsupervised'
+        n_classes=4,
+        sampling_ratio=1,
+        ignore_lbl=-1,
+    ):
+        super().__init__(
+            images,
+            labels,
+            patch_size,
+            label_size,
+            mode,
+            n_classes,
+            sampling_ratio,
+            ignore_lbl,
+        )
+
+    def _compute_valid_patches(self):
+        """Fast vectorized patch extraction."""
+        all_patches = []
+        patches_by_label = {c: [] for c in range(self.n_classes)}
+        min_offset = (self.patch_size - self.label_size) // 2
+        max_offset = self.patch_size - min_offset - self.label_size
+
+        def process_image(lbl, img_idx, key=None):
+            """Efficiently extract patches from one image-label pair."""
+            valid_x, valid_y = np.where(
+                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+            )
+            valid_x += min_offset
+            valid_y += min_offset
+
+            centers = lbl[valid_x, valid_y]
+
+            for c in range(self.n_classes):
+                mask = centers == c
+                np.random.seed(42)  # Ensure reproducibility
+                if np.where(mask)[0].shape[0] < self.sampling_ratio:
+                    if np.where(mask)[0].shape[0] != 0:
+                        sampled_indices = np.where(mask)[0]
+                        continue
+                    else:
+                        continue
+                sampled_indices = np.random.choice(
+                    np.where(mask)[0],
+                    self.sampling_ratio,
+                    replace=False,
+                )
+
+                for idx in sampled_indices:
+                    i, j = valid_x[idx], valid_y[idx]
+                    patch_metadata = (key, img_idx, i, j) if key else (img_idx, i, j)
+                    if self._centre_consistent(patch_metadata):
+                        all_patches.append(
+                            (key, img_idx, i - min_offset, j - min_offset)
+                            if key
+                            else (img_idx, i - min_offset, j - min_offset)
+                        )
+                        patches_by_label[c].append(len(all_patches) - 1)
+
+        if self.keys:
+            for key in self.keys:
+                for img_idx, lbl in enumerate(self.labels[key]):
+                    process_image(lbl, img_idx, key)
+        else:
+            for img_idx, lbl in enumerate(self.labels):
+                process_image(lbl, img_idx)
+
+        for c in range(self.n_classes):
+            shuffle(patches_by_label[c])
+
+        return all_patches, patches_by_label
 
 
 class Custom3DDataset(Dataset):

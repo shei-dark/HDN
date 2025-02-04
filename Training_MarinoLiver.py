@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
-from boilerplate.dataloader import Custom2DDataset, DynamicSampler
+from boilerplate.dataloader import Custom2DDatasetMarinoLiver, DynamicSampler
 import training
 from tqdm import tqdm
 import tifffile as tiff
@@ -20,12 +20,12 @@ device = torch.device("cuda" if use_cuda else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
 parser.add_argument("--overfit_patience", type=int, default=300)
-parser.add_argument("--contrastive_learning", type=bool, default=False)
+parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default='supervised')
-parser.add_argument("--stochastic_block_type", type=str, default='normal')
-parser.add_argument("--conditional", type=bool, default=False)
-parser.add_argument("--condition_type", type=str, default=None)
-parser.add_argument("--sample_ratio", type=int, default=2)
+parser.add_argument("--stochastic_block_type", type=str, default='mixture')
+parser.add_argument("--conditional", type=bool, default=True)
+parser.add_argument("--condition_type", type=str, default='mlp')
+parser.add_argument("--sample_ratio", type=int, default=18)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
@@ -86,14 +86,14 @@ stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 4  # number of components for prior
-n_classes = 4  # number of classes in the dataset
+n_components = 5  # number of components for prior
+n_classes = 5  # number of classes in the dataset
 # train data
-data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
-keys = ["high_c1", "high_c2", "high_c3"]
+data_dir = "/facility/imganfacusers/Sheida/combined_single_label/"
+keys = ["crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09"]
 
-img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
-lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
+img_paths = [os.path.join(data_dir + key + f"/image.tif") for key in keys]
+lbl_paths = [os.path.join(data_dir + key + f"/labs.tif") for key in keys]
 imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
 lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
 train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
@@ -144,7 +144,7 @@ for key in tqdm(keys, "Normalizing data"):
     train_images[key] = (train_images[key] - data_mean) / data_std
     val_images[key] = (val_images[key] - data_mean) / data_std
 
-train_set = Custom2DDataset(
+train_set = Custom2DDatasetMarinoLiver(
     images=train_images,
     labels=train_labels,
     patch_size=patch_size,
@@ -155,7 +155,7 @@ train_set = Custom2DDataset(
     ignore_lbl=-1,
 )
 
-val_set = Custom2DDataset(
+val_set = Custom2DDatasetMarinoLiver(
     images=val_images,
     labels=val_labels,
     patch_size=patch_size,
