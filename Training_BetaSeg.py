@@ -1,4 +1,5 @@
 import os
+import argparse
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import warnings
 
@@ -16,14 +17,36 @@ import tifffile as tiff
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-use_wandb = True
+parser = argparse.ArgumentParser()
+parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
+parser.add_argument("--overfit_patience", type=int, default=300)
+parser.add_argument("--contrastive_learning", type=bool, default=False)
+parser.add_argument("--mode", type=str, default='supervised')
+parser.add_argument("--stochastic_block_type", type=str, default='normal')
+parser.add_argument("--conditional", type=bool, default=False)
+parser.add_argument("--condition_type", type=str, default=None)
+parser.add_argument("--sample_ratio", type=int, default=1)
+parser.add_argument("--num_latents", type=int, default=3)
+parser.add_argument("--blocks_per_layer", type=int, default=5)
+parser.add_argument("--alpha", type=float, default=1)
+parser.add_argument("--beta", type=float, default=1e-1)
+parser.add_argument("--gamma", type=float, default=1e-1)
+parser.add_argument("--initial_mask_size", type=int, default=1)
+parser.add_argument("--final_mask_size", type=int, default=1)
+parser.add_argument("--initial_label_size", type=int, default=1)
+parser.add_argument("--final_label_size", type=int, default=1)
+parser.add_argument("--step_interval", type=int, default=10)
+
+
+args = parser.parse_args()
+use_wandb = False
 
 patch_size = 64
 
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/17/"
+directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = False
@@ -35,33 +58,33 @@ noiseModel = None
 batch_size = 512
 lr = 3e-5
 max_epochs = 300
-overfit_patience = 20
-num_latents = 3
+overfit_patience = args.overfit_patience
+num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
-blocks_per_layer = 5
+blocks_per_layer = args.blocks_per_layer
 batchnorm = True
 free_bits = 0.0
 
-alpha = 1  # weight of the inpainting loss
-beta = 1e-1  # weight of the KL loss
-gamma = 1e-1  # weight of the contrastive loss
+alpha = args.alpha  # weight of the inpainting loss
+beta = args.beta  # weight of the KL loss
+gamma = args.gamma  # weight of the contrastive loss
 
-initial_mask_size = 1
-final_mask_size = 1
-initial_label_size = 1
-final_label_size = 1
-step_interval = 5  # Change every 5 steps
+initial_mask_size = args.initial_mask_size
+final_mask_size = args.final_mask_size
+initial_label_size = args.initial_label_size
+final_label_size = args.final_label_size
+step_interval = args.step_interval
 
-contrastive_learning = True
+contrastive_learning = args.contrastive_learning
 margin = 25  # distance for negative pairs in contrastive learning
 lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
 # (1-lambda_contrastive is the weight of the negative pairs)
 
-mode = "supervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
+mode = args.mode  # 'supervised' or 'semisupervised' or 'unsupervised'
 
-stochastic_block_type = "mixture"  # 'normal' or 'mixture'
-conditional = True  # True for conditional LVAE (conditioned on gt label)
-condition_type = 'mlp'  # 'mlp' or 'transformer'
+stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
+conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
+condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
 n_components = 4  # number of components for prior
 n_classes = 4  # number of classes in the dataset
@@ -114,7 +137,7 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-sample_ratio = 0.00005
+sample_ratio = args.sample_ratio
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):

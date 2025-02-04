@@ -23,7 +23,7 @@ class Custom2DDataset(Dataset):
         label_size=5,
         mode="supervised",  # Options: 'supervised', 'semisupervised', 'unsupervised'
         n_classes=4,
-        sampling_ratio=0.01,
+        sampling_ratio=1,
         ignore_lbl=-1,
     ):
         self.patch_size = patch_size
@@ -84,11 +84,25 @@ class Custom2DDataset(Dataset):
             for c in range(self.n_classes):
                 mask = centers == c
                 np.random.seed(42)  # Ensure reproducibility
-                sampled_indices = np.random.choice(
+                if np.where(mask)[0].shape[0] < self.sampling_ratio:
+                    continue
+                if c == 1:
+                    sampled_indices = np.random.choice(
                     np.where(mask)[0],
-                    int(len(valid_x[mask]) * self.sampling_ratio),
+                    self.sampling_ratio * 2,
                     replace=False,
-                )
+                    )
+                else:
+                    sampled_indices = np.random.choice(
+                        np.where(mask)[0],
+                        self.sampling_ratio,
+                        replace=False,
+                    )
+                # sampled_indices = np.random.choice(
+                #     np.where(mask)[0],
+                #     int(len(valid_x[mask]) * self.sampling_ratio),
+                #     replace=False,
+                # )
 
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
