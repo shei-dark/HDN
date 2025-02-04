@@ -23,7 +23,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/test/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/17/"
 
 # Model-specific
 load_checkpoint = False
@@ -35,7 +35,7 @@ noiseModel = None
 batch_size = 512
 lr = 3e-5
 max_epochs = 300
-overfit_patience = 300
+overfit_patience = 20
 num_latents = 3
 z_dims = [32] * int(num_latents)
 blocks_per_layer = 5
@@ -57,7 +57,7 @@ margin = 25  # distance for negative pairs in contrastive learning
 lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
 # (1-lambda_contrastive is the weight of the negative pairs)
 
-mode = "semisupervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
+mode = "supervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
 stochastic_block_type = "mixture"  # 'normal' or 'mixture'
 conditional = True  # True for conditional LVAE (conditioned on gt label)
@@ -114,7 +114,7 @@ all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements)
 
-sample_ratio = 0.0001
+sample_ratio = 0.00005
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
