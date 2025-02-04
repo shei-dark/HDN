@@ -23,7 +23,7 @@ patch_size = 64
 gaussian_noise_std = None
 
 model_name = "experiments"
-directory_path = "/group/jug/Sheida/HVAE/experiments/02/"
+directory_path = "/group/jug/Sheida/HVAE/experiments/test/"
 
 # Model-specific
 load_checkpoint = False
@@ -59,9 +59,9 @@ lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning
 
 mode = "semisupervised"  # 'supervised' or 'semisupervised' or 'unsupervised'
 
-stochastic_block_type = "normal"  # 'normal' or 'mixture'
-conditional = False  # True for conditional LVAE (conditioned on gt label)
-condition_type = None  # 'mlp' or 'transformer'
+stochastic_block_type = "mixture"  # 'normal' or 'mixture'
+conditional = True  # True for conditional LVAE (conditioned on gt label)
+condition_type = 'mlp'  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
 n_components = 4  # number of components for prior
 n_classes = 4  # number of classes in the dataset
@@ -153,6 +153,7 @@ img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
+    model.update_mode('semisupervised')
 
 else:
     model = LadderVAE(
