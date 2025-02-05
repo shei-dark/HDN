@@ -154,7 +154,8 @@ class StochasticConvBlock(nn.Module):
                 kl = self._compute_kl(q, p_components, label, y_pred)
                 kl = kl + js_div
                 entropy = self._compute_entropy(y)
-                cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                if label is not None:
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)
@@ -212,7 +213,7 @@ class StochasticConvBlock(nn.Module):
         self.temperature = max(0.5, self.temperature * 0.999)
 
     def _compute_kl(self, q, p, label=None, y_pred=None):
-        kl = 0
+        kl = torch.tensor([])
         if not self.top_layer:
             kl = kl_divergence(q, p[0])
         else:
@@ -237,7 +238,10 @@ class StochasticConvBlock(nn.Module):
                         )
                     else:
                         kl = kl_divergences[range(self.batch_size), label.long()]
-        return kl.mean()
+        if kl.any():
+            return kl.mean()
+        else:
+            return 0
 
     def _compute_js_div(self, y):
         m = 0.5 * (y + self.prior_probs)

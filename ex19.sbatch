@@ -18,7 +18,7 @@ conda activate emseg
 
 # Set parameters
 DIRECTORY_PATH='/group/jug/Sheida/HVAE/experiments/19/'
-OVERFIT_PATIENCE=20
+OVERFIT_PATIENCE=300
 CONTRASTIVE_LEARNING=True
 STOCHASTIC_BLOCK_TYPE='mixture'
 CONDITIONAL=True
