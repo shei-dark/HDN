@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/experiments/17/train.log
+#SBATCH --output=/group/jug/Sheida/HVAE/experiments/23/train.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
@@ -17,12 +17,12 @@ source $HOME/.bashrc
 conda activate emseg
 
 # Set parameters
-DIRECTORY_PATH='/group/jug/Sheida/HVAE/experiments/17/'
+DIRECTORY_PATH='/group/jug/Sheida/HVAE/experiments/23/'
 OVERFIT_PATIENCE=300
 CONTRASTIVE_LEARNING=True
 STOCHASTIC_BLOCK_TYPE='mixture'
 CONDITIONAL=True
 CONDITION_TYPE='mlp'
 SAMPLE_RATIO=1
-
+#    self.ratio = 0.5 in dataloader.py
 python Training_BetaSeg.py --directory_path $DIRECTORY_PATH --overfit_patience $OVERFIT_PATIENCE --contrastive_learning $CONTRASTIVE_LEARNING --stochastic_block_type $STOCHASTIC_BLOCK_TYPE --conditional $CONDITIONAL --condition_type $CONDITION_TYPE --sample_ratio $SAMPLE_RATIO
