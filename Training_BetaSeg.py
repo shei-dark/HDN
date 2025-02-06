@@ -20,12 +20,12 @@ device = torch.device("cuda" if use_cuda else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
 parser.add_argument("--overfit_patience", type=int, default=300)
-parser.add_argument("--contrastive_learning", type=bool, default=False)
+parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default='semisupervised')
 parser.add_argument("--stochastic_block_type", type=str, default='normal')
-parser.add_argument("--conditional", type=bool, default=False)
-parser.add_argument("--condition_type", type=str, default=None)
-parser.add_argument("--sample_ratio", type=int, default=2)
+parser.add_argument("--conditional", type=bool, default=True)
+parser.add_argument("--condition_type", type=str, default='mlp')
+parser.add_argument("--sample_ratio", type=int, default=1)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
@@ -50,7 +50,7 @@ directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/experiments/20/model_supervised/experiments_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/experiments/17/model_supervised/experiments_best_vae.net"
  
 noiseModel = None
 
