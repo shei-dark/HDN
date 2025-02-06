@@ -41,7 +41,7 @@ class Custom2DDataset(Dataset):
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
         self.mode = mode
-        self.ratio = 0.25
+        self.ratio = 0.5
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
