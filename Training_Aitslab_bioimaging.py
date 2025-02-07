@@ -25,9 +25,9 @@ parser.add_argument("--mode", type=str, default='supervised')
 parser.add_argument("--stochastic_block_type", type=str, default='mixture')
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default='mlp')
-parser.add_argument("--sample_ratio", type=int, default=18)
+parser.add_argument("--sample_ratio", type=int, default=1)
 parser.add_argument("--num_latents", type=int, default=3)
-parser.add_argument("--blocks_per_layer", type=int, default=5)
+parser.add_argument("--blocks_per_layer", type=int, default=3)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-1)
 parser.add_argument("--gamma", type=float, default=1e-1)
@@ -39,7 +39,7 @@ parser.add_argument("--step_interval", type=int, default=10)
 
 
 args = parser.parse_args()
-use_wandb = True
+use_wandb = False
 
 patch_size = 64
 
