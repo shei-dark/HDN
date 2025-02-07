@@ -68,22 +68,24 @@ for k in key:
                 test_dataset.num_patches_y, test_dataset.num_patches_x
             )
             processed_map = np.zeros_like(segmentation_np)
-            structure = np.ones((2,2))
-            for class_id in range(5):
+            structure = ndi.generate_binary_structure(2, 1)
+
+            for class_id in range(1,5):
                 # Binary mask for the current class
                 binary_mask = segmentation_np == class_id
-
-                # 1️⃣ Remove small noise (Despeckle)
-                labeled_array, num_features = ndi.label(binary_mask)
-                sizes = np.bincount(labeled_array.ravel())
-                mask_sizes = sizes > 50
-                mask_sizes[0] = False  # Ignore background
-                clean_mask = mask_sizes[labeled_array]
-                despeckled_mask = ndi.binary_opening(clean_mask, structure=structure)
-                eroded_mask = ndi.binary_erosion(despeckled_mask, structure=structure, iterations=2)
-                closed_mask = ndi.binary_closing(eroded_mask, structure=structure)
-                restored_mask = ndi.binary_dilation(closed_mask, structure=structure, iterations=2)
-                processed_map[restored_mask] = class_id
+                # 1️⃣ Remove small noise (despeckling)
+                despeckled_mask = ndi.binary_opening(binary_mask, structure=structure)
+                # 2️⃣ Fill small holes inside objects
+                hole_filled_mask = ndi.binary_fill_holes(despeckled_mask)
+                # 3️⃣ Restore object integrity (prevents breaking)
+                closed_mask = ndi.binary_closing(hole_filled_mask, structure=structure)
+                # 4️⃣ (Optional) Slight dilation to recover object thickness
+                dilated_mask = ndi.binary_dilation(closed_mask, structure=structure, iterations=1)
+                eroded_mask = ndi.binary_erosion(dilated_mask, structure=structure, iterations=1)
+                dilated_mask = ndi.binary_dilation(eroded_mask, structure=structure, iterations=1)
+                eroded_mask = ndi.binary_erosion(dilated_mask, structure=structure, iterations=1)
+                # Store processed mask
+                processed_map[eroded_mask] = class_id
                 
             tiff.imwrite(f"{model_dir}{model_v}/seg/{k}_{test_index}.tif", processed_map.astype(np.uint8))
             print(f"Segmentation for image slice {test_index} saved")
