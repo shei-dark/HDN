@@ -41,7 +41,7 @@ class Custom2DDataset(Dataset):
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
         self.mode = mode
-        self.ratio = 0.75
+        self.ratio = 0.25
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
@@ -851,7 +851,7 @@ class DynamicSampler(Sampler):
             sampler = BalancedBatchSampler(self.dataset, self.batch_size)
         elif self.dataset.mode == "semisupervised":
             sampler = CombinedBatchSampler(
-                self.dataset, self.batch_size, labeled_ratio=0.75
+                self.dataset, self.batch_size, labeled_ratio=0.25
             )
         elif self.dataset.mode == "unsupervised":
             sampler = UnsupervisedSampler(self.dataset, self.batch_size)

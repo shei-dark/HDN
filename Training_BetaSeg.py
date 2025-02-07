@@ -50,7 +50,7 @@ directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/experiments/17/model_supervised/experiments_best_vae.net"
+checkpoint = "/group/jug/Sheida/HVAE/experiments/21/model_supervised/experiments_best_vae.net"
  
 noiseModel = None
 
