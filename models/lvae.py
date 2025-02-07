@@ -106,6 +106,7 @@ class LadderVAE(nn.Module):
         ], "Please specify correct conv layers dimension, 2 or 3"
         assert self.color_ch in [
             1,
+            2,
             3,
         ], "Please specify correct number of input channels"
         if self.noiseModel is None:

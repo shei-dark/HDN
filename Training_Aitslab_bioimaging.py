@@ -1,5 +1,6 @@
 import os
 import argparse
+
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import warnings
 
@@ -9,25 +10,28 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
-from boilerplate.dataloader import Custom2DDatasetMarinoLiver, DynamicSampler
+from boilerplate.dataloader import CustomLightDataset, DynamicSampler
 import training
 from tqdm import tqdm
 import tifffile as tiff
+from glob import glob
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
-parser.add_argument("--overfit_patience", type=int, default=300)
+parser.add_argument(
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/25/"
+)
+parser.add_argument("--overfit_patience", type=int, default=20)
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default='supervised')
-parser.add_argument("--stochastic_block_type", type=str, default='mixture')
+parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
-parser.add_argument("--condition_type", type=str, default='mlp')
-parser.add_argument("--sample_ratio", type=int, default=1)
+parser.add_argument("--condition_type", type=str, default="mlp")
+parser.add_argument("--sample_ratio", type=int, default=100)
 parser.add_argument("--num_latents", type=int, default=3)
-parser.add_argument("--blocks_per_layer", type=int, default=3)
+parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-1)
 parser.add_argument("--gamma", type=float, default=1e-1)
@@ -39,7 +43,7 @@ parser.add_argument("--step_interval", type=int, default=10)
 
 
 args = parser.parse_args()
-use_wandb = False
+use_wandb = True
 
 patch_size = 64
 
@@ -51,7 +55,7 @@ directory_path = args.directory_path
 # Model-specific
 load_checkpoint = False
 checkpoint = ""
- 
+
 noiseModel = None
 
 # Training-specific
@@ -77,7 +81,7 @@ step_interval = args.step_interval
 
 contrastive_learning = args.contrastive_learning
 margin = 25  # distance for negative pairs in contrastive learning
-lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning 
+lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning
 # (1-lambda_contrastive is the weight of the negative pairs)
 
 mode = args.mode  # 'supervised' or 'semisupervised' or 'unsupervised'
@@ -86,65 +90,31 @@ stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 5  # number of components for prior
-n_classes = 5  # number of classes in the dataset
+n_components = 4  # number of components for prior
+n_classes = 4  # number of classes in the dataset
 # train data
-data_dir = "/home/train_cells/annotations/"
-keys = ["crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09"]
-
-img_paths = [os.path.join(data_dir + key + f"/image.tif") for key in keys]
-lbl_paths = [os.path.join(data_dir + key + f"/labs.tif") for key in keys]
-imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
-lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
-train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
-
-np.random.seed(42)
-for key in keys:
-    total_samples = imgs[key].shape[0]
-
-    # Create shuffled indices
-    indices = np.arange(total_samples)
-    np.random.shuffle(indices)  # Shuffles in place
-
-    # Compute split index
-    split_idx = int(0.8 * total_samples)
-
-    # Split the indices
-    train_idx, val_idx = indices[:split_idx], indices[split_idx:]
-
-    # Use shuffled indices to assign train/val splits
-    train_images[key] = imgs[key][train_idx]
-    val_images[key] = imgs[key][val_idx]
-    train_labels[key] = lbls[key][train_idx]
-    val_labels[key] = lbls[key][val_idx]
-
-valid_train = {}
-valid_val = {}
-
-for key in tqdm(keys, desc="filtering out outside of the cell"):
-    valid_indices = ~np.all(train_labels[key] == -1, axis=(1, 2))
-    train_images[key] = train_images[key][valid_indices]
-    train_labels[key] = train_labels[key][valid_indices]
-    valid_train[key] = valid_indices
-
-    valid_indices = ~np.all(val_labels[key] == -1, axis=(1, 2))
-    val_images[key] = val_images[key][valid_indices]
-    val_labels[key] = val_labels[key][valid_indices]
-    valid_val[key] = valid_indices
+data_dir = "/group/jug/Sheida/Aitslab_bioimaging/"
+train_img_paths = sorted(glob(data_dir + "img/train/*.tif"))
+train_images = tiff.imread(train_img_paths)
+train_gt_paths = sorted(glob(data_dir + "gt/train/*.tif"))
+train_labels = tiff.imread(train_gt_paths)
+val_img_paths = sorted(glob(data_dir + "img/val/*.tif"))
+val_images = tiff.imread(val_img_paths)
+val_gt_paths = sorted(glob(data_dir + "gt/val/*.tif"))
+val_labels = tiff.imread(val_gt_paths)
 
 # compute mean and std of the data
-all_elements = np.concatenate([train_images[key].flatten() for key in keys])
-data_mean = np.mean(all_elements)
-data_std = np.std(all_elements)
+# all_elements = .flatten()
+data_mean = np.mean(train_images)
+data_std = np.std(train_images)
 
 sample_ratio = args.sample_ratio
 
 # normalizing the data
-for key in tqdm(keys, "Normalizing data"):
-    train_images[key] = (train_images[key] - data_mean) / data_std
-    val_images[key] = (val_images[key] - data_mean) / data_std
+train_images = (train_images - data_mean) / data_std
+val_images = (val_images - data_mean) / data_std
 
-train_set = Custom2DDatasetMarinoLiver(
+train_set = CustomLightDataset(
     images=train_images,
     labels=train_labels,
     patch_size=patch_size,
@@ -155,7 +125,7 @@ train_set = Custom2DDatasetMarinoLiver(
     ignore_lbl=-1,
 )
 
-val_set = Custom2DDatasetMarinoLiver(
+val_set = CustomLightDataset(
     images=val_images,
     labels=val_labels,
     patch_size=patch_size,
@@ -176,7 +146,7 @@ img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
-    model.update_mode('semisupervised')
+    model.update_mode("semisupervised")
 
 else:
     model = LadderVAE(
@@ -186,6 +156,7 @@ else:
         data_std=data_std,
         noiseModel=noiseModel,
         conv_mult=2,
+        color_ch=2,
         device=device,
         batchnorm=batchnorm,
         free_bits=free_bits,

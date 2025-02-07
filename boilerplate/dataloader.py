@@ -98,11 +98,6 @@ class Custom2DDataset(Dataset):
                         self.sampling_ratio,
                         replace=False,
                     )
-                # sampled_indices = np.random.choice(
-                #     np.where(mask)[0],
-                #     int(len(valid_x[mask]) * self.sampling_ratio),
-                #     replace=False,
-                # )
 
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
@@ -222,6 +217,191 @@ class Custom2DDataset(Dataset):
         patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
         return (
             torch.tensor(patch).unsqueeze(0),
+            torch.tensor(-2),
+            torch.tensor(patch_label).unsqueeze(0),
+        )
+
+    def switch_mode(self):
+        if self.mode == "supervised":
+            self.mode = "semisupervised"
+
+class CustomLightDataset(Dataset):
+    def __init__(
+        self,
+        images,
+        labels,
+        patch_size=64,
+        label_size=5,
+        mode="supervised",  # Options: 'supervised', 'semisupervised', 'unsupervised'
+        n_classes=4,
+        sampling_ratio=1,
+        ignore_lbl=-1,
+    ):
+        self.patch_size = patch_size
+        self.label_size = label_size
+        self.images = images
+        self.labels = labels
+        self.ignore_lbl = ignore_lbl
+        self.n_classes = n_classes
+        self.sampling_ratio = sampling_ratio
+        self.all_patches, self.patches_by_label = (
+            self._compute_valid_patches()
+        )  # Store only metadata of valid patches
+        self.mode = mode
+        self.ratio = 0.25
+
+    def set_mode(self, mode):
+        """Set the current mode of the dataset."""
+        self.mode = mode
+
+    def _centre_consistent(self, patch_metadata):
+        """Vectorized version to check if the center is label-consistent."""
+        z, x, y = patch_metadata
+        unique_label_area = self.labels[
+            z, x : x + self.label_size, y : y + self.label_size
+        ]
+        return (
+            np.all(unique_label_area == unique_label_area[0, 0])
+            and unique_label_area[0, 0] != self.ignore_lbl
+        )
+
+    def _compute_valid_patches(self):
+        """Fast vectorized patch extraction."""
+        all_patches = []
+        patches_by_label = {c: [] for c in range(self.n_classes)}
+        min_offset = (self.patch_size - self.label_size) // 2
+        max_offset = self.patch_size - min_offset - self.label_size
+
+        def process_image(lbl, img_idx):
+            """Efficiently extract patches from one image-label pair."""
+            valid_x, valid_y = np.where(
+                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+            )
+            valid_x += min_offset
+            valid_y += min_offset
+
+            centers = lbl[valid_x, valid_y]
+
+            for c in range(self.n_classes):
+                mask = centers == c
+                np.random.seed(42)  # Ensure reproducibility
+                if np.where(mask)[0].shape[0] < self.sampling_ratio:
+                    continue
+                sampled_indices = np.random.choice(
+                    np.where(mask)[0],
+                    self.sampling_ratio,
+                    replace=False,
+                )
+
+                for idx in sampled_indices:
+                    i, j = valid_x[idx], valid_y[idx]
+                    patch_metadata = (img_idx, i, j)
+                    if self._centre_consistent(patch_metadata):
+                        all_patches.append(
+                            (img_idx, i - min_offset, j - min_offset)
+                        )
+                        patches_by_label[c].append(len(all_patches) - 1)
+
+        for img_idx, lbl in enumerate(self.labels):
+            process_image(lbl, img_idx)
+
+        for c in range(self.n_classes):
+            shuffle(patches_by_label[c])
+
+        return all_patches, patches_by_label
+
+    def update_patches(self, new_label_size):
+        self.label_size = new_label_size
+        self.all_patches, self.patches_by_label = self._compute_valid_patches()
+
+    def __len__(self):
+        """Return dataset size based on mode."""
+        if self.mode == "semisupervised":
+            return int(len(self.all_patches) / self.ratio)
+        else:
+            return len(self.all_patches)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, list):  # Batch request
+            if self.mode == "supervised":
+                # Fetch all labeled patches corresponding to the indices
+                labeled_patches = [
+                    self._get_patch_by_metadata(self.all_patches[i])
+                    for i in idx
+                    if i < len(self.all_patches)
+                ]
+                patches, clss, labels = zip(*labeled_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
+            elif self.mode == "unsupervised":
+                # Fetch random patches for all indices
+                random_patches = [self._get_random_patch() for _ in idx]
+                patches, clss, labels = zip(*random_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
+            elif self.mode == "semisupervised":
+                labeled_count = int(len(idx) * self.ratio)
+                random_count = len(idx) - labeled_count
+
+                # Fetch labeled and random patches
+                labeled_indices = idx[:labeled_count]
+                labeled_patches = [
+                    self._get_patch_by_metadata(self.all_patches[i])
+                    for i in labeled_indices
+                ]
+                random_patches = [self._get_random_patch() for _ in range(random_count)]
+
+                # Combine and return
+                all_patches = labeled_patches + random_patches
+                patches, clss, labels = zip(*all_patches)
+                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+
+        else:  # Single index
+            if self.mode == "supervised":
+                img_idx, y, x = self.all_patches[idx]
+                return self._get_patch_by_metadata((img_idx, y, x))
+
+            elif self.mode == "unsupervised":
+                return self._get_random_patch()
+
+            elif self.mode == "semisupervised":
+                if idx < len(self.all_patches):
+                    img_idx, y, x = self.all_patches[idx]
+                    return self._get_patch_by_metadata((img_idx, y, x))
+                else:
+                    return self._get_random_patch()
+
+    def _get_patch_by_metadata(self, metadata):
+        """Extract a patch dynamically based on metadata."""
+        img_idx, y, x = metadata
+        img = self.images[img_idx]
+        lbl = self.labels[img_idx]
+        patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+        start = (self.patch_size - self.label_size) // 2
+        unique_label_area = patch_label[
+            start : start + self.label_size,
+            start : start + self.label_size,
+        ]
+        center_label = unique_label_area[0, 0]  # Valid by definition of valid_patches
+        return (
+            torch.tensor(patch),
+            torch.tensor(center_label),
+            torch.tensor(patch_label),
+        )
+
+    def _get_random_patch(self):
+        
+        img_idx = random.randrange(0, len(self.images))
+        img = self.images[img_idx]
+        lbl = self.labels[img_idx]
+        c, height, width = img.shape
+        x = random.randrange(0, width - self.patch_size)
+        y = random.randrange(0, height - self.patch_size)
+        patch = img[:, y : y + self.patch_size, x : x + self.patch_size]
+        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+        return (
+            torch.tensor(patch),
             torch.tensor(-2),
             torch.tensor(patch_label).unsqueeze(0),
         )

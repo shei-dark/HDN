@@ -265,10 +265,10 @@ def train_network(
         
         if patience_ > overfit_patience and model.training_mode == "supervised":
             print("Overfitting detected. Loading best model and switching to semi-supervised training...")
-            model.load_state_dict(torch.load(model_folder + model_name + "_best_weights.net"))
+            model = torch.load(model_folder + model_name + "_best_vae.net")
             train_loader.dataset.switch_mode()
             val_loader.dataset.switch_mode()
-            model.training_mode = "semisupervised"
+            model.update_mode('semisupervised')
             patience_ = 0
 
         seconds = time.time()
