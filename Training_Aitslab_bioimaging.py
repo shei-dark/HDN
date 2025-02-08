@@ -23,9 +23,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/25/"
 )
-parser.add_argument("--overfit_patience", type=int, default=20)
+parser.add_argument("--overfit_patience", type=int, default=300)
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--mode", type=str, default="semisupervised")
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
@@ -53,8 +53,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = False
-checkpoint = ""
+load_checkpoint = True
+checkpoint = "/group/jug/Sheida/HVAE/experiments/25/model_supervised/experiments_best_vae.net"
 
 noiseModel = None
 
