@@ -21,11 +21,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
 parser.add_argument("--overfit_patience", type=int, default=300)
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default='semisupervised')
-parser.add_argument("--stochastic_block_type", type=str, default='normal')
+parser.add_argument("--mode", type=str, default='supervised')
+parser.add_argument("--stochastic_block_type", type=str, default='mixture')
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default='mlp')
-parser.add_argument("--sample_ratio", type=int, default=1)
+parser.add_argument("--sample_ratio", type=int, default=2)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
@@ -49,8 +49,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/experiments/21/model_supervised/experiments_best_vae.net"
+load_checkpoint = False
+checkpoint = ""
  
 noiseModel = None
 
@@ -165,6 +165,11 @@ val_set = Custom2DDataset(
     sampling_ratio=sample_ratio,
     ignore_lbl=-1,
 )
+print(f'Train set: {len(train_set)}, Val set: {len(val_set)}')
+print(f"unrecognized: {len(train_set.patches_by_label[0])}, unrecognized: {len(val_set.patches_by_label[0])}")
+print(f"nucleus: {len(train_set.patches_by_label[1])}, nucleus: {len(val_set.patches_by_label[1])}")
+print(f"granule: {len(train_set.patches_by_label[2])}, granule: {len(val_set.patches_by_label[2])}")
+print(f"mitochondria: {len(train_set.patches_by_label[3])}, mitochondria: {len(val_set.patches_by_label[3])}")
 
 train_sampler = DynamicSampler(train_set, batch_size)
 val_sampler = DynamicSampler(val_set, batch_size)

@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=sheida.rahnamai@fht.org
+#SBATCH --output=/group/jug/Sheida/HVAE/experiments/31/train.log
+#SBATCH --partition=gpuq
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=2
+#SBATCH --gres=gpu:1
+#SBATCH --mem=25GB
+#SBATCH --ntasks=8
+#SBATCH --job-name=segmentation
+#SBATCH --time=3-00:00:00
+#SBATCH --no-requeue
+
+
+source $HOME/.bashrc
+conda activate emseg
+
+# Set parameters
+DIRECTORY_PATH='/group/jug/Sheida/HVAE/experiments/31/'
+INITIAL_MASK_SIZE=6
+FINAL_MASK_SIZE=6
+INITIAL_LABEL_SIZE=6
+FINAL_LABEL_SIZE=6
+
+python Training_BetaSeg.py --initial_mask_size $INITIAL_MASK_SIZE --final_mask_size $FINAL_MASK_SIZE --initial_label_size $INITIAL_LABEL_SIZE --final_label_size $FINAL_LABEL_SIZE --directory_path $DIRECTORY_PATH

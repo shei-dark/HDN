@@ -41,7 +41,7 @@ class Custom2DDataset(Dataset):
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
         self.mode = mode
-        self.ratio = 0.25
+        self.ratio = 0.75
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
@@ -74,7 +74,7 @@ class Custom2DDataset(Dataset):
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+                lbl[min_offset:-max_offset-1, min_offset:-max_offset-1] != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -403,7 +403,7 @@ class CustomLightDataset(Dataset):
         return (
             torch.tensor(patch),
             torch.tensor(-2),
-            torch.tensor(patch_label).unsqueeze(0),
+            torch.tensor(patch_label),
         )
 
     def switch_mode(self):
@@ -636,9 +636,13 @@ class CustomTestDataset(Dataset):
             assert len(patch_size) == 3, "3D model requires a 3D patch size."
             self.depth = index - (patch_size[0] // 2)
         elif model == "2D":
-            assert len(patch_size) == 2, "2D model requires a 2D patch size."
-            self.patch_size = (1, *patch_size)  # Add a dummy depth for uniform handling
+            assert len(patch_size) == 2 or len(patch_size) == 3, "2D model requires a 2D patch size."
+            self.patch_size = (1, *patch_size)# Add a dummy depth for uniform handling
             self.depth = index  # Fixed slice for 2D patches
+        elif model == "2D_multichannel":
+            assert len(patch_size) == 3, "2D model requires a 2D patch size."
+            self.depth = index
+            self.patch_size = patch_size
         else:
             raise ValueError("Model type must be '2D' or '3D'.")
 
@@ -671,15 +675,24 @@ class CustomTestDataset(Dataset):
                 y : y + self.patch_size[1],
                 x : x + self.patch_size[2],
             ]
-        else:  # For 2D
+        elif self.model == "2D":  # For 2D
             patch = self.image[
                 self.depth,
                 y : y + self.patch_size[1],
                 x : x + self.patch_size[2],
             ]
+        elif self.model == "2D_multichannel":
+            patch = self.image[
+                :,
+                y : y + self.patch_size[1],
+                x : x + self.patch_size[2],
+            ]
 
+        patch_tensor = torch.tensor(patch)
         # Add a channel dimension for PyTorch compatibility
-        patch_tensor = torch.tensor(patch).unsqueeze(0)  # Add channel dim
+        if self.model != "2D_multichannel":
+            patch = patch_tensor.unsqueeze(0)
+
         return patch_tensor
 
 

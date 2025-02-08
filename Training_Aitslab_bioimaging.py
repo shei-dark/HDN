@@ -21,15 +21,15 @@ device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/25/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/"
 )
 parser.add_argument("--overfit_patience", type=int, default=300)
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="semisupervised")
+parser.add_argument("--mode", type=str, default="supervised")
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
-parser.add_argument("--sample_ratio", type=int, default=100)
+parser.add_argument("--sample_ratio", type=int, default=200)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
@@ -53,8 +53,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/experiments/25/model_supervised/experiments_best_vae.net"
+load_checkpoint = False
+checkpoint = ""
 
 noiseModel = None
 
@@ -90,8 +90,8 @@ stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 4  # number of components for prior
-n_classes = 4  # number of classes in the dataset
+n_components = 3  # number of components for prior
+n_classes = 3  # number of classes in the dataset
 # train data
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/"
 train_img_paths = sorted(glob(data_dir + "img/train/*.tif"))
@@ -103,16 +103,23 @@ val_images = tiff.imread(val_img_paths)
 val_gt_paths = sorted(glob(data_dir + "gt/val/*.tif"))
 val_labels = tiff.imread(val_gt_paths)
 
+train_labels[train_labels == 3] = 1
+val_labels[val_labels == 3] = 1
+
 # compute mean and std of the data
 # all_elements = .flatten()
-data_mean = np.mean(train_images)
-data_std = np.std(train_images)
+data_mean_cell = np.mean(train_images[:,0,:,:])
+data_std_cell = np.std(train_images[:,0,:,:])
+data_mean_nuclei = np.mean(train_images[:,1,:,:])
+data_std_nuclei = np.std(train_images[:,1,:,:])
 
 sample_ratio = args.sample_ratio
 
 # normalizing the data
-train_images = (train_images - data_mean) / data_std
-val_images = (val_images - data_mean) / data_std
+train_images[:,0,:,:] = (train_images[:,0,:,:] - data_mean_cell) / data_std_cell
+train_images[:,1,:,:] = (train_images[:,1,:,:] - data_mean_nuclei) / data_std_nuclei
+val_images[:,0,:,:] = (val_images[:,0,:,:] - data_mean_cell) / data_std_cell
+val_images[:,1,:,:] = (val_images[:,1,:,:] - data_mean_nuclei) / data_std_nuclei
 
 train_set = CustomLightDataset(
     images=train_images,
