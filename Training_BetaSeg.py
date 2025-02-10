@@ -36,7 +36,8 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-
+parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--checkpoint", type=str, default="")
 
 args = parser.parse_args()
 use_wandb = True
@@ -49,8 +50,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = False
-checkpoint = ""
+load_checkpoint = args.load_checkpoint
+checkpoint = args.checkpoint
  
 noiseModel = None
 

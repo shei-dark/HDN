@@ -74,7 +74,7 @@ class Custom2DDataset(Dataset):
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset-1, min_offset:-max_offset-1] != self.ignore_lbl
+                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset

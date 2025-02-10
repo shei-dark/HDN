@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
 #SBATCH --mem=25GB
-#SBATCH --ntasks=8
+#SBATCH --ntasks=1
 #SBATCH --job-name=segmentation
 #SBATCH --time=3-00:00:00
 #SBATCH --no-requeue
@@ -22,5 +22,9 @@ INITIAL_MASK_SIZE=2
 FINAL_MASK_SIZE=2
 INITIAL_LABEL_SIZE=2
 FINAL_LABEL_SIZE=2
+MODE='semisupervised'
+LOAD_CHECKPOINT=True
+CHECKPOINT='/group/jug/Sheida/HVAE/experiments/27/model_supervised/experiments_best_vae.net'
 
-python Training_BetaSeg.py --initial_mask_size $INITIAL_MASK_SIZE --final_mask_size $FINAL_MASK_SIZE --initial_label_size $INITIAL_LABEL_SIZE --final_label_size $FINAL_LABEL_SIZE --directory_path $DIRECTORY_PATH
+
+python Training_BetaSeg.py --initial_mask_size $INITIAL_MASK_SIZE --final_mask_size $FINAL_MASK_SIZE --initial_label_size $INITIAL_LABEL_SIZE --final_label_size $FINAL_LABEL_SIZE --directory_path $DIRECTORY_PATH --mode $MODE --load_checkpoint $LOAD_CHECKPOINT --checkpoint $CHECKPOINT

@@ -40,6 +40,8 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
+parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--checkpoint", type=str, default="")
 
 
 args = parser.parse_args()
@@ -53,8 +55,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = False
-checkpoint = ""
+load_checkpoint = args.load_checkpoint
+checkpoint = args.checkpoint
 
 noiseModel = None
 
@@ -95,11 +97,11 @@ n_classes = 3  # number of classes in the dataset
 # train data
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/"
 train_img_paths = sorted(glob(data_dir + "img/train/*.tif"))
-train_images = tiff.imread(train_img_paths)
+train_images = tiff.imread(train_img_paths).astype(np.float32)
 train_gt_paths = sorted(glob(data_dir + "gt/train/*.tif"))
 train_labels = tiff.imread(train_gt_paths)
 val_img_paths = sorted(glob(data_dir + "img/val/*.tif"))
-val_images = tiff.imread(val_img_paths)
+val_images = tiff.imread(val_img_paths).astype(np.float32)
 val_gt_paths = sorted(glob(data_dir + "gt/val/*.tif"))
 val_labels = tiff.imread(val_gt_paths)
 
@@ -143,6 +145,11 @@ val_set = CustomLightDataset(
     ignore_lbl=-1,
 )
 
+print(f'Train set: {len(train_set)}, Val set: {len(val_set)}')
+print(f"background: {len(train_set.patches_by_label[0])}, background: {len(val_set.patches_by_label[0])}")
+print(f"cell: {len(train_set.patches_by_label[1])}, cell: {len(val_set.patches_by_label[1])}")
+print(f"nuclei: {len(train_set.patches_by_label[2])}, nuclei: {len(val_set.patches_by_label[2])}")
+
 train_sampler = DynamicSampler(train_set, batch_size)
 val_sampler = DynamicSampler(val_set, batch_size)
 
@@ -159,8 +166,8 @@ else:
     model = LadderVAE(
         z_dims=z_dims,
         blocks_per_layer=blocks_per_layer,
-        data_mean=data_mean,
-        data_std=data_std,
+        data_mean=data_mean_cell,
+        data_std=data_std_cell,
         noiseModel=noiseModel,
         conv_mult=2,
         color_ch=2,
