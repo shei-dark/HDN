@@ -460,11 +460,30 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
                         continue
                     else:
                         continue
-                sampled_indices = np.random.choice(
-                    np.where(mask)[0],
-                    self.sampling_ratio,
-                    replace=False,
-                )
+                if c == 5:
+                    if np.where(mask)[0].shape[0] >= self.sampling_ratio * 5:
+                        sampled_indices = np.random.choice(
+                            np.where(mask)[0],
+                            self.sampling_ratio * 5,
+                            replace=False,
+                        )
+                    else:
+                        sampled_indices = np.where(mask)[0]
+                elif c == 6:
+                    if np.where(mask)[0].shape[0] >= self.sampling_ratio * 50:
+                        sampled_indices = np.random.choice(
+                            np.where(mask)[0],
+                            self.sampling_ratio * 50,
+                            replace=False,
+                        )
+                    else:
+                        sampled_indices = np.where(mask)[0]
+                else:
+                    sampled_indices = np.random.choice(
+                        np.where(mask)[0],
+                        self.sampling_ratio,
+                        replace=False,
+                    )
 
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
@@ -636,7 +655,7 @@ class CustomTestDataset(Dataset):
             assert len(patch_size) == 3, "3D model requires a 3D patch size."
             self.depth = index - (patch_size[0] // 2)
         elif model == "2D":
-            assert len(patch_size) == 2 or len(patch_size) == 3, "2D model requires a 2D patch size."
+            assert len(patch_size) == 2, "2D model requires a 2D patch size."
             self.patch_size = (1, *patch_size)# Add a dummy depth for uniform handling
             self.depth = index  # Fixed slice for 2D patches
         elif model == "2D_multichannel":
@@ -693,7 +712,7 @@ class CustomTestDataset(Dataset):
         if self.model != "2D_multichannel":
             patch = patch_tensor.unsqueeze(0)
 
-        return patch_tensor
+        return patch
 
 
 class CombinedCustom3DDataset(Custom3DDataset):

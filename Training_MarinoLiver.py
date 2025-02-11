@@ -21,11 +21,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/")
 parser.add_argument("--overfit_patience", type=int, default=300)
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default='semisupervised')
+parser.add_argument("--mode", type=str, default='supervised')
 parser.add_argument("--stochastic_block_type", type=str, default='mixture')
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default='mlp')
-parser.add_argument("--sample_ratio", type=int, default=18)
+parser.add_argument("--sample_ratio", type=int, default=1)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
@@ -36,7 +36,8 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-
+parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--checkpoint", type=str, default="")
 
 args = parser.parse_args()
 use_wandb = True
@@ -49,8 +50,8 @@ model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
-load_checkpoint = True
-checkpoint = "/group/jug/Sheida/HVAE/experiments/22/model_supervised/experiments_best_vae.net"
+load_checkpoint = args.load_checkpoint
+checkpoint = args.checkpoint
  
 noiseModel = None
 
@@ -86,8 +87,8 @@ stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 5  # number of components for prior
-n_classes = 5  # number of classes in the dataset
+n_components = 7  # number of components for prior
+n_classes = 7  # number of classes in the dataset
 # train data
 data_dir = "/facility/imganfacusers/Sheida/combined_single_label/"
 keys = ["crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09"]
@@ -165,6 +166,16 @@ val_set = Custom2DDatasetMarinoLiver(
     sampling_ratio=sample_ratio,
     ignore_lbl=-1,
 )
+
+print(f'Train set: {len(train_set)}, Val set: {len(val_set)}')
+print(f"0: {len(train_set.patches_by_label[0])}, 0: {len(val_set.patches_by_label[0])}")
+print(f"1: {len(train_set.patches_by_label[1])}, 1: {len(val_set.patches_by_label[1])}")
+print(f"2: {len(train_set.patches_by_label[2])}, 2: {len(val_set.patches_by_label[2])}")
+print(f"3: {len(train_set.patches_by_label[3])}, 3: {len(val_set.patches_by_label[3])}")
+print(f"4: {len(train_set.patches_by_label[4])}, 4: {len(val_set.patches_by_label[4])}")
+print(f"5: {len(train_set.patches_by_label[5])}, 5: {len(val_set.patches_by_label[5])}")
+print(f"6: {len(train_set.patches_by_label[6])}, 6: {len(val_set.patches_by_label[6])}")
+
 
 train_sampler = DynamicSampler(train_set, batch_size)
 val_sampler = DynamicSampler(val_set, batch_size)

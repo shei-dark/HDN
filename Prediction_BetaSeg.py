@@ -1,7 +1,5 @@
 import sys
 import time
-sys.path.append("../../../")
-sys.path.append("/home/sheida.rahnamai/GIT/HDN/")
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -38,7 +36,7 @@ test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_g
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/experiments/"
 img_idx = [626]
-model_versions = ["17", "18", "19", "20", "21"]
+model_versions = ["26", "27", "28", "29", "30", "31", "32"]
 batch_size = 1024
 
 

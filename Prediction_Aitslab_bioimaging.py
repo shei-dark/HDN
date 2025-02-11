@@ -8,6 +8,10 @@ import scipy.ndimage as ndi
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
+cell_mean = 29.797266
+cell_std = 31.11202
+nuclei_mean = 19.316538
+nuclei_std = 32.213627
 
 hierarchy_level = 3
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/img/test/"
@@ -26,8 +30,11 @@ key = [
 for k in key:
     test_images = tiff.imread(data_dir + k)
 
+    test_images[0,:,:] = (test_images[0,:,:] - cell_mean) / cell_std
+    test_images[1,:,:] = (test_images[1,:,:] - nuclei_mean) / nuclei_std
+
     model_dir = "/group/jug/Sheida/HVAE/experiments/"
-    model_versions = ["25"]
+    model_versions = ["33"]
     batch_size = 1024
 
     print("Processing test dataset")
@@ -66,5 +73,5 @@ for k in key:
         clusters = pred_array.reshape(
             test_dataset.num_patches_y, test_dataset.num_patches_x
         )
-        tiff.imwrite(f"{model_dir}{model_v}/seg/{k}_pred_reverse.tif", clusters.astype(np.uint8))
+        tiff.imwrite(f"{model_dir}{model_v}/seg/{k}_pred.tif", clusters.astype(np.uint8))
         print(f"Segmentation for image slice {k} pred saved")

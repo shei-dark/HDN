@@ -26,7 +26,7 @@ for k in key:
 
     model_dir = "/group/jug/Sheida/HVAE/experiments/"
     img_idx = range(128)
-    model_versions = ["22"]
+    model_versions = ["34"]
     batch_size = 1024
 
 

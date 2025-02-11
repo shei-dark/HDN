@@ -117,7 +117,8 @@ def train_network(
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
-
+        log_interval = 10  # Log every 10 batches
+        running_metrics = {"IP": 0, "KL": 0, "CL": 0, "CE": 0, "EL": 0, "Total": 0}
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
             if not use_wandb:
                 if idx == 5:
@@ -159,24 +160,29 @@ def train_network(
                     model.parameters(), max_norm=max_grad_norm
                 )
 
-            if use_wandb:
-                run.log(
-                    {
-                        "IP": inpainting_loss * alpha,
-                        "KL": kl_loss * beta,
-                        "CL": cl_loss * gamma if model.contrastive_learning else None,
-                        "CE": ce,
-                        "EL": entropy,
-                        "Total": loss,
-                    },
-                    commit=True,
-                )
-
             # Optimization step
 
             scaler.step(optimizer)
             scaler.update()
             model.increment_global_step()
+            
+            # Accumulate loss metrics
+            running_metrics["IP"] += inpainting_loss.item() * alpha
+            running_metrics["KL"] += kl_loss.item() * beta
+            running_metrics["CL"] += cl_loss.item() * gamma if model.contrastive_learning else 0
+            running_metrics["CE"] += ce.item()
+            running_metrics["EL"] += entropy.item()
+            running_metrics["Total"] += loss.item()
+
+            # Log every `log_interval` batches
+            if (idx + 1) % log_interval == 0:
+                avg_metrics = {key: value / log_interval for key, value in running_metrics.items()}
+
+                if use_wandb:
+                    run.log(avg_metrics, commit=True)
+
+        # Reset accumulated metrics
+        running_metrics = {key: 0 for key in running_metrics}
 
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
@@ -185,6 +191,17 @@ def train_network(
         running_validation_loss = []
 
         model.eval()
+        # Before validation loop
+        val_metrics = {
+            "val_IP": 0,
+            "val_KL": 0,
+            "val_CE": 0,
+            "val_EL": 0,
+            "val_CL": 0 if model.contrastive_learning else None,
+            "val_total": 0,
+        }
+        num_val_batches = len(val_loader)
+
         with torch.no_grad():
             for idx, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
                 if not use_wandb:
@@ -221,22 +238,23 @@ def train_network(
 
                 running_validation_loss.append(val_loss)
                 
-                if use_wandb:
-                    run.log(
-                        {
-                            "val_IP": alpha * val_inpainting_loss,
-                            "val_KL": beta * val_kl_loss,
-                            "val_CE": val_ce,
-                            "val_EL": val_entropy,
-                            "val_CL": (
-                                gamma * val_cl_loss
-                                if model.contrastive_learning
-                                else None
-                            ),
-                            "val_total": val_loss,
-                        }
-                    )
+                # Accumulate batch-wise metrics
+                val_metrics["val_IP"] += alpha * val_inpainting_loss
+                val_metrics["val_KL"] += beta * val_kl_loss
+                val_metrics["val_CE"] += val_ce
+                val_metrics["val_EL"] += val_entropy
+                if model.contrastive_learning:
+                    val_metrics["val_CL"] += gamma * val_cl_loss
+                val_metrics["val_total"] += val_loss
 
+        # Compute the mean
+        for key in val_metrics:
+            if val_metrics[key] is not None:
+                val_metrics[key] /= num_val_batches
+        # Log once per validation cycle
+        if use_wandb:
+            run.log(val_metrics)
+            
         model.train()
 
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
