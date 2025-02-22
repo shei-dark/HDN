@@ -59,7 +59,7 @@ class LabelSizeScheduler:
             if self.final_size is None or self.step_interval is None:
                 raise ValueError("final_size and step_interval must be provided for 'step' mode.")
             # Step-based change
-            direction = 1 if self.final_size > self.initial_size else -1
+            direction = 2 if self.final_size > self.initial_size else -2
             intervals = current_step // self.step_interval
             new_size = self.initial_size + intervals * direction
             return max(
@@ -192,9 +192,9 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
 
     else:
         output = {
-            "inpainting_loss": None,
-            "kl_loss": None,
-            "cl_loss": None,
+            "inpainting_loss": 0,
+            "kl_loss": 0,
+            "cl_loss": 0,
             "out_mean": model_out["out_mean"],
             "out_sample": model_out["out_sample"],
         }

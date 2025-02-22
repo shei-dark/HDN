@@ -108,7 +108,12 @@ class ResidualBlock(nn.Module):
         self.block = nn.Sequential(*modules)
 
     def forward(self, inp):
-        return self.cp(self.block, inp) + inp
+        # return self.cp(self.block, inp) + inp
+        if torch.onnx.is_in_onnx_export():
+            return self.block(inp) + inp  # No checkpointing during ONNX export
+        else:
+            return self.cp(self.block, inp) + inp  # Use checkpointing during training
+
 class ResidualGatedBlock(ResidualBlock):
 
     def __init__(self, *args, **kwargs):

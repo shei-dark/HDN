@@ -5,7 +5,7 @@ import datetime
 import torch
 from torch.cuda.amp import GradScaler
 from tqdm import tqdm
-
+import torch.backends.cudnn as cudnn
 from boilerplate import boilerplate
 import wandb
 
@@ -34,8 +34,7 @@ def train_network(
     final_label_size=10,
     initial_mask_size=1,
     final_mask_size=10,
-    step_interval=5,
-    overfit_patience=20,
+    step_interval=20,
 ):
     """Train Hierarchical DivNoising network.
     Parameters
@@ -61,20 +60,27 @@ def train_network(
     max_grad_norm: float
         Value to limit/clamp the gradients at.
     """
-
-    model_folder = directory_path + "model/"
+    cudnn.benchmark = True
+    cudnn.fastest = True
+    change_mask_size = False
+    change_label_size = False
+    model_folder = directory_path + "model_" + model.training_mode + "/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
-    mask_size_scheduler = boilerplate.LabelSizeScheduler(
-        initial_size=initial_mask_size,
-        final_size=final_mask_size,
-        step_interval=step_interval,
-    )
-    label_size_scheduler = boilerplate.LabelSizeScheduler(
-        initial_size=initial_label_size,
-        final_size=final_label_size,
-        step_interval=step_interval,
-    )
+    if initial_mask_size != final_mask_size:
+        mask_size_scheduler = boilerplate.LabelSizeScheduler(
+            initial_size=initial_mask_size,
+            final_size=final_mask_size,
+            step_interval=step_interval,
+        )
+        change_mask_size = True
+    if initial_label_size != final_label_size:
+        label_size_scheduler = boilerplate.LabelSizeScheduler(
+            initial_size=initial_label_size,
+            final_size=final_label_size,
+            step_interval=step_interval,
+        )
+        change_label_size = True
 
     loss_val_history = []
 
@@ -117,16 +123,18 @@ def train_network(
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
-        log_interval = 10  # Log every 10 batches
+        log_interval = 5  # Log every 10 batches
         running_metrics = {"IP": 0, "KL": 0, "CL": 0, "CE": 0, "EL": 0, "Total": 0}
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
             if not use_wandb:
                 if idx == 5:
                     break
-            train_loader.dataset.update_patches(
-                label_size_scheduler.get_label_size(epoch)
-            )
-            model.mask_size = mask_size_scheduler.get_label_size(epoch)
+            if change_label_size:
+                train_loader.dataset.update_patches(
+                    label_size_scheduler.get_label_size(patience_)
+                )
+            if change_mask_size:
+                model.mask_size = mask_size_scheduler.get_label_size(patience_)
             x = x.squeeze(0)
             y = y.squeeze(0)
             x = x.to(device=device, dtype=torch.float)
@@ -144,13 +152,11 @@ def train_network(
 
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
-            cl_loss = outputs["cl_loss"]
-            ce = outputs["ce"] if outputs["ce"] is not None else torch.zeros(1)
+            cl_loss = outputs["cl_loss"] if not torch.isnan(outputs["cl_loss"]) else torch.tensor(0.0, dtype=torch.float32, device=device)
+            ce = outputs["ce"]
             entropy = outputs["entropy"]
 
-            loss = alpha * inpainting_loss + beta * kl_loss + ce + entropy
-            if model.contrastive_learning:
-                loss += gamma * cl_loss
+            loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss + ce + entropy
 
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
@@ -165,24 +171,25 @@ def train_network(
             scaler.step(optimizer)
             scaler.update()
             model.increment_global_step()
-            
+
             # Accumulate loss metrics
             running_metrics["IP"] += inpainting_loss.item() * alpha
             running_metrics["KL"] += kl_loss.item() * beta
-            running_metrics["CL"] += cl_loss.item() * gamma if model.contrastive_learning else 0
+            running_metrics["CL"] += cl_loss.item() * gamma
             running_metrics["CE"] += ce.item()
             running_metrics["EL"] += entropy.item()
             running_metrics["Total"] += loss.item()
 
             # Log every `log_interval` batches
             if (idx + 1) % log_interval == 0:
-                avg_metrics = {key: value / log_interval for key, value in running_metrics.items()}
+                avg_metrics = {
+                    key: value / log_interval for key, value in running_metrics.items()
+                }
 
                 if use_wandb:
-                    run.log(avg_metrics, commit=True)
-
-        # Reset accumulated metrics
-        running_metrics = {key: 0 for key in running_metrics}
+                    run.log(avg_metrics)
+                    # Reset accumulated metrics
+                    running_metrics = {key: 0 for key in running_metrics}
 
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
@@ -197,7 +204,7 @@ def train_network(
             "val_KL": 0,
             "val_CE": 0,
             "val_EL": 0,
-            "val_CL": 0 if model.contrastive_learning else None,
+            "val_CL": 0,
             "val_total": 0,
         }
         num_val_batches = len(val_loader)
@@ -207,10 +214,12 @@ def train_network(
                 if not use_wandb:
                     if idx == 5:
                         break
-                val_loader.dataset.update_patches(
-                    label_size_scheduler.get_label_size(epoch)
-                )
-                model.mask_size = mask_size_scheduler.get_label_size(epoch)
+                if change_label_size:
+                    val_loader.dataset.update_patches(
+                        label_size_scheduler.get_label_size(patience_)
+                    )
+                if change_mask_size:
+                    model.mask_size = mask_size_scheduler.get_label_size(patience_)
                 x = x.squeeze(0)
                 y = y.squeeze(0)
                 z = z.squeeze(0)
@@ -224,27 +233,22 @@ def train_network(
                 val_kl_loss = val_outputs["kl_loss"]
                 val_ce = val_outputs["ce"]
                 val_entropy = val_outputs["entropy"]
-                val_cl_loss = (
-                    val_outputs["cl_loss"] if model.contrastive_learning else 0
-                )
+                val_cl_loss = val_outputs["cl_loss"] if not torch.isnan(val_outputs["cl_loss"]) else torch.tensor(0.0, dtype=torch.float32, device=device)
+
                 val_loss = (
                     alpha * val_inpainting_loss
                     + beta * val_kl_loss
+                    + gamma * val_cl_loss
                     + val_ce
                     + val_entropy
                 )
-                if model.contrastive_learning:
-                    val_loss += gamma * val_cl_loss
-
                 running_validation_loss.append(val_loss)
-                
                 # Accumulate batch-wise metrics
                 val_metrics["val_IP"] += alpha * val_inpainting_loss
                 val_metrics["val_KL"] += beta * val_kl_loss
                 val_metrics["val_CE"] += val_ce
                 val_metrics["val_EL"] += val_entropy
-                if model.contrastive_learning:
-                    val_metrics["val_CL"] += gamma * val_cl_loss
+                val_metrics["val_CL"] += gamma * val_cl_loss
                 val_metrics["val_total"] += val_loss
 
         # Compute the mean
@@ -254,7 +258,7 @@ def train_network(
         # Log once per validation cycle
         if use_wandb:
             run.log(val_metrics)
-            
+
         model.train()
 
         total_epoch_loss_val = torch.mean(torch.stack(running_validation_loss))
@@ -268,7 +272,9 @@ def train_network(
             patience_ = 0
             print("saving", model_folder + model_name + "_best_vae.net")
             torch.save(model, model_folder + model_name + "_best_vae.net")
-            torch.save(model.state_dict(), model_folder + model_name + "_best_weights.net")
+            torch.save(
+                model.state_dict(), model_folder + model_name + "_best_weights.net"
+            )
         else:
             patience_ += 1
 
@@ -280,14 +286,6 @@ def train_network(
             "Min validation loss:",
             np.min(loss_val_history),
         )
-        
-        if patience_ > overfit_patience and model.training_mode == "supervised":
-            print("Overfitting detected. Loading best model and switching to semi-supervised training...")
-            model = torch.load(model_folder + model_name + "_best_vae.net")
-            train_loader.dataset.switch_mode()
-            val_loader.dataset.switch_mode()
-            model.update_mode('semisupervised')
-            patience_ = 0
 
         seconds = time.time()
         secondsElapsed = float(seconds - seconds_last)

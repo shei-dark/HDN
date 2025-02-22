@@ -25,6 +25,7 @@ class Custom2DDataset(Dataset):
         n_classes=4,
         sampling_ratio=1,
         ignore_lbl=-1,
+        ratio = 0.75
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -41,7 +42,7 @@ class Custom2DDataset(Dataset):
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
         self.mode = mode
-        self.ratio = 0.75
+        self.ratio = ratio
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
@@ -236,6 +237,7 @@ class CustomLightDataset(Dataset):
         n_classes=4,
         sampling_ratio=1,
         ignore_lbl=-1,
+        ratio=0.75
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -248,7 +250,7 @@ class CustomLightDataset(Dataset):
             self._compute_valid_patches()
         )  # Store only metadata of valid patches
         self.mode = mode
-        self.ratio =0.75
+        self.ratio = ratio
 
     def set_mode(self, mode):
         """Set the current mode of the dataset."""
@@ -275,7 +277,7 @@ class CustomLightDataset(Dataset):
         def process_image(lbl, img_idx):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -422,6 +424,7 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
         n_classes=4,
         sampling_ratio=1,
         ignore_lbl=-1,
+        ratio=0.75,
     ):
         super().__init__(
             images,
@@ -432,6 +435,7 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
             n_classes,
             sampling_ratio,
             ignore_lbl,
+            ratio,
         )
 
     def _compute_valid_patches(self):
@@ -444,7 +448,7 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset, min_offset:-max_offset] != self.ignore_lbl
+                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -1053,7 +1057,7 @@ class UnsupervisedSampler(Sampler):
 
 
 class DynamicSampler(Sampler):
-    def __init__(self, dataset, batch_size, labeled_ratio=0.25):
+    def __init__(self, dataset, batch_size, labeled_ratio=0.75):
         self.dataset = dataset
         self.batch_size = batch_size
         self.labeled_ratio = labeled_ratio
@@ -1063,7 +1067,7 @@ class DynamicSampler(Sampler):
             sampler = BalancedBatchSampler(self.dataset, self.batch_size)
         elif self.dataset.mode == "semisupervised":
             sampler = CombinedBatchSampler(
-                self.dataset, self.batch_size, labeled_ratio=0.75
+                self.dataset, self.batch_size, labeled_ratio=self.labeled_ratio
             )
         elif self.dataset.mode == "unsupervised":
             sampler = UnsupervisedSampler(self.dataset, self.batch_size)

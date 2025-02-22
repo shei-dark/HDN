@@ -26,7 +26,8 @@ class StochasticConvBlock(nn.Module):
         top_layer=False,
         conditional=False,
         condition_type=None,
-        training_mode="unsupervised"
+        training_mode="unsupervised",
+        labeled_ratio=0.1,
     ):
         super().__init__()
         self.training_mode = training_mode        
@@ -43,6 +44,7 @@ class StochasticConvBlock(nn.Module):
         self.temperature = 1.0
         self.batch_size = 0
         self.small_batch_size = 0
+        self.labeled_ratio = labeled_ratio
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.prior_probs = (torch.ones(n_components, device=self.device) / n_components)
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
@@ -92,7 +94,7 @@ class StochasticConvBlock(nn.Module):
         if self.training_mode == 'supervised':
             self.small_batch_size = self.batch_size
         elif self.training_mode == 'semisupervised':
-            self.small_batch_size = int(self.batch_size * 0.25)
+            self.small_batch_size = int(self.batch_size * self.labeled_ratio)
         elif self.training_mode == 'unsupervised':
             self.small_batch_size = self.batch_size
 
@@ -109,8 +111,9 @@ class StochasticConvBlock(nn.Module):
             p_std_chunks = [p_std]
         p_components = []
         y = None
-        cross_entropy = 0
-        entropy = 0
+        cross_entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(Normal(mu_chunk, std_chunk))
@@ -261,7 +264,7 @@ class StochasticConvBlock(nn.Module):
                 )
             )
         else:
-            entropy = 0
+            entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
         return entropy
     
     def _compute_cross_entropy(self, qy_logits, label):

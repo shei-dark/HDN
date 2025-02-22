@@ -50,6 +50,7 @@ class TopDownLayer(nn.Module):
         condition_type='mlp',
         n_components=4,  # Used only for Mixture block
         training_mode="supervised",
+        labeled_ratio=0.1,
     ):
 
         super().__init__()
@@ -104,26 +105,31 @@ class TopDownLayer(nn.Module):
 
         # Define stochastic block with convolutions
         # Select stochastic block based on the argument
-        if is_top_layer and stochastic_block_type == "mixture":
-            self.stochastic = StochasticConvBlock(
-                c_in=n_filters,
-                c_vars=z_dim,
-                c_out=n_filters,
-                conv_mult=conv_mult,
-                n_components=self.n_components,
-                top_layer=is_top_layer,
-                conditional=conditional,
-                condition_type=condition_type,
-                block_type=stochastic_block_type,
-                training_mode=training_mode,
-            )
-        else:
-            self.stochastic = StochasticConvBlock(
-                c_in=n_filters,
-                c_vars=z_dim,
-                c_out=n_filters,
-                conv_mult=conv_mult,
-            )
+        # if is_top_layer and stochastic_block_type == "mixture":
+        self.stochastic = StochasticConvBlock(
+            c_in=n_filters,
+            c_vars=z_dim,
+            c_out=n_filters,
+            conv_mult=conv_mult,
+            n_components=self.n_components,
+            top_layer=is_top_layer,
+            conditional=conditional,
+            condition_type=condition_type,
+            block_type=stochastic_block_type,
+            training_mode=training_mode,
+            labeled_ratio=labeled_ratio,
+        )
+        # else:
+        #     self.stochastic = StochasticConvBlock(
+        #         c_in=n_filters,
+        #         c_vars=z_dim,
+        #         c_out=n_filters,
+        #         conv_mult=conv_mult,
+        #         top_layer=is_top_layer,
+        #         conditional=conditional,
+        #         condition_type=condition_type,
+        #         n_components=self.n_components,
+        #     )
 
         if not is_top_layer:
 
@@ -373,9 +379,11 @@ class ResBlockWithResampling(nn.Module):
                     out_channels=inner_filters,
                     kernel_size=3,
                     padding=1,
-                    stride=2,
-                    groups=groups,
+                    # stride=2,
+                    # groups=groups,
                 )
+                # self.pre_conv = conv_type(c_in, c_out, kernel_size=3, padding=1)
+                self.blurpool = BlurPool(inner_filters, stride=2)
             elif mode == "top-down":  # upsample
                 self.pre_conv = upsample_conv(
                     in_channels=c_in,
@@ -414,6 +422,8 @@ class ResBlockWithResampling(nn.Module):
     def forward(self, x):
         if self.pre_conv is not None:
             x = self.pre_conv(x)
+        if hasattr(self, 'blurpool'):
+            x = self.blurpool(x)  # Apply BlurPool
         x = self.res(x)
         if self.post_conv is not None:
             x = self.post_conv(x)
@@ -534,3 +544,31 @@ class SkipConnectionMerger(MergeLayer):
             res_block_type=res_block_type,
             grad_checkpoint=grad_checkpoint,
         )
+
+class BlurPool(nn.Module):
+    """
+    BlurPool Layer: Applies a blur filter before downsampling to reduce aliasing artifacts.
+    """
+    def __init__(self, channels, stride=2):
+        """
+        Args:
+            channels (int): Number of input channels.
+            stride (int): Downsampling factor.
+        """
+        super(BlurPool, self).__init__()
+        self.stride = stride
+
+        # Define a simple low-pass filter (approximating Gaussian)
+        kernel = torch.tensor([1, 2, 1], dtype=torch.float32)
+        kernel = kernel[:, None] * kernel[None, :]
+        kernel = kernel / kernel.sum()  # Normalize kernel
+
+        # Expand kernel to all input channels
+        kernel = kernel.view(1, 1, 3, 3).repeat(channels, 1, 1, 1)
+        self.register_buffer("kernel", kernel)
+
+    def forward(self, x):
+        # Apply blur filter
+        x = torch.nn.functional.conv2d(x, self.kernel, stride=1, padding=1, groups=x.shape[1])
+        # Perform downsampling
+        return x[:, :, ::self.stride, ::self.stride]

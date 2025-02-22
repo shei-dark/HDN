@@ -16,6 +16,7 @@ from .lvae_layers import (
     BottomUpLayer,
     TopDownDeterministicResBlock,
     BottomUpDeterministicResBlock,
+    BlurPool,
 )
 
 
@@ -56,6 +57,7 @@ class LadderVAE(nn.Module):
         condition_type='mlp',
         n_components=4,
         training_mode='supervised',
+        labeled_ratio=0.75,
     ):
 
         super().__init__()
@@ -128,7 +130,9 @@ class LadderVAE(nn.Module):
         # unless we want to prevent this
         stride = 1 if no_initial_downscaling else 2
         self.first_bottom_up = nn.Sequential(
-            self.conv_type(color_ch, n_filters, 5, padding=2, stride=stride),
+            # self.conv_type(color_ch, n_filters, 5, padding=2, stride=stride),
+            self.conv_type(color_ch, n_filters, 5, padding=2, stride=1),  # No stride here
+            BlurPool(n_filters, stride=stride),  # Add BlurPool for downsampling
             self.nonlin(),
             BottomUpDeterministicResBlock(
                 c_in=n_filters,
@@ -197,6 +201,7 @@ class LadderVAE(nn.Module):
                     condition_type=condition_type,
                     n_components=n_components,
                     training_mode=training_mode,
+                    labeled_ratio=labeled_ratio,
                 )
             )
 
@@ -265,8 +270,8 @@ class LadderVAE(nn.Module):
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
 
-        cl = None
-        kl = None
+        cl = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        kl = torch.tensor(0.0, dtype=torch.float32, device=self.device)
         if x_orig is not None:
             ll, likelihood_info = self.likelihood(out, x_orig)
         else:
@@ -289,6 +294,7 @@ class LadderVAE(nn.Module):
                 training_mode=self.training_mode,
                 prior=self.prior_type,
             )
+            
 
         output = {
             "ll": ll,
@@ -359,9 +365,9 @@ class LadderVAE(nn.Module):
         z = [None] * self.n_layers
 
         # KL divergence of each layer
-        kl = [None] * self.n_layers
-        ce = [None] * self.n_layers
-        entropy = [None] * self.n_layers
+        kl = [0.0] * self.n_layers
+        ce = [0.0] * self.n_layers
+        entropy = [0.0] * self.n_layers
 
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
