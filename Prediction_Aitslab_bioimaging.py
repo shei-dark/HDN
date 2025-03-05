@@ -4,7 +4,11 @@ from tqdm import tqdm
 from boilerplate.dataloader import CustomTestDataset
 import tifffile as tiff
 from torch.utils.data import DataLoader
-import scipy.ndimage as ndi
+import time
+import datetime
+from torch.amp import autocast
+import os
+
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
@@ -12,8 +16,12 @@ cell_mean = 29.797266
 cell_std = 31.11202
 nuclei_mean = 19.316538
 nuclei_std = 32.213627
+batch = torch.randn(2048, 2, 128, 128)  # Example batch with 2 channels
 
-hierarchy_level = 3
+# Create tensors for mean and std
+channel_means = torch.tensor([cell_mean, nuclei_mean]).to(device=device)  # Shape: (C,)
+channel_stds = torch.tensor([cell_std, nuclei_std]).to(device=device)     # Shape: (C,)
+
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/img/test/"
 key = [
     "cell_2_nuclei_0.tif",
@@ -27,15 +35,19 @@ key = [
     "cell_10_nuclei_8.tif",
     "cell_11_nuclei_9.tif",]
 
+model_dir = "/group/jug/Sheida/HVAE/segmentation/"
+model_v = "21"
+batch_size = 2048
+
+max_step = len(key) 
+step = 0 
+seconds_last = time.time()
+model = torch.load(model_dir + model_v + "/model_supervised/experiments_best_vae.net")
+model.mode_pred = True
+model.eval()
+device = model.device
 for k in key:
     test_images = tiff.imread(data_dir + k)
-
-    test_images[0,:,:] = (test_images[0,:,:] - cell_mean) / cell_std
-    test_images[1,:,:] = (test_images[1,:,:] - nuclei_mean) / nuclei_std
-
-    model_dir = "/group/jug/Sheida/HVAE/experiments/"
-    model_versions = ["33"]
-    batch_size = 1024
 
     print("Processing test dataset")
     test_dataset = CustomTestDataset(
@@ -43,35 +55,48 @@ for k in key:
     )
     print("Test dataset loaded. Processing test dataloader")
     dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True
     )
-    for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model/experiments_best_vae.net")
-        data_mean = model.data_mean
-        data_std = model.data_std
-        model.mode_pred = True
-        model.eval()
-        device = model.device
-        print(f"Processing image {k} with model version {model_v}")
-        index = 0
+    
+    print(f"Processing image {k} with model version {model_v}")
+    index = 0
 
-        all_mus = np.zeros(
-            ((test_dataset.num_patches_y * test_dataset.num_patches_x), 43008),
-            dtype=np.float16,
-        )
-        pred = []
-        with torch.no_grad():
-            for batch in tqdm(dataloader):
-                batch = batch.to(device)
-                batch = (batch - data_mean) / data_std
-                output = model(batch)
-                labels = output['pi'].argmax(dim=1)
-                pred.extend(labels.cpu().numpy())
+    pred = []
+    with torch.no_grad():
+        for batch in dataloader:
+            batch = batch.to(device, non_blocking=True)
+            batch = batch.float()
+            batch.sub_(channel_means.view(-1, 1, 1)).div_(channel_stds.view(-1, 1, 1))
+            with autocast(device_type='cuda'):  # Enable mixed precision
+                    output = model(batch)
+            labels = output['pi'].argmax(dim=1)
+            pred.extend(labels.cpu().numpy())
 
-        pred_array = np.array(pred)
+    pred_array = np.array(pred)
 
-        clusters = pred_array.reshape(
-            test_dataset.num_patches_y, test_dataset.num_patches_x
-        )
-        tiff.imwrite(f"{model_dir}{model_v}/seg/{k}_pred.tif", clusters.astype(np.uint8))
-        print(f"Segmentation for image slice {k} pred saved")
+    clusters = pred_array.reshape(
+        test_dataset.num_patches_y, test_dataset.num_patches_x
+    )
+    seg_dir = f"{model_dir}{model_v}/seg_supervised/" #TODO
+    os.makedirs(seg_dir, exist_ok=True)
+    tiff.imwrite(f"{seg_dir}{k}.tif", clusters.astype(np.uint8))
+    print(
+        f"Segmentation for image slice {k} with model {model_v} is saved"
+    )
+    seconds = time.time()
+    secondsElapsed = float(seconds - seconds_last)
+    seconds_last = seconds
+    remainingEps = (max_step + 1) - (step + 1)
+    estRemainSecondsInt = int(secondsElapsed) * (remainingEps)
+    print("Time for epoch: " + str(int(secondsElapsed)) + "seconds")
+
+    print(
+        "Est remaining time: "
+        + str(datetime.timedelta(seconds=estRemainSecondsInt))
+        + " or "
+        + str(estRemainSecondsInt)
+        + " seconds"
+    )
+
+    print("----------------------------------------", flush=True)
+    step += 1

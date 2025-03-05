@@ -34,17 +34,17 @@ test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_g
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 img_idx = list(range(49, 1016))
-model_versions = ["04"]
-batch_size = 1024
+model_versions = ["19"] #TODO
+batch_size = 2048
 
 max_step = len(img_idx) * len(model_versions)
 step = 0
 seconds_last = time.time()
 for model_v in model_versions:
-    onnx_file_path = model_dir + model_v + "segmentation_model.onnx"
+    # onnx_file_path = model_dir + model_v + "segmentation_model.onnx"
 
     model = torch.load(
-        model_dir + model_v + "/model_supervised/segmentation_best_vae.net",
+        model_dir + model_v + "/model_supervised/experiments_best_vae.net", #TODO
         weights_only=False,
     )
         
@@ -85,7 +85,7 @@ for model_v in model_versions:
         clusters = pred_array.reshape(
             test_dataset.num_patches_y, test_dataset.num_patches_x
         )
-        seg_dir = f"{model_dir}{model_v}/seg_supervised/"
+        seg_dir = f"{model_dir}{model_v}/seg_supervised_beta/" #TODO
         os.makedirs(seg_dir, exist_ok=True)
         tiff.imwrite(f"{seg_dir}{test_index}.tif", clusters.astype(np.uint8))
         print(

@@ -36,9 +36,9 @@ print(test_img_path)
 # Load test ground truth images
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
-model_dir = "/group/jug/Sheida/HVAE/experiments/"
-img_idx = [626]
-model_versions = ["17", "18", "19", "20", "21"]
+model_dir = "/group/jug/Sheida/HVAE/segmentation/"
+img_idx = range(49,1016)
+model_versions = ["02"]
 batch_size = 1024
 
 
@@ -52,7 +52,7 @@ for test_index in tqdm(img_idx):
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model_supervised/experiments_best_vae.net")
+        model = torch.load(model_dir + model_v + "/model_supervised/segmentation_best_vae.net")
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True
@@ -71,14 +71,32 @@ for test_index in tqdm(img_idx):
                 batch = batch.to(device)
                 batch = (batch - data_mean) / data_std
                 output = model(batch)
-                y_pred = output["pi"].argmax(dim=-1) 
-                pred.extend(y_pred.cpu().numpy())
+                mu_list = []
+                for mu in output['mu']:  # Iterate over all 3 levels
+                    batch_size, channels, height, width = mu.shape
+                    
+                    # Fully flatten (merge spatial and channel dimensions)
+                    mu_flattened = mu.view(batch_size, -1)  # Shape: (batch_size, channels * height * width)
+                    mu_list.append(mu_flattened)
 
+                # Concatenate across all levels
+                mu_concat = torch.cat(mu_list, dim=1)  # (batch_size, total_features)
+                all_mus[index:index+batch.shape[0]] = mu_concat.cpu().numpy()
+                index+=batch.shape[0]
 
-        pred_array = np.array(pred)
+        # Stack all batches
+        # all_mus = np.concatenate(all_mus, axis=0)  # Shape: (total_patches, total_features)
 
-        clusters = pred_array.reshape(
-            test_dataset.num_patches_y, test_dataset.num_patches_x
-        )
-        tiff.imwrite(f"{model_dir}{model_v}/seg/{test_index}.tif", clusters.astype(np.uint8))
+        num_patches_y, num_patches_x = test_dataset.num_patches_y, test_dataset.num_patches_x
+
+        # Perform clustering
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+        cluster_labels = kmeans.fit_predict(all_mus)
+
+        # Reshape cluster labels to match the image shape
+        clustered_image = cluster_labels.reshape((num_patches_y, num_patches_x))
+
+        
+        tiff.imwrite(f"{model_dir}{model_v}/seg_unsupervised/{test_index}.tif", clustered_image.astype(np.uint8))
         print(f"Segmentation for image slice {test_index} saved")
+        

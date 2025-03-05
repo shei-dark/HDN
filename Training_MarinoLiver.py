@@ -21,21 +21,21 @@ device = torch.device("cuda" if use_cuda else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/test/")
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default='supervised')
+parser.add_argument("--mode", type=str, default='semisupervised')
 parser.add_argument("--labeled_ratio", type=float, default=0.75)
 parser.add_argument("--stochastic_block_type", type=str, default='mixture')
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default='mlp')
-parser.add_argument("--sample_ratio", type=int, default=15)
-parser.add_argument("--num_latents", type=int, default=3)
-parser.add_argument("--blocks_per_layer", type=int, default=5)
+parser.add_argument("--sample_ratio", type=int, default=30)
+parser.add_argument("--num_latents", type=int, default=2)
+parser.add_argument("--blocks_per_layer", type=int, default=3)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-2)
 parser.add_argument("--gamma", type=float, default=1e-2)
-parser.add_argument("--initial_mask_size", type=int, default=1)
-parser.add_argument("--final_mask_size", type=int, default=1)
-parser.add_argument("--initial_label_size", type=int, default=1)
-parser.add_argument("--final_label_size", type=int, default=1)
+parser.add_argument("--initial_mask_size", type=int, default=3)
+parser.add_argument("--final_mask_size", type=int, default=3)
+parser.add_argument("--initial_label_size", type=int, default=3)
+parser.add_argument("--final_label_size", type=int, default=3)
 parser.add_argument("--step_interval", type=int, default=10)
 parser.add_argument("--load_checkpoint", type=bool, default=False)
 parser.add_argument("--checkpoint", type=str, default="")
@@ -52,7 +52,7 @@ directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = args.checkpoint
+checkpoint = directory_path + "model_supervised/experiments_best_vae.net"
  
 noiseModel = None
 
@@ -91,7 +91,7 @@ n_components = 7  # number of components for prior
 n_classes = 7  # number of classes in the dataset
 # train data
 data_dir = "/facility/imganfacusers/Sheida/combined_single_label/"
-keys = ["crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09"]
+keys = ["crop_00", "crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09", "crop_10"]
 
 img_paths = [os.path.join(data_dir + key + f"/image.tif") for key in keys]
 lbl_paths = [os.path.join(data_dir + key + f"/labs.tif") for key in keys]

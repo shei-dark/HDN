@@ -57,7 +57,7 @@ class StochasticConvBlock(nn.Module):
                     conv_type(c_in, c_vars, kernel, padding=pad),
                     nn.ReLU(),
                     nn.Flatten(),
-                    nn.Linear(c_vars * 8 * 8, n_components),
+                    nn.Linear(c_vars * 8 * 8, n_components), #TODO: Fix this hardcoded value
                 )
                 self.qz_xy = nn.Sequential(
                     conv_type(c_in, 2 * c_vars, kernel, padding=pad),

@@ -24,14 +24,14 @@ with autocast(device_type=device):  # Ensure 'cuda' or 'cpu'
         print(data_dir + k + "/image.tif")
         model_dir = "/group/jug/Sheida/HVAE/segmentation/"
         img_idx = range(128)
-        model_v = "19"
-        batch_size = 1024
+        model_v = "05"
+        batch_size = 2048
 
         max_step = len(img_idx)
         step = 0
         seconds_last = time.time()
         model = torch.load(
-            model_dir + model_v + "/model_supervised/experiments_best_vae.net",
+            model_dir + model_v + "/model_supervised/segmentation_best_vae.net",
             weights_only=False,
         )
         data_mean = model.data_mean
@@ -70,7 +70,7 @@ with autocast(device_type=device):  # Ensure 'cuda' or 'cpu'
             segmentation_np = pred_array.reshape(
                 test_dataset.num_patches_y, test_dataset.num_patches_x
             )
-            seg_dir = f"{model_dir}{model_v}/seg_supervised/{k}/"
+            seg_dir = f"{model_dir}{model_v}/seg_supervised_marino/{k}/"
             os.makedirs(seg_dir, exist_ok=True)
             tiff.imwrite(f"{seg_dir}{test_index}.tif", segmentation_np.astype(np.uint8))
             print(f"Segmentation for image slice {test_index} of image {k} with model {model_v} is saved")

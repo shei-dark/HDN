@@ -30,15 +30,15 @@ parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
 parser.add_argument("--sample_ratio", type=int, default=1000)
-parser.add_argument("--num_latents", type=int, default=3)
-parser.add_argument("--blocks_per_layer", type=int, default=5)
+parser.add_argument("--num_latents", type=int, default=2)
+parser.add_argument("--blocks_per_layer", type=int, default=3)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-2)
 parser.add_argument("--gamma", type=float, default=1e-2)
-parser.add_argument("--initial_mask_size", type=int, default=1)
-parser.add_argument("--final_mask_size", type=int, default=1)
-parser.add_argument("--initial_label_size", type=int, default=1)
-parser.add_argument("--final_label_size", type=int, default=1)
+parser.add_argument("--initial_mask_size", type=int, default=3)
+parser.add_argument("--final_mask_size", type=int, default=3)
+parser.add_argument("--initial_label_size", type=int, default=3)
+parser.add_argument("--final_label_size", type=int, default=3)
 parser.add_argument("--step_interval", type=int, default=10)
 parser.add_argument("--load_checkpoint", type=bool, default=False)
 parser.add_argument("--checkpoint", type=str, default="")
@@ -61,7 +61,7 @@ checkpoint = args.checkpoint
 noiseModel = None
 
 # Training-specific
-batch_size = 512
+batch_size = 1024
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
@@ -91,8 +91,8 @@ stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 4  # number of components for prior
-n_classes = 4  # number of classes in the dataset
+n_components = 3  # number of components for prior
+n_classes = 3  # number of classes in the dataset
 # train data
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/"
 train_img_paths = sorted(glob(data_dir + "img/train/*.tif"))
@@ -104,8 +104,8 @@ val_images = tiff.imread(val_img_paths).astype(np.float32)
 val_gt_paths = sorted(glob(data_dir + "gt/val/*.tif"))
 val_labels = tiff.imread(val_gt_paths)
 
-# train_labels[train_labels == 3] = 1
-# val_labels[val_labels == 3] = 1
+train_labels[train_labels == 3] = 1
+val_labels[val_labels == 3] = 1
 
 # compute mean and std of the data
 # all_elements = .flatten()

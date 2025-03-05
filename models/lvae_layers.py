@@ -105,31 +105,31 @@ class TopDownLayer(nn.Module):
 
         # Define stochastic block with convolutions
         # Select stochastic block based on the argument
-        # if is_top_layer and stochastic_block_type == "mixture":
-        self.stochastic = StochasticConvBlock(
-            c_in=n_filters,
-            c_vars=z_dim,
-            c_out=n_filters,
-            conv_mult=conv_mult,
-            n_components=self.n_components,
-            top_layer=is_top_layer,
-            conditional=conditional,
-            condition_type=condition_type,
-            block_type=stochastic_block_type,
-            training_mode=training_mode,
-            labeled_ratio=labeled_ratio,
-        )
-        # else:
-        #     self.stochastic = StochasticConvBlock(
-        #         c_in=n_filters,
-        #         c_vars=z_dim,
-        #         c_out=n_filters,
-        #         conv_mult=conv_mult,
-        #         top_layer=is_top_layer,
-        #         conditional=conditional,
-        #         condition_type=condition_type,
-        #         n_components=self.n_components,
-        #     )
+        if is_top_layer and stochastic_block_type == "mixture":
+            self.stochastic = StochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                n_components=self.n_components,
+                top_layer=is_top_layer,
+                conditional=conditional,
+                condition_type=condition_type,
+                block_type=stochastic_block_type,
+                training_mode=training_mode,
+                labeled_ratio=labeled_ratio,
+            )
+        else:
+            self.stochastic = StochasticConvBlock(
+                c_in=n_filters,
+                c_vars=z_dim,
+                c_out=n_filters,
+                conv_mult=conv_mult,
+                top_layer=is_top_layer,
+                conditional=conditional,
+                condition_type=condition_type,
+                n_components=self.n_components,
+            )
 
         if not is_top_layer:
 
