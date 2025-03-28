@@ -10,36 +10,41 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
-from boilerplate.dataloader import Custom2DDataset, DynamicSampler
+from boilerplate.dataloader import CustomLightDataset, DynamicSampler
 import training
 from tqdm import tqdm
 import tifffile as tiff
+from glob import glob
+from aicsimageio import AICSImage, imread_dask
+
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/test/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/experiments/test/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="unsupervised")
+parser.add_argument("--mode", type=str, default="supervised")
 parser.add_argument("--labeled_ratio", type=float, default=0.75)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
-parser.add_argument("--sample_ratio", type=int, default=20)
-parser.add_argument("--num_latents", type=int, default=3)
-parser.add_argument("--blocks_per_layer", type=int, default=5)
+parser.add_argument("--sample_ratio", type=int, default=1000)
+parser.add_argument("--num_latents", type=int, default=2)
+parser.add_argument("--blocks_per_layer", type=int, default=3)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-2)
 parser.add_argument("--gamma", type=float, default=1e-2)
-parser.add_argument("--initial_mask_size", type=int, default=1)
-parser.add_argument("--final_mask_size", type=int, default=1)
-parser.add_argument("--initial_label_size", type=int, default=1)
-parser.add_argument("--final_label_size", type=int, default=1)
+parser.add_argument("--initial_mask_size", type=int, default=3)
+parser.add_argument("--final_mask_size", type=int, default=3)
+parser.add_argument("--initial_label_size", type=int, default=3)
+parser.add_argument("--final_label_size", type=int, default=3)
 parser.add_argument("--step_interval", type=int, default=10)
 parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--checkpoint", type=str, default="")
+
 
 args = parser.parse_args()
 use_wandb = True
@@ -48,12 +53,12 @@ patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "segmentation"
+model_name = "experiments"
 directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = directory_path + "segmentation_best_vae.net"
+checkpoint = args.checkpoint
 
 noiseModel = None
 
@@ -83,70 +88,74 @@ lambda_contrastive = 0.5  # weight of the positive pairs in contrastive learning
 # (1-lambda_contrastive is the weight of the negative pairs)
 
 mode = args.mode  # 'supervised' or 'semisupervised' or 'unsupervised'
-labeled_ratio = args.labeled_ratio  # ratio of labeled data in semisupervised mode
+labeled_ratio = args.labeled_ratio
 stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
 assert (conditional == True and condition_type != None) or conditional == False
-n_components = 4  # number of components for prior
-n_classes = 4  # number of classes in the dataset
+n_components = 3  # number of components for prior
+n_classes = 3  # number of classes in the dataset
 # train data
-data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
-keys = ["high_c1", "high_c2", "high_c3"]
 
-img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
-lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
-imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
-lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
-train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
+data_dir = '/group/jug/Enrico/TISSUE_roi/'
+train_dirs = sorted(glob(data_dir + "training/*"))
 
-np.random.seed(42)
-for key in keys:
-    total_samples = imgs[key].shape[0]
+images = []  # Will hold arrays of shape (2, H, W), varying sizes
+labels = []  # Will hold arrays of shape (H, W), varying sizes
 
-    # Create shuffled indices
-    indices = np.arange(total_samples)
-    np.random.shuffle(indices)  # Shuffles in place
+for img_dir in train_dirs:
+    cell_name = img_dir.split('/')[-1]
 
-    # Compute split index
-    split_idx = int(0.8 * total_samples)
+    channel_0_path = f"{img_dir}/{cell_name} - C=0.tif"
+    channel_1_path = f"{img_dir}/{cell_name} - C=1.tif"
+    mask_path = f"{img_dir}/{cell_name}_CELLS.tif"
 
-    # Split the indices
-    train_idx, val_idx = indices[:split_idx], indices[split_idx:]
+    # Lazy load using dask
+    ch0_lazy = imread_dask(channel_0_path)[0, 0, 0]  # assuming STCZYX and you have only one slice
+    ch1_lazy = imread_dask(channel_1_path)[0, 0, 0]
+    mask_lazy = imread_dask(mask_path)[0, 0, 0]
 
-    # Use shuffled indices to assign train/val splits
-    train_images[key] = imgs[key][train_idx]
-    val_images[key] = imgs[key][val_idx]
-    train_labels[key] = lbls[key][train_idx]
-    val_labels[key] = lbls[key][val_idx]
+    # Compute arrays only when necessary
+    ch0 = ch0_lazy.compute().astype(np.uint16)
+    ch1 = ch1_lazy.compute().astype(np.uint16)
+    mask = mask_lazy.compute().astype(np.uint16)
 
-valid_train = {}
-valid_val = {}
+    stacked_channels = np.stack([ch0, ch1], axis=0)
 
-for key in tqdm(keys, desc="filtering out outside of the cell"):
-    valid_indices = ~np.all(train_labels[key] == -1, axis=(1, 2))
-    train_images[key] = train_images[key][valid_indices]
-    train_labels[key] = train_labels[key][valid_indices]
-    valid_train[key] = valid_indices
+    images.append(stacked_channels)
+    labels.append(mask)
 
-    valid_indices = ~np.all(val_labels[key] == -1, axis=(1, 2))
-    val_images[key] = val_images[key][valid_indices]
-    val_labels[key] = val_labels[key][valid_indices]
-    valid_val[key] = valid_indices
+print(f"Images loaded (lazy): {len(images)}")
+print(f"Shape of first lazy-loaded image: {images[0].shape}")
+data_dir = "/group/jug/Enrico/TISSUE/"
+train_img_paths = sorted(glob(data_dir + "training/*"))
+train_images = tiff.imread(train_img_paths).astype(np.float32)
+train_gt_paths = sorted(glob(data_dir + "gt/train/*.tif"))
+train_labels = tiff.imread(train_gt_paths)
+val_img_paths = sorted(glob(data_dir + "validation/*.tif"))
+val_images = tiff.imread(val_img_paths).astype(np.float32)
+val_gt_paths = sorted(glob(data_dir + "gt/val/*.tif"))
+val_labels = tiff.imread(val_gt_paths)
+
+train_labels[train_labels == 3] = 1
+val_labels[val_labels == 3] = 1
 
 # compute mean and std of the data
-all_elements = np.concatenate([train_images[key].flatten() for key in keys])
-data_mean = np.mean(all_elements)
-data_std = np.std(all_elements)
+# all_elements = .flatten()
+data_mean_cell = np.mean(train_images[:,0,:,:])
+data_std_cell = np.std(train_images[:,0,:,:])
+data_mean_nuclei = np.mean(train_images[:,1,:,:])
+data_std_nuclei = np.std(train_images[:,1,:,:])
 
 sample_ratio = args.sample_ratio
 
 # normalizing the data
-for key in tqdm(keys, "Normalizing data"):
-    train_images[key] = (train_images[key] - data_mean) / data_std
-    val_images[key] = (val_images[key] - data_mean) / data_std
+train_images[:,0,:,:] = (train_images[:,0,:,:] - data_mean_cell) / data_std_cell
+train_images[:,1,:,:] = (train_images[:,1,:,:] - data_mean_nuclei) / data_std_nuclei
+val_images[:,0,:,:] = (val_images[:,0,:,:] - data_mean_cell) / data_std_cell
+val_images[:,1,:,:] = (val_images[:,1,:,:] - data_mean_nuclei) / data_std_nuclei
 
-train_set = Custom2DDataset(
+train_set = CustomLightDataset(
     images=train_images,
     labels=train_labels,
     patch_size=patch_size,
@@ -158,7 +167,7 @@ train_set = Custom2DDataset(
     ratio=labeled_ratio,
 )
 
-val_set = Custom2DDataset(
+val_set = CustomLightDataset(
     images=val_images,
     labels=val_labels,
     patch_size=patch_size,
@@ -169,44 +178,33 @@ val_set = Custom2DDataset(
     ignore_lbl=-1,
     ratio=labeled_ratio,
 )
-print(f"Train set: {len(train_set)}, Val set: {len(val_set)}")
-print(
-    f"unrecognized: {len(train_set.patches_by_label[0])}, unrecognized: {len(val_set.patches_by_label[0])}"
-)
-print(
-    f"nucleus: {len(train_set.patches_by_label[1])}, nucleus: {len(val_set.patches_by_label[1])}"
-)
-print(
-    f"granule: {len(train_set.patches_by_label[2])}, granule: {len(val_set.patches_by_label[2])}"
-)
-print(
-    f"mitochondria: {len(train_set.patches_by_label[3])}, mitochondria: {len(val_set.patches_by_label[3])}"
-)
 
-train_sampler = DynamicSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
-val_sampler = DynamicSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+print(f'Train set: {len(train_set)}, Val set: {len(val_set)}')
+print(f"background: {len(train_set.patches_by_label[0])}, background: {len(val_set.patches_by_label[0])}")
+print(f"cell: {len(train_set.patches_by_label[1])}, cell: {len(val_set.patches_by_label[1])}")
+print(f"nuclei: {len(train_set.patches_by_label[2])}, nuclei: {len(val_set.patches_by_label[2])}")
 
-train_loader = DataLoader(
-    train_set, sampler=train_sampler, num_workers=8, prefetch_factor=4, pin_memory=True
-)
-val_loader = DataLoader(
-    val_set, sampler=val_sampler, num_workers=8, prefetch_factor=4, pin_memory=True
-)
+train_sampler = DynamicSampler(train_set, batch_size)
+val_sampler = DynamicSampler(val_set, batch_size)
+
+train_loader = DataLoader(train_set, sampler=train_sampler, num_workers=8, prefetch_factor=4, pin_memory=True)
+val_loader = DataLoader(val_set, sampler=val_sampler, num_workers=8, prefetch_factor=4, pin_memory=True)
 
 img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
-    model.update_mode("unsupervised")
+    model.update_mode("semisupervised")
 
 else:
     model = LadderVAE(
         z_dims=z_dims,
         blocks_per_layer=blocks_per_layer,
-        data_mean=data_mean,
-        data_std=data_std,
+        data_mean=data_mean_cell,
+        data_std=data_std_cell,
         noiseModel=noiseModel,
         conv_mult=2,
+        color_ch=2,
         device=device,
         batchnorm=batchnorm,
         free_bits=free_bits,

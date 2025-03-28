@@ -72,7 +72,7 @@ pred_dirs = [
     "/group/jug/Sheida/HVAE/segmentation/19/seg_supervised/crop_00/",
     "/group/jug/Sheida/HVAE/segmentation/19/seg_supervised/crop_10/"
 ]
-pred_dirs = "/facility/imganfacusers/Sheida/Zerial_unet/inference/output/zerial_unet_small/results/zerial_unet_small_1/per_image_binarized/"
+pred_dirs = "/facility/imganfacusers/Sheida/Zerial_unet/full_unet/output/zerial_unet_2D_large/results/zerial_unet_2D_large_1/per_image_binarized/"
 
 # Load and concatenate ground truth stacks
 gt_stacks = [tiff.imread(path).astype(np.int16) for path in gt_paths]

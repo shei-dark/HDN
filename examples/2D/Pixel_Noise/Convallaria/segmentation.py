@@ -5,7 +5,6 @@ sys.path.append("/home/sheida.rahnamai/GIT/HDN/")
 import torch
 import numpy as np
 from tqdm import tqdm
-from sklearn.cluster import MiniBatchKMeans
 
 # from lib.dataloader import CustomTestDataset
 from boilerplate.dataloader import CustomTestDataset
