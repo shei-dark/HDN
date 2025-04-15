@@ -18,8 +18,5 @@ conda activate seg
 
 # Set parameters
 DIRECTORY_PATH='/group/jug/Sheida/HVAE/segmentation/06/'
-LOAD_CHECKPOINT=True
-
-
 
 python Training_BetaSeg.py --directory_path $DIRECTORY_PATH

@@ -20,11 +20,11 @@ device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/test/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="unsupervised")
-parser.add_argument("--labeled_ratio", type=float, default=0.75)
+parser.add_argument("--labeled_ratio", type=float, default=0)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
@@ -39,7 +39,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--load_checkpoint", type=bool, default=True)
 
 args = parser.parse_args()
 use_wandb = True
@@ -58,7 +58,7 @@ checkpoint = directory_path + "segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 1024
+batch_size = 256
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
@@ -96,8 +96,8 @@ keys = ["high_c1", "high_c2", "high_c3"]
 
 img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
 lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
-imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
-lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
+imgs = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, img_paths)}
+lbls = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, lbl_paths)}
 train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
 
 np.random.seed(42)
@@ -137,7 +137,7 @@ for key in tqdm(keys, desc="filtering out outside of the cell"):
 # compute mean and std of the data
 all_elements = np.concatenate([train_images[key].flatten() for key in keys])
 data_mean = np.mean(all_elements)
-data_std = np.std(all_elements)
+data_std = np.std(all_elements.astype(np.float32))
 
 sample_ratio = args.sample_ratio
 
