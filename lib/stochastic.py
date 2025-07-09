@@ -57,7 +57,7 @@ class StochasticConvBlock(nn.Module):
                     conv_type(c_in, c_vars, kernel, padding=pad),
                     nn.ReLU(),
                     nn.Flatten(),
-                    nn.Linear(c_vars * 8 * 8, n_components), #TODO: Fix this hardcoded value
+                    nn.Linear(c_vars * 8 * 8, n_components),
                 )
                 self.qz_xy = nn.Sequential(
                     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
@@ -89,139 +89,128 @@ class StochasticConvBlock(nn.Module):
             self.training_mode = mode
 
     def forward(self, label, p_params, q_params):
+
         self.batch_size = q_params.shape[0]
-        self.set_small_batch_size()
-
-        # Split prior parameters
-        p_mu, p_std = self.process_params(p_params)
-        p_components = self.create_components(p_mu, p_std)
-
-        if not self.top_layer or (self.block_type == "normal" and not self.conditional):
-            out, data = self.process_standard_layer(q_params, p_components)
-        else:
-            if self.conditional:
-                out, data = self.process_conditional_top_layer(q_params, p_components, label)
-            else:
-                out, data = self.process_unconditional_top_layer(q_params, p_components, label)
-
-        return out, data
-
-
-    def set_small_batch_size(self):
         if self.training_mode == 'supervised':
             self.small_batch_size = self.batch_size
         elif self.training_mode == 'semisupervised':
             self.small_batch_size = int(self.batch_size * self.labeled_ratio)
-        else:
+        elif self.training_mode == 'unsupervised':
             self.small_batch_size = self.batch_size
 
+        p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
+        p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
+        p_lv = torch.clamp(p_lv, min=-10.0, max=10.0)  # Clamp p_lv
+        p_std = torch.where(p_lv < 0, (p_lv / 2).exp(), 1 + p_lv)
 
-    def process_params(self, params):
-        mu, lv = torch.chunk(params, 2, dim=1)
-        mu = torch.clamp(mu, -10.0, 10.0)
-        lv = torch.clamp(lv, -10.0, 10.0)
-        std = torch.where(lv < 0, (lv / 2).exp(), 1 + lv)
-        return mu, std
-
-
-    def create_components(self, mu, std):
         if self.block_type == "mixture":
-            mu_chunks = mu.chunk(self.n_components, dim=1)
-            std_chunks = std.chunk(self.n_components, dim=1)
-            return [Normal(m, s) for m, s in zip(mu_chunks, std_chunks)]
+            p_mu_chunks = p_mu.chunk(self.n_components, dim=1)
+            p_std_chunks = p_std.chunk(self.n_components, dim=1)
         else:
-            return [Normal(mu, std)]
+            p_mu_chunks = [p_mu]
+            p_std_chunks = [p_std]
+        p_components = []
+        y = None
+        cross_entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
 
 
-    def process_standard_layer(self, q_params, p_components):
-        q_params_processed = self.conv_in_q(q_params)
-        q_mu, q_std = self.process_params(q_params_processed)
-        q = Normal(q_mu, q_std)
+        for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
+            p_components.append(Normal(mu_chunk, std_chunk))
 
-        z = q.rsample()
-        out = self.conv_out(z)
-        kl = self._compute_kl(q, p_components)
+        if not self.top_layer or (self.block_type == "normal" and not self.conditional):
+            # Define q(z)
+            q_params = self.conv_in_q(q_params)
+            q_mu, q_lv = q_params.chunk(2, dim=1)
+            q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
+            q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
+            q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
+            q = Normal(q_mu, q_std)
 
-        return out, self.construct_data_dict(z, q_mu, q_params_processed, p_components, q, kl)
+            z = q.rsample()
+            out = self.conv_out(z)
+            kl = self._compute_kl(q, p_components)
+            logprob_p = self._compute_logprob(p_components, z)
+            logprob_q = self._compute_logprob(q, z)
+        else:  # Top layer
+            if self.conditional:
+                qy_logits = self.qy_x(q_params)
+                # FiLM layer
+                gamma = self.gamma_layer(qy_logits)
+                beta = self.beta_layer(qy_logits)
+                gamma = gamma.unsqueeze(-1).unsqueeze(-1)
+                beta = beta.unsqueeze(-1).unsqueeze(-1)
+                x_modulated = gamma * q_params + beta
+                qz_params = self.qz_xy(x_modulated)
+                q_mu, q_lv = torch.chunk(qz_params, 2, dim=1)
+                q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
+                q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
+                q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
+                q = Normal(q_mu, q_std)
+                z = q.rsample()
 
+                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                self._update_temperature()
+                y_pred = y.argmax(dim=1)
 
-    def process_conditional_top_layer(self, q_params, p_components, label):
-        qy_logits = self.qy_x(q_params)
-        x_modulated = self.apply_film(q_params, qy_logits)
+                js_div = self._compute_js_div(y)
+                kl = self._compute_kl(q, p_components, label, y_pred)
+                kl = kl + js_div
+                entropy = self._compute_entropy(y)
+                if label is not None:
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                logprob_p = self._compute_logprob(p_components, z)
+                logprob_q = self._compute_logprob(q, z)
+                out = self.conv_out(z)
+            
+            else:
+                q_params = self.conv_in_q(q_params)
+                y_logits = self.y_logits(q_params)
+                q_mu, q_lv = q_params.chunk(2, dim=1)
+                q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
+                q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
+                q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
+                q_mu_chunks = q_mu.chunk(self.n_components, dim=1)
+                q_std_chunks = q_std.chunk(self.n_components, dim=1)
+                q_components = []
+                for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
+                    q_components.append(Normal(mu_chunk, std_chunk))
+                if label is not None:
+                    z_samples = []
+                    for i, comp in enumerate(q_components):
+                        mask = (label == i).float().view(self.batch_size, *[1] * (q_mu.dim() - 1))
+                        mask = mask.to(q_mu.device)
+                        z_samples.append(comp.rsample() * mask)
+                    z = torch.sum(torch.stack(z_samples), dim=0)
+                else:
+                    y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                    self._update_temperature()
+                    y_pred = y.argmax(dim=1)
+                    for i, comp in enumerate(q_components):
+                        mask = (y_pred == i).float().view(self.batch_size, *[1] * (q_mu.dim() - 1))
+                        mask = mask.to(q_mu.device)
+                        z_samples.append(comp.rsample() * mask)
+                    
+                out = self.conv_out(z)
+                kl = self._compute_kl(q, p_components)
+                logprob_p = self._compute_logprob(p_components, z)
+                logprob_q = self._compute_logprob(q, z)
 
-        qz_params = self.qz_xy(x_modulated)
-        q_mu, q_std = self.process_params(qz_params)
-        q = Normal(q_mu, q_std)
-
-        z = q.rsample()
-        y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-        self._update_temperature()
-
-        kl = self.compute_conditional_kl(q, p_components, label, y)
-        entropy = self._compute_entropy(y)
-        cross_entropy = self._compute_cross_entropy(qy_logits, label) if label is not None else torch.tensor(0., device=self.device)
-
-        out = self.conv_out(z)
-
-        return out, self.construct_data_dict(z, q_mu, qz_params, p_components, q, kl, y, entropy, cross_entropy)
-
-
-    def process_unconditional_top_layer(self, q_params, p_components, label):
-        q_params_processed = self.conv_in_q(q_params)
-        y_logits = self.y_logits(q_params_processed)
-
-        q_mu, q_std = self.process_params(q_params_processed)
-        q_components = self.create_components(q_mu, q_std)
-
-        z = self.sample_z_unconditional(q_components, y_logits, label)
-        out = self.conv_out(z)
-
-        kl = self._compute_kl(q_components, p_components)
-
-        return out, self.construct_data_dict(z, q_mu, q_params_processed, p_components, q_components, kl)
-
-
-    def apply_film(self, x, logits):
-        gamma = self.gamma_layer(logits).unsqueeze(-1).unsqueeze(-1)
-        beta = self.beta_layer(logits).unsqueeze(-1).unsqueeze(-1)
-        return gamma * x + beta
-
-
-    def sample_z_unconditional(self, q_components, y_logits, label):
-        z_samples = []
-        if label is not None:
-            for i, comp in enumerate(q_components):
-                mask = (label == i).float().view(self.batch_size, *[1]*(comp.mean.dim()-1)).to(comp.mean.device)
-                z_samples.append(comp.rsample() * mask)
-        else:
-            y = F.gumbel_softmax(y_logits, tau=self.temperature, hard=False)
-            self._update_temperature()
-            y_pred = y.argmax(dim=1)
-            for i, comp in enumerate(q_components):
-                mask = (y_pred == i).float().view(self.batch_size, *[1]*(comp.mean.dim()-1)).to(comp.mean.device)
-                z_samples.append(comp.rsample() * mask)
-
-        return torch.sum(torch.stack(z_samples), dim=0)
-
-
-    def construct_data_dict(self, z, mu, params, p_components, q, kl, y=None, entropy=None, cross_entropy=None):
-        logprob_p = self._compute_logprob(p_components, z)
-        logprob_q = self._compute_logprob(q, z)
-
-        return {
+        data = {
             "z": z,
-            "p_params": params,
-            "q_params": params,
+            "p_params": p_params,
+            "q_params": q_params,
             "logprob_p": logprob_p,
             "logprob_q": logprob_q,
             "kl": kl,
-            "mu": mu,
-            "lv": None,  # Add logic if needed
+            "mu": q_mu,
+            "lv": q_lv,
             "pi": y,
-            "cross_entropy": cross_entropy or torch.tensor(0., device=self.device),
-            "entropy": entropy or torch.tensor(0., device=self.device),
+            "cross_entropy": cross_entropy,
+            "entropy": entropy,
         }
 
+        return out, data
 
     def _update_temperature(self):
         self.temperature = max(0.5, self.temperature * 0.999)

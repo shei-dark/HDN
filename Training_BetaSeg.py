@@ -20,11 +20,11 @@ device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/wo_BN/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="unsupervised")
-parser.add_argument("--labeled_ratio", type=float, default=0)
+parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
@@ -39,7 +39,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=True)
+parser.add_argument("--load_checkpoint", type=bool, default=False)
 
 args = parser.parse_args()
 use_wandb = True
@@ -58,13 +58,13 @@ checkpoint = directory_path + "segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 256
+batch_size = 2048
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
 blocks_per_layer = args.blocks_per_layer
-batchnorm = True
+batchnorm = False
 free_bits = 0.0
 
 alpha = args.alpha  # weight of the inpainting loss

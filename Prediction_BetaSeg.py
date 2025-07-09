@@ -34,9 +34,9 @@ print(test_img_path)
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
-img_idx = list(range(142, 1016))
+img_idx = [150]
 model_versions = ["06"] #TODO
-batch_size = 2048
+batch_size = 512
 
 max_step = len(img_idx) * len(model_versions)
 step = 0
@@ -63,7 +63,7 @@ for model_v in model_versions:
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=8,
+            num_workers=0,
             pin_memory=True,
         )
         print(f"Processing image slice {test_index} with model version {model_v}")

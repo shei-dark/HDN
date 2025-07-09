@@ -99,6 +99,7 @@ class Custom2DDataset(Dataset):
                         self.sampling_ratio,
                         replace=False,
                     )
+                
 
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
@@ -199,9 +200,9 @@ class Custom2DDataset(Dataset):
         ]
         center_label = unique_label_area[0, 0]  # Valid by definition of valid_patches
         return (
-            torch.tensor(patch).unsqueeze(0),
-            torch.tensor(center_label),
-            torch.tensor(patch_label).unsqueeze(0),
+            torch.tensor(patch, dtype=torch.float32).unsqueeze(0),
+            torch.tensor(center_label, dtype=torch.float16),
+            torch.tensor(patch_label, dtype=torch.float16).unsqueeze(0),
         )
 
     def _get_random_patch(self):
@@ -718,6 +719,54 @@ class CustomTestDataset(Dataset):
 
         return patch
 
+
+class LabeledPatchDataset(Dataset):
+    def __init__(self, image, label_map, patch_size=(64, 64), num_per_class=100, classes=[0, 1, 2, 3]):
+        """
+        Extracts 2D patches centered on labeled pixels from a 3D image.
+
+        Args:
+            image (ndarray): 3D image of shape (D, H, W).
+            label_map (ndarray): 3D label map of same shape as image.
+            patch_size (tuple): (H, W) patch size to extract.
+            num_per_class (int): Number of patches to extract per class.
+            classes (list): List of class labels to sample.
+        """
+        assert image.shape == label_map.shape, "Image and label_map must have same shape"
+        self.image = image
+        self.label_map = label_map
+        self.patch_size = patch_size
+        self.classes = classes
+        self.num_per_class = num_per_class
+        self.patches = []
+
+        ph, pw = patch_size
+        margin_h, margin_w = ph // 2, pw // 2
+
+        D, H, W = image.shape
+
+        for cls in classes:
+            coords = np.argwhere(label_map == cls)
+            # Remove border cases
+            valid_coords = [
+                (z, y, x) for z, y, x in coords
+                if margin_h <= y < H - margin_h and margin_w <= x < W - margin_w
+            ]
+            if len(valid_coords) < num_per_class:
+                print(f"⚠️ Warning: Not enough samples for class {cls}, using {len(valid_coords)}")
+            selected = np.random.choice(len(valid_coords), min(num_per_class, len(valid_coords)), replace=False)
+            for i in selected:
+                self.patches.append((valid_coords[i], cls))
+
+    def __len__(self):
+        return len(self.patches)
+
+    def __getitem__(self, idx):
+        (z, y, x), cls = self.patches[idx]
+        ph, pw = self.patch_size
+        half_h, half_w = ph // 2, pw // 2
+        patch = self.image[z, y - half_h + 1 : y + half_h + 1, x - half_w + 1 : x + half_w + 1]
+        return torch.tensor(patch, dtype=torch.float32).unsqueeze(0), cls, (z, y, x)
 
 class CombinedCustom3DDataset(Custom3DDataset):
     """
