@@ -19,11 +19,14 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
+
+parser.add_argument("--image", type=str, help="Path to input image")
+parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/wo_BN/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--mode", type=str, default="unsupervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
@@ -39,9 +42,25 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--load_checkpoint", type=bool, default=True)
 
 args = parser.parse_args()
+
+# If --image and --labels are provided, use them directly
+if args.image and args.labels:
+    imgs = {"plugin": tiff.imread(args.image).astype(np.float16)}
+    lbls = {"plugin": tiff.imread(args.labels).astype(np.float16)}
+    keys = ["plugin"]
+else:
+    # fallback to hardcoded files
+    data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
+    keys = ["high_c1", "high_c2", "high_c3"]
+    img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys]
+    lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
+    imgs = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, img_paths)}
+    lbls = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, lbl_paths)}
+
+
 use_wandb = True
 
 patch_size = 64
@@ -53,12 +72,12 @@ directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = directory_path + "segmentation_best_vae.net"
+checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 
 noiseModel = None
 
 # Training-specific
-batch_size = 2048
+batch_size = 1024
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
@@ -169,19 +188,19 @@ val_set = Custom2DDataset(
     ignore_lbl=-1,
     ratio=labeled_ratio,
 )
-print(f"Train set: {len(train_set)}, Val set: {len(val_set)}")
-print(
-    f"unrecognized: {len(train_set.patches_by_label[0])}, unrecognized: {len(val_set.patches_by_label[0])}"
-)
-print(
-    f"nucleus: {len(train_set.patches_by_label[1])}, nucleus: {len(val_set.patches_by_label[1])}"
-)
-print(
-    f"granule: {len(train_set.patches_by_label[2])}, granule: {len(val_set.patches_by_label[2])}"
-)
-print(
-    f"mitochondria: {len(train_set.patches_by_label[3])}, mitochondria: {len(val_set.patches_by_label[3])}"
-)
+# print(f"Train set: {len(train_set)}, Val set: {len(val_set)}")
+# print(
+#     f"unrecognized: {len(train_set.patches_by_label[0])}, unrecognized: {len(val_set.patches_by_label[0])}"
+# )
+# print(
+#     f"nucleus: {len(train_set.patches_by_label[1])}, nucleus: {len(val_set.patches_by_label[1])}"
+# )
+# print(
+#     f"granule: {len(train_set.patches_by_label[2])}, granule: {len(val_set.patches_by_label[2])}"
+# )
+# print(
+#     f"mitochondria: {len(train_set.patches_by_label[3])}, mitochondria: {len(val_set.patches_by_label[3])}"
+# )
 
 train_sampler = DynamicSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
 val_sampler = DynamicSampler(val_set, batch_size, labeled_ratio=labeled_ratio)

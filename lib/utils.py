@@ -13,7 +13,6 @@ import math
 from torch.distributions import kl_divergence
 from torch.distributions.normal import Normal
 
-
 class Interpolate(nn.Module):
     """Wrapper for torch.nn.functional.interpolate."""
 
@@ -392,6 +391,8 @@ def compute_cl_loss(
         labeled_ratio = 0.25
     elif training_mode == 'unsupervised':
         labeled_ratio = 0
+        return compute_unsupervised_cl_loss(mus, labels)
+        
     if prior == "mixture":
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
             mus, labels, margin=margin, labeled_ratio=labeled_ratio
@@ -407,6 +408,102 @@ def compute_cl_loss(
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
     return contrastive_loss
+
+def compute_unsupervised_cl_loss(mus, coords):
+    """
+    Computes unsupervised contrastive loss.
+    This function computes the contrastive loss based on the latent representation distances
+    and the distance of the patches in pixel space.
+    It uses the coordinates of the patches to calculate the distances in pixel space.
+    Rank and extract specific patch pairs:
+    16 closest in both (pixel + latent) → positive
+    16 farthest in both (pixel + latent) → negative
+    16 close in pixel but far in latent → negative
+    16 far in pixel but close in latent → positive
+
+
+    Args:
+        mus (list): List of latent representations.
+        coords (torch.Tensor): Coordinates of the patches.
+    """
+    B = coords.size(0)
+    flat = [m.view(m.size(0), -1) for m in mus]
+    z = torch.cat(flat, dim=1)
+    
+    latent_dist = torch.cdist(z, z, p=2)
+    pixel_dist = torch.cdist(coords.float(), coords.float(), p=2)
+    top_k = int(B / 128)
+
+    latent_high_pixel_low, both_high, both_low, latent_low_pixel_high = get_contrastive_pairs(pixel_dist, latent_dist, top_k=top_k)
+    positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
+    negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
+    m = 50
+    target = torch.ones_like(positives)
+    
+    return F.margin_ranking_loss(negatives, positives, target, margin=m)
+
+def compute(d, positive=True):
+    return (d.pow(2).mean() if positive else F.relu(1 - d).pow(2).mean())
+
+def get_contrastive_pairs(pixel_dist, latent_dist, top_k):
+    N = pixel_dist.shape[0]
+    # Extract upper triangle (i < j)
+    pairs = [(i, j) for i in range(N) for j in range(i + 1, N)]
+    pixel_vals = torch.tensor([pixel_dist[i, j] for i, j in pairs], device=pixel_dist.device)
+    latent_vals = torch.tensor([latent_dist[i, j] for i, j in pairs], device=latent_dist.device)
+    q = get_percentile(pixel_vals, latent_vals, k=top_k)
+    
+    latent_high_pixel_low = [latent_dist[j] for j in [pairs[i] for i in q['top_left']]]  # High latent, low pixel
+    both_high = [latent_dist[j] for j in [pairs[i] for i in q['top_right']]]  # High in both
+    both_low = [latent_dist[j] for j in [pairs[i] for i in q['bottom_left']]]  # Low in both
+    latent_low_pixel_high = [latent_dist[j] for j in [pairs[i] for i in q['bottom_right']]]  # Low latent, high pixel
+    
+    return both_low, both_high, latent_high_pixel_low, latent_low_pixel_high
+
+def get_percentile(pixel_vals, latent_vals, k=4):
+    
+    x_10 = pixel_vals.kthvalue(int(0.10 * len(pixel_vals)))[0]
+    x_25 = pixel_vals.kthvalue(int(0.25 * len(pixel_vals)))[0]
+    x_75 = pixel_vals.kthvalue(int(0.75 * len(pixel_vals)))[0]
+    x_90 = pixel_vals.kthvalue(int(0.90 * len(pixel_vals)))[0]
+
+    y_05 = latent_vals.kthvalue(int(0.05 * len(latent_vals)))[0]
+    y_15 = latent_vals.kthvalue(int(0.15 * len(latent_vals)))[0]
+    y_85 = latent_vals.kthvalue(int(0.85 * len(latent_vals)))[0]
+    y_95 = latent_vals.kthvalue(int(0.95 * len(latent_vals)))[0]
+
+    quadrants = {}
+
+    # Define inter-percentile masks
+    masks = {
+        "top_left":     (pixel_vals >= x_10) & (pixel_vals <= x_25) & (latent_vals >= y_85) & (latent_vals <= y_95),
+        "top_right":    (pixel_vals >= x_75) & (pixel_vals <= x_90) & (latent_vals >= y_85) & (latent_vals <= y_95),
+        "bottom_left":  (pixel_vals >= x_10) & (pixel_vals <= x_25) & (latent_vals >= y_05) & (latent_vals <= y_15),
+        "bottom_right": (pixel_vals >= x_75) & (pixel_vals <= x_90) & (latent_vals >= y_05) & (latent_vals <= y_15),
+    }
+
+    for name, mask in masks.items():
+        x = pixel_vals[mask]
+        y = latent_vals[mask]
+        indices = torch.arange(len(pixel_vals), device=pixel_vals.device)[mask]
+
+        if x.numel() == 0:
+            print(f"Warning: No points found in {name} quadrant.")
+            quadrants[name] = []
+            continue
+
+        # Sort logic: for top -> highest y, for bottom -> lowest y
+        if name.startswith("top"):
+            sort_key = torch.stack([-y, x], dim=1)
+        else:
+            sort_key = torch.stack([y, x], dim=1)
+
+        x_sort = torch.argsort(sort_key[:, 1], stable=True)
+        yx_sort = torch.argsort(sort_key[x_sort, 0], stable=True)
+        selected = indices[x_sort[yx_sort]][:k]
+        quadrants[name] = selected
+
+    return quadrants
 
 
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):

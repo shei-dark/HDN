@@ -150,26 +150,27 @@ class Custom2DDataset(Dataset):
 
             elif self.mode == "unsupervised":
                 # Fetch random patches for all indices
-                random_patches = [self._get_random_patch() for _ in idx]
-                patches, clss, labels = zip(*random_patches)
-                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+                # random_patches = self._get_random_patch(idx)
+                # patches, clss, labels = zip(*random_patches)
+                # return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+                return self._get_random_patch(idx)
 
-            elif self.mode == "semisupervised":
-                labeled_count = int(len(idx) * self.ratio)
-                random_count = len(idx) - labeled_count
+            # elif self.mode == "semisupervised":
+            #     labeled_count = int(len(idx) * self.ratio)
+            #     random_count = len(idx) - labeled_count
 
-                # Fetch labeled and random patches
-                labeled_indices = idx[:labeled_count]
-                labeled_patches = [
-                    self._get_patch_by_metadata(self.all_patches[i])
-                    for i in labeled_indices
-                ]
-                random_patches = [self._get_random_patch() for _ in range(random_count)]
+            #     # Fetch labeled and random patches
+            #     labeled_indices = idx[:labeled_count]
+            #     labeled_patches = [
+            #         self._get_patch_by_metadata(self.all_patches[i])
+            #         for i in labeled_indices
+            #     ]
+            #     random_patches = self._get_random_patch(random_count)
 
-                # Combine and return
-                all_patches = labeled_patches + random_patches
-                patches, clss, labels = zip(*all_patches)
-                return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
+            #     # Combine and return
+            #     all_patches = labeled_patches + random_patches
+            #     patches, clss, labels = zip(*all_patches)
+            #     return torch.stack(patches), torch.tensor(clss), torch.stack(labels)
 
         else:  # Single index
             if self.mode == "supervised":
@@ -177,14 +178,14 @@ class Custom2DDataset(Dataset):
                 return self._get_patch_by_metadata((key, img_idx, y, x))
 
             elif self.mode == "unsupervised":
-                return self._get_random_patch()
+                return self._get_random_patch(idx)
 
-            elif self.mode == "semisupervised":
-                if idx < len(self.all_patches):
-                    key, img_idx, y, x = self.all_patches[idx]
-                    return self._get_patch_by_metadata((key, img_idx, y, x))
-                else:
-                    return self._get_random_patch()
+            # elif self.mode == "semisupervised":
+            #     if idx < len(self.all_patches):
+            #         key, img_idx, y, x = self.all_patches[idx]
+            #         return self._get_patch_by_metadata((key, img_idx, y, x))
+            #     else:
+            #         return self._get_random_patch()
 
     def _get_patch_by_metadata(self, metadata):
         """Extract a patch dynamically based on metadata."""
@@ -205,7 +206,7 @@ class Custom2DDataset(Dataset):
             torch.tensor(patch_label, dtype=torch.float16).unsqueeze(0),
         )
 
-    def _get_random_patch(self):
+    def _get_random_patch(self, idx):
 
         keys = list(self.images.keys())
         key = random.choice(keys)
@@ -213,15 +214,25 @@ class Custom2DDataset(Dataset):
         img = self.images[key][z]
         lbl = self.labels[key][z]
         height, width = img.shape
-        x = random.randrange(0, width - self.patch_size)
-        y = random.randrange(0, height - self.patch_size)
-        patch = img[y : y + self.patch_size, x : x + self.patch_size]
-        patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-        return (
-            torch.tensor(patch).unsqueeze(0),
-            torch.tensor(-2),
-            torch.tensor(patch_label).unsqueeze(0),
-        )
+        
+        patches = []
+        labels = []
+        centers = []
+        for _ in idx:
+            x = random.randrange(0, width - self.patch_size)
+            y = random.randrange(0, height - self.patch_size)
+            patch = img[y : y + self.patch_size, x : x + self.patch_size]
+            patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+
+            center_y = y + self.patch_size // 2 - 1
+            center_x = x + self.patch_size // 2 - 1
+            centers.append((center_y, center_x))
+            
+            patches.append(torch.tensor(patch, dtype=torch.float32).unsqueeze(0))
+            labels.append(torch.tensor(patch_label, dtype=torch.float16).unsqueeze(0))
+        
+        return (torch.stack(patches), torch.tensor(centers), torch.stack(labels))
+        
 
     def switch_mode(self):
         if self.mode == "supervised":

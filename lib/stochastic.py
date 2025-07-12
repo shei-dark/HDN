@@ -157,7 +157,7 @@ class StochasticConvBlock(nn.Module):
                 kl = self._compute_kl(q, p_components, label, y_pred)
                 kl = kl + js_div
                 entropy = self._compute_entropy(y)
-                if label is not None:
+                if label is not None and self.training_mode != 'unsupervised':
                     cross_entropy = self._compute_cross_entropy(qy_logits, label)
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
@@ -175,7 +175,7 @@ class StochasticConvBlock(nn.Module):
                 q_components = []
                 for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
                     q_components.append(Normal(mu_chunk, std_chunk))
-                if label is not None:
+                if label is not None and self.training_mode != 'unsupervised':
                     z_samples = []
                     for i, comp in enumerate(q_components):
                         mask = (label == i).float().view(self.batch_size, *[1] * (q_mu.dim() - 1))
@@ -227,7 +227,7 @@ class StochasticConvBlock(nn.Module):
                     kl_divergence(q, p_i).mean(dim=(1, 2, 3)) for p_i in p
                 ]
                 kl_divergences = torch.stack(kl_divergences, dim=-1)
-                if label is not None:
+                if label is not None and self.training_mode != 'unsupervised':
                     if self.small_batch_size < self.batch_size:
                         kl = torch.cat(
                             [
