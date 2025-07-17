@@ -10,9 +10,6 @@ from boilerplate import boilerplate
 import wandb
 
 
-wandb.require("core")
-
-
 def train_network(
     model,
     lr,
@@ -199,8 +196,8 @@ def train_network(
                     # Reset accumulated metrics
                     running_metrics = {key: 0 for key in running_metrics}
 
-        print("saving", model_folder + model_name + "_last_vae.net")
-        torch.save(model, model_folder + model_name + "_last_vae.net")
+        print("saving", model_folder + model_name + "_last_vae_7.net")
+        torch.save(model, model_folder + model_name + "_last_vae_7.net")
 
         ### Validation step
         running_validation_loss = []
@@ -278,10 +275,10 @@ def train_network(
 
         if total_epoch_loss_val.item() < 1e-6 + np.min(loss_val_history):
             patience_ = 0
-            print("saving", model_folder + model_name + "_best_vae.net")
-            torch.save(model, model_folder + model_name + "_best_vae.net")
+            print("saving", model_folder + model_name + "_best_vae_7.net")
+            torch.save(model, model_folder + model_name + "_best_vae_7.net")
             torch.save(
-                model.state_dict(), model_folder + model_name + "_best_weights.net"
+                model.state_dict(), model_folder + model_name + "_best_weights_7.net"
             )
         else:
             patience_ += 1

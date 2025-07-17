@@ -389,9 +389,11 @@ def compute_cl_loss(
         labeled_ratio = 1
     elif training_mode == 'semisupervised':
         labeled_ratio = 0.25
+        return compute_semisupervised_cl_loss(mus, labels)
     elif training_mode == 'unsupervised':
         labeled_ratio = 0
         return compute_unsupervised_cl_loss(mus, labels)
+        
         
     if prior == "mixture":
         pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
@@ -408,6 +410,29 @@ def compute_cl_loss(
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
     return contrastive_loss
+
+def compute_semisupervised_cl_loss(mus, labels):
+    """
+    Computes semisupervised contrastive loss.
+    This function computes the contrastive loss based on the latent representation distances
+    and the distance of the patches in pixel space.
+    It uses the coordinates of the patches to calculate the distances in pixel space.
+    Rank and extract specific patch pairs:
+    16 closest in both (pixel + latent) → positive
+    16 farthest in both (pixel + latent) → negative
+    16 close in pixel but far in latent → negative
+    16 far in pixel but close in latent → positive
+
+    Args:
+        mus (list): List of latent representations.
+        labels (torch.Tensor): Labels of the patches.
+        margin (float): Margin for negative pairs.
+        labeled_ratio (float): Ratio of labeled data.
+        prior (str): Type of prior distribution ('normal' or 'mixture').
+    """
+    B = mus[0].size(0)
+    
+    return
 
 def compute_unsupervised_cl_loss(mus, coords):
     """
@@ -435,15 +460,20 @@ def compute_unsupervised_cl_loss(mus, coords):
     top_k = int(B / 128)
 
     latent_high_pixel_low, both_high, both_low, latent_low_pixel_high = get_contrastive_pairs(pixel_dist, latent_dist, top_k=top_k)
-    positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
-    negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
-    m = 50
+    # positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
+    # negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
+    # positives = torch.stack(both_low)  # These are semantically and spatially similar
+    # negatives = torch.stack(both_high)  # These are dissimilar in either space
+    positives = torch.stack(latent_low_pixel_high)  # These are semantically and spatially similar
+    negatives = torch.stack(latent_high_pixel_low)  # These are dissimilar in either space
+    m = 150
     target = torch.ones_like(positives)
     
     return F.margin_ranking_loss(negatives, positives, target, margin=m)
+    # return compute(positives, positive=True) + compute(negatives, positive=False)
 
 def compute(d, positive=True):
-    return (d.pow(2).mean() if positive else F.relu(1 - d).pow(2).mean())
+    return (d.pow(2).mean() if positive else F.relu(100 - d).pow(2).mean())
 
 def get_contrastive_pairs(pixel_dist, latent_dist, top_k):
     N = pixel_dist.shape[0]

@@ -1,7 +1,7 @@
 import sys
 import time
 sys.path.append("../../../")
-sys.path.append("/home/sheida.rahnamai/GIT/HDN/")
+sys.path.append("/home/sheida.rahnamai/GIT/My_Plugin/epsSeg/")
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -18,7 +18,7 @@ device = torch.device("cuda" if use_cuda else "cpu")
 
 
 num_clusters = 4
-patch_size = (1, 64, 64)
+patch_size = (64, 64)
 hierarchy_level = 3
 data_dir = "/group/jug/Sheida/pancreatic beta cells/download/"
 
@@ -37,22 +37,22 @@ print(test_img_path)
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
-img_idx = range(49,1016)
-model_versions = ["02"]
-batch_size = 1024
+img_idx = [626]
+model_versions = ["06"]
+batch_size = 512
 
 
 for test_index in tqdm(img_idx):
     print("Processing test dataset")
     test_dataset = CustomTestDataset(
-        test_images, patch_size=(64, 64), index=test_index, stride=1, model="2D"
+        test_images, patch_size=patch_size, index=test_index, stride=1, model="2D"
     )
     print("Test dataset loaded. Processing test dataloader")
     dataloader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model_supervised/segmentation_best_vae.net")
+        model = torch.load(model_dir + model_v + "/model_unsupervised/segmentation_best_vae.net")
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True
@@ -97,6 +97,6 @@ for test_index in tqdm(img_idx):
         clustered_image = cluster_labels.reshape((num_patches_y, num_patches_x))
 
         
-        tiff.imwrite(f"{model_dir}{model_v}/seg_unsupervised/{test_index}.tif", clustered_image.astype(np.uint8))
+        tiff.imwrite(f"{model_dir}{model_v}/seg/{test_index}_kmeans.tif", clustered_image.astype(np.uint8))
         print(f"Segmentation for image slice {test_index} saved")
         
