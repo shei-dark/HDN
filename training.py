@@ -8,6 +8,8 @@ from tqdm import tqdm
 import torch.backends.cudnn as cudnn
 from boilerplate import boilerplate
 import wandb
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+
 
 
 def train_network(
@@ -113,15 +115,29 @@ def train_network(
         )
         run.config.update(dict(epochs=max_epochs))
         wandb.run.log_code(
-            ("/home/sheida.rahnamai/GIT/HDN/"),
-            include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb"),
+            ("/home/sheida.rahnamai/GIT/My_Plugin/epsSeg/"),
+            include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb" or path.endswith(".sbatch")),
         )
 
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
-        log_interval = 5  # Log every 10 batches
-        running_metrics = {"IP": 0, "KL": 0, "CL": 0, "CE": 0, "EL": 0, "Total": 0}
+        log_interval = 5  # Log every 5 batches
+        running_metrics = {
+            "IP": 0,
+            "KL": 0,
+            "CL": 0,
+            "CE": 0,
+            "EL": 0,
+            "Total": 0,
+            "tp": 0,
+            "tn": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": 0,
+            "recall": 0,
+            "f1": 0,
+        }
         for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
             if not use_wandb:
                 if idx == 5:
@@ -147,13 +163,78 @@ def train_network(
                 x, y, device, model, gaussian_noise_std, amp=amp
             )
 
+            ################################################################
+
+            pairs = [
+                (i, j) for i in range(batch_size) for j in range(i + 1, batch_size)
+            ]
+            quadrants = outputs["q"]
+            z = z.squeeze()
+            center_y, center_x = 31, 31
+            patch_labels = z[:, center_y, center_x]
+
+            quadrant_pair_labels = {}
+
+            for quadrant, pair_indices in quadrants.items():
+                # Extract relevant pairs
+                selected_pairs = [pairs[i] for i in pair_indices.tolist()]
+
+                labels = []
+                for i, j in selected_pairs:
+                    li = patch_labels[i].item()
+                    lj = patch_labels[j].item()
+                    labels.append((li, lj))
+
+                quadrant_pair_labels[quadrant] = labels
+            
+            quadrant_expectation = {
+                'top_left': 0,       # expect dissimilar
+                'top_right': 0,      # expect dissimilar
+                'bottom_left': 1,    # expect similar
+                'bottom_right': 1    # expect similar
+            }
+            
+            y_true = []  # expected similarity: 1 for similar, 0 for dissimilar
+            y_pred = []  # predicted similarity: based on label equality
+            
+            for quadrant, pairs in quadrant_pair_labels.items():
+                expected = quadrant_expectation[quadrant]
+                for label_i, label_j in pairs:
+                    pred = int(label_i == label_j)
+                    y_true.append(expected)
+                    y_pred.append(pred)
+            tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+            precision = precision_score(y_true, y_pred, zero_division=0)
+            recall = recall_score(y_true, y_pred, zero_division=0)
+            f1 = f1_score(y_true, y_pred, zero_division=0)
+            
+            running_metrics["tp"] += tp
+            running_metrics["tn"] += tn
+            running_metrics["fp"] += fp
+            running_metrics["fn"] += fn
+            running_metrics["precision"] += precision
+            running_metrics["recall"] += recall
+            running_metrics["f1"] += f1
+
+            ################################################################
+
             inpainting_loss = outputs["inpainting_loss"]
             kl_loss = outputs["kl_loss"]
-            cl_loss = outputs["cl_loss"] if not torch.isnan(outputs["cl_loss"]) else torch.tensor(0.0, dtype=torch.float32, device=device)
+            cl_loss = (
+                outputs["cl_loss"]
+                if not torch.isnan(outputs["cl_loss"])
+                else torch.tensor(0.0, dtype=torch.float32, device=device)
+            )
             ce = outputs["ce"]
             entropy = outputs["entropy"]
 
-            loss = alpha * inpainting_loss + beta * kl_loss + gamma * cl_loss + ce + entropy
+            loss = (
+                alpha * inpainting_loss
+                + beta * kl_loss
+                + gamma * cl_loss
+                + ce
+                + entropy
+            )
 
             with torch.autograd.set_detect_anomaly(mode=True):
                 scaler.scale(loss).backward()
@@ -168,7 +249,7 @@ def train_network(
             scaler.step(optimizer)
             scaler.update()
             model.increment_global_step()
-            
+
             # scaled_loss = scaler.scale(loss)
             # scaled_loss.backward()
             # scaler.unscale_(optimizer)
@@ -238,7 +319,11 @@ def train_network(
                 val_kl_loss = val_outputs["kl_loss"]
                 val_ce = val_outputs["ce"]
                 val_entropy = val_outputs["entropy"]
-                val_cl_loss = val_outputs["cl_loss"] if not torch.isnan(val_outputs["cl_loss"]) else torch.tensor(0.0, dtype=torch.float32, device=device)
+                val_cl_loss = (
+                    val_outputs["cl_loss"]
+                    if not torch.isnan(val_outputs["cl_loss"])
+                    else torch.tensor(0.0, dtype=torch.float32, device=device)
+                )
 
                 val_loss = (
                     alpha * val_inpainting_loss

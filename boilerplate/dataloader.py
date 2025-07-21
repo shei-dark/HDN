@@ -1,19 +1,218 @@
 import torch
 from torch.utils.data import Dataset, DataLoader, Sampler
 import numpy as np
-import random
 from glob import glob
 import os
 import numpy as np
 import torch
 from tqdm import tqdm
-from random import shuffle
 import torch.nn.functional as F
 import random
 import struct
 from array import array
+from collections import Counter
 
 
+class SemisupervisedDataset(Dataset):
+    def __init__(
+        self,
+        images,
+        labels,
+        patch_size=64,
+        label_size=1,
+        mode='semisupervised',
+        n_classes=4,
+        ignore_lbl=-1,
+        ratio=0.75,
+        indices_dict={},
+        radius=32,
+    ):
+        self.patch_size = patch_size
+        self.label_size = label_size
+        self.half = patch_size // 2 - self.label_size
+        self.images = images
+        self.labels = labels
+        self.ignore_lbl = ignore_lbl
+        self.n_classes = n_classes
+        self.ratio = ratio
+        self.mode = mode
+        self.indices_dict = indices_dict
+        self.radius = radius
+        self.seed = 42
+        self.rng = random.Random(self.seed)
+        self.groups = self._prepare_metadata()
+
+    def _is_valid_coord(self, name, z, y, x, H, W):
+        valid = (
+            self.half <= y < H - self.half - 1 and self.half <= x < W - self.half - 1
+        )
+        in_cell = self.labels[name][z, y, x] != self.ignore_lbl
+        return valid and in_cell
+
+    def _prepare_metadata(self):
+
+        groups = []
+
+        for name, z_list in self.indices_dict.items():
+            img = self.images[name]
+            lbl = self.labels[name]
+            _, H, W = img.shape
+            for z in z_list:
+                stack = lbl[z]
+                used_coords = set()
+                for c in range(self.n_classes):
+                    label_coords = np.argwhere(stack == c)
+                    if c == 1:
+                        if len(label_coords) < 60:
+                            continue
+                        sampled_indices = self.rng.sample(range(len(label_coords)), 60)
+                    else:
+                        if len(label_coords) < 30:
+                            continue
+                        sampled_indices = self.rng.sample(range(len(label_coords)), 30)
+                
+                    label_coords = label_coords[sampled_indices]
+                    
+                    for cy, cx in label_coords:  # try to find a labeled center
+                        if not self._is_valid_coord(name, z, cy, cx, H, W):
+                            continue
+                        used_coords.add((cy, cx))
+                        # find 3 nearby unlabeled coordinates
+                        neighbors = []
+                        tries = 0
+
+                        while len(neighbors) < 3 and tries < 100:
+                            dy = self.rng.randint(-self.radius, self.radius)
+                            dx = self.rng.randint(-self.radius, self.radius)
+                            if dx**2 + dy**2 > self.radius**2 or (dx == 0 and dy == 0):
+                                tries += 1
+                                continue
+                            nx, ny = cx + dx, cy + dy
+                            coord = (ny, nx)
+                            if coord in used_coords:
+                                tries += 1
+                                continue
+                            if self._is_valid_coord(name, z, ny, nx, H, W):
+                                used_coords.add(coord)
+                                neighbors.append(
+                                    {
+                                        "name": name,
+                                        "z": z,
+                                        "y": ny,
+                                        "x": nx,
+                                        "label": int(lbl[z, ny, nx].item()),
+                                    }
+                                )
+                            tries += 1
+
+                        if len(neighbors) == 3:
+                            groups.append(
+                                {
+                                    "anchor": {
+                                        "name": name,
+                                        "z": z,
+                                        "y": cy,
+                                        "x": cx,
+                                        "label": c,
+                                    },
+                                    "neighbors": neighbors,
+                                }
+                            )
+
+        labels = [g["anchor"]["label"] for g in groups]
+        counts = Counter(labels)
+        for k in sorted(counts):
+            print(f"  Class {k}: {counts[k]} samples")
+
+        return groups
+
+    def __len__(self):
+        return len(self.groups)
+
+    def __getitem__(self, index):
+        if isinstance(index, list):
+            samples = [self._get_patch_(i) for i in index]
+
+            # Stack all [4, 1, 64, 64] into one big tensor of shape [4*len(index), 1, 64, 64]
+            all_patches = torch.cat([sample[0] for sample in samples], dim=0)
+
+            return (
+                all_patches,
+                torch.tensor([sample[1] for sample in samples], dtype=torch.long),
+                {
+                    "neighbor_labels": [sample[2]["neighbor_labels"] for sample in samples],
+                    "anchor_meta": [sample[2]["anchor_meta"] for sample in samples],
+                    "neighbor_meta": [sample[2]["neighbor_meta"] for sample in samples],
+                }
+            )
+        else:
+            return self._get_patch_(index)
+
+
+    def _get_patch_(self, idx):
+        group = self.groups[idx]
+        anchor = group["anchor"]
+        neighbors = group["neighbors"]
+
+        name, z, cy, cx = anchor["name"], anchor["z"], anchor["y"], anchor["x"]
+        vol = self.images[name]
+        patches = []
+
+        # Anchor patch (labeled)
+        patch = vol[
+            z, cy - self.half : cy + self.half + 2, cx - self.half : cx + self.half + 2
+        ]
+        patches.append(torch.from_numpy(patch).unsqueeze(0))
+
+        neighbor_labels = []
+        # Unlabeled patches
+        for n in neighbors:
+            px, py = n["x"], n["y"]
+            patch = vol[
+                z,
+                py - self.half : py + self.half + 2,
+                px - self.half : px + self.half + 2,
+            ]
+            patches.append(torch.from_numpy(patch).unsqueeze(0))
+            neighbor_labels.append(n["label"])
+
+        return (
+            torch.stack(patches),  # shape [4, 1, 64, 64]
+            anchor["label"],
+            {
+                "neighbor_labels": torch.tensor(neighbor_labels, dtype=torch.long),
+                "anchor_meta": anchor,
+                "neighbor_meta": neighbors,
+            }
+        )
+# (array([0, 1, 2, 3]), array([72447,  68880,  71135,   69387]))
+# (array([0, 1, 2, 3]), array([422891, 184991, 154659,  83006]))
+
+class AnchorOnlyBatchSampler(Sampler):
+    """
+    Sampler that yields batches of anchor indices only.
+    Each anchor will produce 4 patches (1 labeled + 3 unlabeled neighbors).
+    """
+
+    def __init__(self, anchor_indices, total_batch_size, seed=42, shuffle=True):
+        assert total_batch_size % 4 == 0, "Total batch size must be divisible by 4"
+        self.anchor_batch_size = total_batch_size // 4
+        self.anchor_indices = list(anchor_indices)
+        self.rng = random.Random(seed)
+        self.shuffle = shuffle
+
+    def __iter__(self):
+        indices = self.anchor_indices.copy()
+        if self.shuffle:
+            self.rng.shuffle(indices)
+
+        for i in range(0, len(indices), self.anchor_batch_size):
+            batch = indices[i : i + self.anchor_batch_size]
+            if len(batch) == self.anchor_batch_size:
+                yield batch
+
+    def __len__(self):
+        return len(self.anchor_indices) // self.anchor_batch_size
 class Custom2DDataset(Dataset):
     def __init__(
         self,
@@ -25,7 +224,7 @@ class Custom2DDataset(Dataset):
         n_classes=4,
         sampling_ratio=1,
         ignore_lbl=-1,
-        ratio = 0.75
+        ratio=0.75,
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -75,7 +274,11 @@ class Custom2DDataset(Dataset):
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
+                lbl[
+                    min_offset : -max_offset - self.label_size + 1,
+                    min_offset : -max_offset - self.label_size + 1,
+                ]
+                != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -99,7 +302,6 @@ class Custom2DDataset(Dataset):
                         self.sampling_ratio,
                         replace=False,
                     )
-                
 
                 for idx in sampled_indices:
                     i, j = valid_x[idx], valid_y[idx]
@@ -121,7 +323,7 @@ class Custom2DDataset(Dataset):
                 process_image(lbl, img_idx)
 
         for c in range(self.n_classes):
-            shuffle(patches_by_label[c])
+            random.shuffle(patches_by_label[c])
 
         return all_patches, patches_by_label
 
@@ -214,29 +416,33 @@ class Custom2DDataset(Dataset):
         img = self.images[key][z]
         lbl = self.labels[key][z]
         height, width = img.shape
-        
+
         patches = []
         labels = []
         centers = []
-        for _ in idx:
+        i = 0
+        while i < len(idx):
             x = random.randrange(0, width - self.patch_size)
             y = random.randrange(0, height - self.patch_size)
             patch = img[y : y + self.patch_size, x : x + self.patch_size]
             patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
-
+            if patch_label[31,31] == self.ignore_lbl:
+                continue
             center_y = y + self.patch_size // 2 - 1
             center_x = x + self.patch_size // 2 - 1
+            if (center_y, center_x) in centers:
+                continue
             centers.append((center_y, center_x))
-            
+
             patches.append(torch.tensor(patch, dtype=torch.float32).unsqueeze(0))
             labels.append(torch.tensor(patch_label, dtype=torch.float16).unsqueeze(0))
-        
+            i += 1
         return (torch.stack(patches), torch.tensor(centers), torch.stack(labels))
-        
 
     def switch_mode(self):
         if self.mode == "supervised":
             self.mode = "semisupervised"
+
 
 class CustomLightDataset(Dataset):
     def __init__(
@@ -249,7 +455,7 @@ class CustomLightDataset(Dataset):
         n_classes=4,
         sampling_ratio=1,
         ignore_lbl=-1,
-        ratio=0.75
+        ratio=0.75,
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -289,7 +495,11 @@ class CustomLightDataset(Dataset):
         def process_image(lbl, img_idx):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
+                lbl[
+                    min_offset : -max_offset - self.label_size + 1,
+                    min_offset : -max_offset - self.label_size + 1,
+                ]
+                != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -311,16 +521,14 @@ class CustomLightDataset(Dataset):
                     i, j = valid_x[idx], valid_y[idx]
                     patch_metadata = (img_idx, i, j)
                     if self._centre_consistent(patch_metadata):
-                        all_patches.append(
-                            (img_idx, i - min_offset, j - min_offset)
-                        )
+                        all_patches.append((img_idx, i - min_offset, j - min_offset))
                         patches_by_label[c].append(len(all_patches) - 1)
 
         for img_idx, lbl in enumerate(self.labels):
             process_image(lbl, img_idx)
 
         for c in range(self.n_classes):
-            shuffle(patches_by_label[c])
+            random.shuffle(patches_by_label[c])
 
         return all_patches, patches_by_label
 
@@ -405,7 +613,7 @@ class CustomLightDataset(Dataset):
         )
 
     def _get_random_patch(self):
-        
+
         img_idx = random.randrange(0, len(self.images))
         img = self.images[img_idx]
         lbl = self.labels[img_idx]
@@ -460,7 +668,11 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
         def process_image(lbl, img_idx, key=None):
             """Efficiently extract patches from one image-label pair."""
             valid_x, valid_y = np.where(
-                lbl[min_offset:-max_offset-self.label_size+1, min_offset:-max_offset-self.label_size+1] != self.ignore_lbl
+                lbl[
+                    min_offset : -max_offset - self.label_size + 1,
+                    min_offset : -max_offset - self.label_size + 1,
+                ]
+                != self.ignore_lbl
             )
             valid_x += min_offset
             valid_y += min_offset
@@ -521,7 +733,7 @@ class Custom2DDatasetMarinoLiver(Custom2DDataset):
                 process_image(lbl, img_idx)
 
         for c in range(self.n_classes):
-            shuffle(patches_by_label[c])
+            random.shuffle(patches_by_label[c])
 
         return all_patches, patches_by_label
 
@@ -672,7 +884,7 @@ class CustomTestDataset(Dataset):
             self.depth = index - (patch_size[0] // 2)
         elif model == "2D":
             assert len(patch_size) == 2, "2D model requires a 2D patch size."
-            self.patch_size = (1, *patch_size)# Add a dummy depth for uniform handling
+            self.patch_size = (1, *patch_size)  # Add a dummy depth for uniform handling
             self.depth = index  # Fixed slice for 2D patches
         elif model == "2D_multichannel":
             assert len(patch_size) == 3, "2D model requires a 2D patch size."
@@ -732,7 +944,14 @@ class CustomTestDataset(Dataset):
 
 
 class LabeledPatchDataset(Dataset):
-    def __init__(self, image, label_map, patch_size=(64, 64), num_per_class=100, classes=[0, 1, 2, 3]):
+    def __init__(
+        self,
+        image,
+        label_map,
+        patch_size=(64, 64),
+        num_per_class=100,
+        classes=[0, 1, 2, 3],
+    ):
         """
         Extracts 2D patches centered on labeled pixels from a 3D image.
 
@@ -743,7 +962,9 @@ class LabeledPatchDataset(Dataset):
             num_per_class (int): Number of patches to extract per class.
             classes (list): List of class labels to sample.
         """
-        assert image.shape == label_map.shape, "Image and label_map must have same shape"
+        assert (
+            image.shape == label_map.shape
+        ), "Image and label_map must have same shape"
         self.image = image
         self.label_map = label_map
         self.patch_size = patch_size
@@ -760,12 +981,17 @@ class LabeledPatchDataset(Dataset):
             coords = np.argwhere(label_map == cls)
             # Remove border cases
             valid_coords = [
-                (z, y, x) for z, y, x in coords
+                (z, y, x)
+                for z, y, x in coords
                 if margin_h <= y < H - margin_h and margin_w <= x < W - margin_w
             ]
             if len(valid_coords) < num_per_class:
-                print(f"⚠️ Warning: Not enough samples for class {cls}, using {len(valid_coords)}")
-            selected = np.random.choice(len(valid_coords), min(num_per_class, len(valid_coords)), replace=False)
+                print(
+                    f"⚠️ Warning: Not enough samples for class {cls}, using {len(valid_coords)}"
+                )
+            selected = np.random.choice(
+                len(valid_coords), min(num_per_class, len(valid_coords)), replace=False
+            )
             for i in selected:
                 self.patches.append((valid_coords[i], cls))
 
@@ -776,8 +1002,11 @@ class LabeledPatchDataset(Dataset):
         (z, y, x), cls = self.patches[idx]
         ph, pw = self.patch_size
         half_h, half_w = ph // 2, pw // 2
-        patch = self.image[z, y - half_h + 1 : y + half_h + 1, x - half_w + 1 : x + half_w + 1]
+        patch = self.image[
+            z, y - half_h + 1 : y + half_h + 1, x - half_w + 1 : x + half_w + 1
+        ]
         return torch.tensor(patch, dtype=torch.float32).unsqueeze(0), cls, (z, y, x)
+
 
 class CombinedCustom3DDataset(Custom3DDataset):
     """
@@ -968,7 +1197,7 @@ class BalancedBatchSampler(Sampler):
         # dictionary mapping labels to indices
         self.label_to_indices = dataset.patches_by_label
         for key in self.label_to_indices:
-            shuffle(self.label_to_indices[key])
+            random.shuffle(self.label_to_indices[key])
 
         # Determine number of labels
         self.num_labels = len(self.label_to_indices)
@@ -1033,7 +1262,7 @@ class CombinedBatchSampler(Sampler):
         self.label_to_indices = dataset.patches_by_label
         self.random_indices = range(int(len(dataset) * labeled_ratio), len(dataset))
         for key in self.label_to_indices:
-            shuffle(self.label_to_indices[key])
+            random.shuffle(self.label_to_indices[key])
         self.batch_size = batch_size
         self.small_batch_size = int(batch_size * labeled_ratio)
         self.num_labels = len(self.label_to_indices)
@@ -1117,7 +1346,7 @@ class UnsupervisedSampler(Sampler):
 
 
 class DynamicSampler(Sampler):
-    def __init__(self, dataset, batch_size, labeled_ratio=0.75):
+    def __init__(self, dataset, batch_size, labeled_ratio=0.25):
         self.dataset = dataset
         self.batch_size = batch_size
         self.labeled_ratio = labeled_ratio
@@ -1135,3 +1364,34 @@ class DynamicSampler(Sampler):
 
     def __len__(self):
         return len(self.dataset) // self.batch_size
+
+def ordered_collate_fn(batch):
+    """
+    Batch structure:
+        - First N: anchors
+        - Next 3N: neighbors grouped by anchor
+    """
+    anchor_patches = []
+    anchor_labels = []
+    neighbor_patches = []
+    neighbor_labels = []
+    anchor_meta = []
+    neighbor_meta = []
+
+    for sample in batch:
+        anchor_patches.append(sample[0])  # shape [1, 64, 64]
+        anchor_labels.append(sample["label"])
+        anchor_meta.append(sample["anchor_meta"])
+
+        # neighbors: patches[1:] = 3 unlabeled patches
+        neighbor_patches.extend(sample["patches"][1:])  # 3 x [1, 64, 64]
+        neighbor_labels.extend(sample["neighbor_labels"])  # list of 3
+        neighbor_meta.extend(sample["neighbor_meta"])
+
+    return {
+        "patches": torch.cat(anchor_patches + neighbor_patches, dim=0),  # [4n, 1, 64, 64]
+        "labels": torch.tensor(anchor_labels, dtype=torch.long),         # [n]
+        "neighbor_labels": torch.tensor(neighbor_labels, dtype=torch.long),  # [3n]
+        "anchor_meta": anchor_meta,
+        "neighbor_meta": neighbor_meta,
+    }

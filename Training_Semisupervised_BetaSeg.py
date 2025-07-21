@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
-from boilerplate.dataloader import Custom2DDataset, DynamicSampler
+from boilerplate.dataloader import SemisupervisedDataset, AnchorOnlyBatchSampler, ordered_collate_fn
 import training
 from tqdm import tqdm
 import tifffile as tiff
@@ -25,6 +25,7 @@ parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
     "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
 )
+parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="unsupervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
@@ -76,13 +77,13 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 512
+batch_size = 128
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
 blocks_per_layer = args.blocks_per_layer
-batchnorm = True
+batchnorm = False
 free_bits = 0.0
 
 alpha = args.alpha  # weight of the inpainting loss
@@ -116,44 +117,25 @@ img_paths = [os.path.join(data_dir + key + f"/{key}_source.tif") for key in keys
 lbl_paths = [os.path.join(data_dir + key + f"/{key}_gt.tif") for key in keys]
 imgs = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, img_paths)}
 lbls = {key: tiff.imread(path).astype(np.float16) for key, path in zip(keys, lbl_paths)}
-train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
-
+train_idx, val_idx = {}, {}
 np.random.seed(42)
 for key in keys:
-    total_samples = imgs[key].shape[0]
-
-    # Create shuffled indices
-    indices = np.arange(total_samples)
-    np.random.shuffle(indices)  # Shuffles in place
+    # Create a mask for valid indices where labels are not all -1
+    # -1 indicates outside of the cell
+    
+    valid_indices = np.where(~np.all(lbls[key] == -1, axis=(1, 2)))[0]
+    total_samples = valid_indices.shape[0]
+    np.random.shuffle(valid_indices)  # Shuffles in place
 
     # Compute split index
     split_idx = int(0.8 * total_samples)
 
     # Split the indices
-    train_idx, val_idx = indices[:split_idx], indices[split_idx:]
-
-    # Use shuffled indices to assign train/val splits
-    train_images[key] = imgs[key][train_idx]
-    val_images[key] = imgs[key][val_idx]
-    train_labels[key] = lbls[key][train_idx]
-    val_labels[key] = lbls[key][val_idx]
-
-valid_train = {}
-valid_val = {}
-
-for key in tqdm(keys, desc="filtering out outside of the cell"):
-    valid_indices = ~np.all(train_labels[key] == -1, axis=(1, 2))
-    train_images[key] = train_images[key][valid_indices]
-    train_labels[key] = train_labels[key][valid_indices]
-    valid_train[key] = valid_indices
-
-    valid_indices = ~np.all(val_labels[key] == -1, axis=(1, 2))
-    val_images[key] = val_images[key][valid_indices]
-    val_labels[key] = val_labels[key][valid_indices]
-    valid_val[key] = valid_indices
+    train_idx[key] = valid_indices[:split_idx]
+    val_idx[key] = valid_indices[split_idx:]
 
 # compute mean and std of the data
-all_elements = np.concatenate([train_images[key].flatten() for key in keys])
+all_elements = np.concatenate([imgs[key][train_idx[key]].flatten() for key in keys])
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements.astype(np.float32))
 
@@ -161,48 +143,51 @@ sample_ratio = args.sample_ratio
 
 # normalizing the data
 for key in tqdm(keys, "Normalizing data"):
-    train_images[key] = (train_images[key] - data_mean) / data_std
-    val_images[key] = (val_images[key] - data_mean) / data_std
+    imgs[key] = (imgs[key] - data_mean) / data_std
 
-train_set = Custom2DDataset(
-    images=train_images,
-    labels=train_labels,
+train_set = SemisupervisedDataset(
+    images=imgs,
+    labels=lbls,
     patch_size=patch_size,
     label_size=initial_label_size,
     mode=mode,
     n_classes=n_classes,
-    sampling_ratio=sample_ratio,
     ignore_lbl=-1,
     ratio=labeled_ratio,
+    indices_dict=train_idx,
 )
 
-val_set = Custom2DDataset(
-    images=val_images,
-    labels=val_labels,
+val_set = SemisupervisedDataset(
+    images=imgs,
+    labels=lbls,
     patch_size=patch_size,
     label_size=initial_label_size,
     mode=mode,
     n_classes=n_classes,
-    sampling_ratio=sample_ratio,
     ignore_lbl=-1,
     ratio=labeled_ratio,
+    indices_dict=val_idx,
 )
 
-train_sampler = DynamicSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
-val_sampler = DynamicSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+# train_sampler = DynamicSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
+# val_sampler = DynamicSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
+
+train_sampler = AnchorOnlyBatchSampler(anchor_indices=range(len(train_set)), total_batch_size=batch_size)
+val_sampler = AnchorOnlyBatchSampler(anchor_indices=range(len(val_set)), total_batch_size=batch_size)
+
 
 train_loader = DataLoader(
-    train_set, sampler=train_sampler, num_workers=8, prefetch_factor=4, pin_memory=True
+    train_set, sampler=train_sampler, collate_fn=ordered_collate_fn
 )
 val_loader = DataLoader(
-    val_set, sampler=val_sampler, num_workers=8, prefetch_factor=4, pin_memory=True
+    val_set, sampler=val_sampler, collate_fn=ordered_collate_fn
 )
 
 img_shape = (64, 64)
 
 if load_checkpoint:
     model = torch.load(checkpoint)
-    model.update_mode("unsupervised")
+    model.update_mode("semisupervised")
 
 else:
     model = LadderVAE(

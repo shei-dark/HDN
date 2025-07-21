@@ -459,18 +459,18 @@ def compute_unsupervised_cl_loss(mus, coords):
     pixel_dist = torch.cdist(coords.float(), coords.float(), p=2)
     top_k = int(B / 128)
 
-    latent_high_pixel_low, both_high, both_low, latent_low_pixel_high = get_contrastive_pairs(pixel_dist, latent_dist, top_k=top_k)
-    # positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
-    # negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
+    latent_high_pixel_low, both_high, both_low, latent_low_pixel_high, q = get_contrastive_pairs(pixel_dist, latent_dist, top_k=top_k)
+    positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
+    negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
     # positives = torch.stack(both_low)  # These are semantically and spatially similar
     # negatives = torch.stack(both_high)  # These are dissimilar in either space
-    positives = torch.stack(latent_low_pixel_high)  # These are semantically and spatially similar
-    negatives = torch.stack(latent_high_pixel_low)  # These are dissimilar in either space
+    # positives = torch.stack(latent_low_pixel_high)  # These are semantically and spatially similar
+    # negatives = torch.stack(latent_high_pixel_low)  # These are dissimilar in either space
     m = 150
     target = torch.ones_like(positives)
     
-    return F.margin_ranking_loss(negatives, positives, target, margin=m)
-    # return compute(positives, positive=True) + compute(negatives, positive=False)
+    # return F.margin_ranking_loss(negatives, positives, target, margin=m), q
+    return compute(positives, positive=True) + compute(negatives, positive=False), q
 
 def compute(d, positive=True):
     return (d.pow(2).mean() if positive else F.relu(100 - d).pow(2).mean())
@@ -488,7 +488,7 @@ def get_contrastive_pairs(pixel_dist, latent_dist, top_k):
     both_low = [latent_dist[j] for j in [pairs[i] for i in q['bottom_left']]]  # Low in both
     latent_low_pixel_high = [latent_dist[j] for j in [pairs[i] for i in q['bottom_right']]]  # Low latent, high pixel
     
-    return both_low, both_high, latent_high_pixel_low, latent_low_pixel_high
+    return both_low, both_high, latent_high_pixel_low, latent_low_pixel_high, q
 
 def get_percentile(pixel_vals, latent_vals, k=4):
     

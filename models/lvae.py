@@ -284,7 +284,7 @@ class LadderVAE(nn.Module):
                 kl = free_bits_kl(kl, self.free_bits)
 
         if self.contrastive_learning and self.mode_pred is False:
-            cl = compute_cl_loss(
+            cl, q = compute_cl_loss(
                 mus=td_data["mu"],
                 logvars=td_data["logvar"],
                 pis=td_data["pi"] if "pi" in td_data else None,
@@ -310,6 +310,7 @@ class LadderVAE(nn.Module):
             "ce": td_data["ce"][-1],
             "entropy": td_data["entropy"][-1],
             "pi": td_data["pi"][-1] if "pi" in td_data else None,
+            "q": q if self.contrastive_learning else None,
         }
         return output
 

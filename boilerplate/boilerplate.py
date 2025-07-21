@@ -188,6 +188,7 @@ def forward_pass(x, y, device, model, gaussian_noise_std, amp=True) -> dict:
             "out_sample": model_out["out_sample"],
             "ce":ce,
             "entropy": entropy,
+            "q": model_out["q"],
         }
 
     else:
