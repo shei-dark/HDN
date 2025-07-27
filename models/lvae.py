@@ -282,7 +282,7 @@ class LadderVAE(nn.Module):
             kl = torch.stack(td_data["kl"]).sum(0)
             if self.free_bits > 0:
                 kl = free_bits_kl(kl, self.free_bits)
-
+        q = None
         if self.contrastive_learning and self.mode_pred is False:
             cl, q = compute_cl_loss(
                 mus=td_data["mu"],
@@ -310,7 +310,7 @@ class LadderVAE(nn.Module):
             "ce": td_data["ce"][-1],
             "entropy": td_data["entropy"][-1],
             "pi": td_data["pi"][-1] if "pi" in td_data else None,
-            "q": q if self.contrastive_learning else None,
+            "q": q,
         }
         return output
 

@@ -412,10 +412,9 @@ class Custom2DDataset(Dataset):
 
         keys = list(self.images.keys())
         key = random.choice(keys)
-        z = random.randrange(0, len(self.images[key]))
-        img = self.images[key][z]
-        lbl = self.labels[key][z]
-        height, width = img.shape
+        img = self.images[key]
+        lbl = self.labels[key]
+        depth, height, width = img.shape
 
         patches = []
         labels = []
@@ -424,19 +423,21 @@ class Custom2DDataset(Dataset):
         while i < len(idx):
             x = random.randrange(0, width - self.patch_size)
             y = random.randrange(0, height - self.patch_size)
-            patch = img[y : y + self.patch_size, x : x + self.patch_size]
-            patch_label = lbl[y : y + self.patch_size, x : x + self.patch_size]
+            z = random.randrange(0, depth)
+            patch = img[z, y : y + self.patch_size, x : x + self.patch_size]
+            patch_label = lbl[z, y : y + self.patch_size, x : x + self.patch_size]
             if patch_label[31,31] == self.ignore_lbl:
                 continue
             center_y = y + self.patch_size // 2 - 1
             center_x = x + self.patch_size // 2 - 1
-            if (center_y, center_x) in centers:
+            if (z, center_y, center_x) in centers:
+                print('Duplicate center found, skipping patch')
                 continue
-            centers.append((center_y, center_x))
-
+            centers.append((z, center_y, center_x))
             patches.append(torch.tensor(patch, dtype=torch.float32).unsqueeze(0))
             labels.append(torch.tensor(patch_label, dtype=torch.float16).unsqueeze(0))
             i += 1
+
         return (torch.stack(patches), torch.tensor(centers), torch.stack(labels))
 
     def switch_mode(self):
@@ -1378,10 +1379,18 @@ def ordered_collate_fn(batch):
     anchor_meta = []
     neighbor_meta = []
 
+    # torch.stack(patches),  # shape [4, 1, 64, 64]
+    # anchor["label"],
+    # {
+    #     "neighbor_labels": torch.tensor(neighbor_labels, dtype=torch.long),
+    #     "anchor_meta": anchor,
+    #     "neighbor_meta": neighbors,
+    # }
+            
     for sample in batch:
         anchor_patches.append(sample[0])  # shape [1, 64, 64]
-        anchor_labels.append(sample["label"])
-        anchor_meta.append(sample["anchor_meta"])
+        anchor_labels.append(sample[1])
+        anchor_meta.append(sample[2]["anchor_meta"])
 
         # neighbors: patches[1:] = 3 unlabeled patches
         neighbor_patches.extend(sample["patches"][1:])  # 3 x [1, 64, 64]

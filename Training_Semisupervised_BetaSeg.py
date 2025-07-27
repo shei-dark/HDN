@@ -77,7 +77,7 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 128
+batch_size = 512
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents

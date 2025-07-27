@@ -52,7 +52,7 @@ for test_index in tqdm(img_idx):
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model_unsupervised/segmentation_best_vae.net")
+        model = torch.load(model_dir + model_v + "/model_unsupervised/segmentation_best_vae_8.net")
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True

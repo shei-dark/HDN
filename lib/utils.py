@@ -469,8 +469,8 @@ def compute_unsupervised_cl_loss(mus, coords):
     m = 150
     target = torch.ones_like(positives)
     
-    # return F.margin_ranking_loss(negatives, positives, target, margin=m), q
-    return compute(positives, positive=True) + compute(negatives, positive=False), q
+    return F.margin_ranking_loss(negatives, positives, target, margin=m), q
+    # return compute(positives, positive=True) + compute(negatives, positive=False), q
 
 def compute(d, positive=True):
     return (d.pow(2).mean() if positive else F.relu(100 - d).pow(2).mean())

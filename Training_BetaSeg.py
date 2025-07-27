@@ -25,6 +25,7 @@ parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
     "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
 )
+parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="unsupervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
@@ -76,7 +77,7 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 512
+batch_size = 1024
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
