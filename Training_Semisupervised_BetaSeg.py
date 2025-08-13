@@ -10,10 +10,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models.lvae import LadderVAE
-from boilerplate.dataloader import SemisupervisedDataset, AnchorOnlyBatchSampler, ordered_collate_fn
+from boilerplate.dataloader import SemisupervisedDataset, ModeAwareBalancedAnchorBatchSampler, flex_collate
 import training
 from tqdm import tqdm
 import tifffile as tiff
+
+
+
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
@@ -23,10 +26,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/24/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="unsupervised")
+parser.add_argument("--mode", type=str, default="supervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
@@ -42,7 +45,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=True)
+parser.add_argument("--load_checkpoint", type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -77,7 +80,7 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 512
+batch_size = 128
 lr = 3e-5
 max_epochs = 300
 num_latents = args.num_latents
@@ -128,7 +131,7 @@ for key in keys:
     np.random.shuffle(valid_indices)  # Shuffles in place
 
     # Compute split index
-    split_idx = int(0.8 * total_samples)
+    split_idx = int(0.85 * total_samples)
 
     # Split the indices
     train_idx[key] = valid_indices[:split_idx]
@@ -162,26 +165,29 @@ val_set = SemisupervisedDataset(
     labels=lbls,
     patch_size=patch_size,
     label_size=initial_label_size,
-    mode=mode,
+    mode='supervised',
     n_classes=n_classes,
     ignore_lbl=-1,
     ratio=labeled_ratio,
     indices_dict=val_idx,
 )
 
-# train_sampler = DynamicSampler(train_set, batch_size, labeled_ratio=labeled_ratio)
-# val_sampler = DynamicSampler(val_set, batch_size, labeled_ratio=labeled_ratio)
-
-train_sampler = AnchorOnlyBatchSampler(anchor_indices=range(len(train_set)), total_batch_size=batch_size)
-val_sampler = AnchorOnlyBatchSampler(anchor_indices=range(len(val_set)), total_batch_size=batch_size)
-
 
 train_loader = DataLoader(
-    train_set, sampler=train_sampler, collate_fn=ordered_collate_fn
+    train_set,
+    batch_sampler=ModeAwareBalancedAnchorBatchSampler(
+        train_set, total_patches_per_batch=batch_size, shuffle=True
+    ),
+    collate_fn=flex_collate,
 )
 val_loader = DataLoader(
-    val_set, sampler=val_sampler, collate_fn=ordered_collate_fn
+    val_set,
+    batch_sampler=ModeAwareBalancedAnchorBatchSampler(
+        val_set, total_patches_per_batch=batch_size, shuffle=False
+    ),
+    collate_fn=flex_collate,
 )
+
 
 img_shape = (64, 64)
 

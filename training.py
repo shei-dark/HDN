@@ -3,7 +3,7 @@ import numpy as np
 import time
 import datetime
 import torch
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from tqdm import tqdm
 import torch.backends.cudnn as cudnn
 from boilerplate import boilerplate
@@ -164,57 +164,57 @@ def train_network(
             )
 
             ################################################################
+            if model.training_mode == "semisupervised":
+                pairs = [
+                    (i, j) for i in range(batch_size) for j in range(i + 1, batch_size)
+                ]
+                quadrants = outputs["q"]
+                z = z.squeeze()
+                center_y, center_x = 31, 31
+                patch_labels = z[:, center_y, center_x]
 
-            pairs = [
-                (i, j) for i in range(batch_size) for j in range(i + 1, batch_size)
-            ]
-            quadrants = outputs["q"]
-            z = z.squeeze()
-            center_y, center_x = 31, 31
-            patch_labels = z[:, center_y, center_x]
+                quadrant_pair_labels = {}
 
-            quadrant_pair_labels = {}
+                for quadrant, pair_indices in quadrants.items():
+                    # Extract relevant pairs
+                    selected_pairs = [pairs[i] for i in pair_indices.tolist()]
 
-            for quadrant, pair_indices in quadrants.items():
-                # Extract relevant pairs
-                selected_pairs = [pairs[i] for i in pair_indices.tolist()]
+                    labels = []
+                    for i, j in selected_pairs:
+                        li = patch_labels[i].item()
+                        lj = patch_labels[j].item()
+                        labels.append((li, lj))
 
-                labels = []
-                for i, j in selected_pairs:
-                    li = patch_labels[i].item()
-                    lj = patch_labels[j].item()
-                    labels.append((li, lj))
-
-                quadrant_pair_labels[quadrant] = labels
-            
-            quadrant_expectation = {
-                'top_left': 0,       # expect dissimilar
-                'top_right': 0,      # expect dissimilar
-                'bottom_left': 1,    # expect similar
-                'bottom_right': 1    # expect similar
-            }
-            
-            y_true = []  # expected similarity: 1 for similar, 0 for dissimilar
-            y_pred = []  # predicted similarity: based on label equality
-            
-            for quadrant, pairs in quadrant_pair_labels.items():
-                expected = quadrant_expectation[quadrant]
-                for label_i, label_j in pairs:
-                    pred = int(label_i == label_j)
-                    y_true.append(expected)
-                    y_pred.append(pred)
-            tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
-            precision = precision_score(y_true, y_pred, zero_division=0)
-            recall = recall_score(y_true, y_pred, zero_division=0)
-            f1 = f1_score(y_true, y_pred, zero_division=0)
-            
-            running_metrics["tp"] += tp
-            running_metrics["tn"] += tn
-            running_metrics["fp"] += fp
-            running_metrics["fn"] += fn
-            running_metrics["precision"] += precision
-            running_metrics["recall"] += recall
-            running_metrics["f1"] += f1
+                    quadrant_pair_labels[quadrant] = labels
+                
+                quadrant_expectation = {
+                    'top_left': 0,       # expect dissimilar
+                    'top_right': 0,      # expect dissimilar
+                    'bottom_left': 1,    # expect similar
+                    'bottom_right': 1    # expect similar
+                }
+                
+                y_true = []  # expected similarity: 1 for similar, 0 for dissimilar
+                y_pred = []  # predicted similarity: based on label equality
+                
+                for quadrant, pairs in quadrant_pair_labels.items():
+                    expected = quadrant_expectation[quadrant]
+                    for label_i, label_j in pairs:
+                        pred = int(label_i == label_j)
+                        y_true.append(expected)
+                        y_pred.append(pred)
+                tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+                precision = precision_score(y_true, y_pred, zero_division=0)
+                recall = recall_score(y_true, y_pred, zero_division=0)
+                f1 = f1_score(y_true, y_pred, zero_division=0)
+                
+                running_metrics["tp"] += tp
+                running_metrics["tn"] += tn
+                running_metrics["fp"] += fp
+                running_metrics["fn"] += fn
+                running_metrics["precision"] += precision
+                running_metrics["recall"] += recall
+                running_metrics["f1"] += f1
 
             ################################################################
 

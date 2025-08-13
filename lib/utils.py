@@ -409,7 +409,7 @@ def compute_cl_loss(
     contrastive_loss = (
         lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
     )
-    return contrastive_loss
+    return contrastive_loss, None
 
 def compute_semisupervised_cl_loss(mus, labels):
     """
@@ -462,10 +462,6 @@ def compute_unsupervised_cl_loss(mus, coords):
     latent_high_pixel_low, both_high, both_low, latent_low_pixel_high, q = get_contrastive_pairs(pixel_dist, latent_dist, top_k=top_k)
     positives = torch.stack(both_low + latent_low_pixel_high)  # These are semantically and spatially similar
     negatives = torch.stack(both_high + latent_high_pixel_low)  # These are dissimilar in either space
-    # positives = torch.stack(both_low)  # These are semantically and spatially similar
-    # negatives = torch.stack(both_high)  # These are dissimilar in either space
-    # positives = torch.stack(latent_low_pixel_high)  # These are semantically and spatially similar
-    # negatives = torch.stack(latent_high_pixel_low)  # These are dissimilar in either space
     m = 150
     target = torch.ones_like(positives)
     

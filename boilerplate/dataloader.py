@@ -2,15 +2,13 @@ import torch
 from torch.utils.data import Dataset, DataLoader, Sampler
 import numpy as np
 from glob import glob
-import os
 import numpy as np
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-import random
-import struct
-from array import array
+import random, itertools
 from collections import Counter
+from typing import Dict, List, Tuple, Iterable, Any
 
 
 class SemisupervisedDataset(Dataset):
@@ -20,11 +18,11 @@ class SemisupervisedDataset(Dataset):
         labels,
         patch_size=64,
         label_size=1,
-        mode='semisupervised',
+        mode="semisupervised",
         n_classes=4,
         ignore_lbl=-1,
         ratio=0.75,
-        indices_dict={},
+        indices_dict=None,
         radius=32,
     ):
         self.patch_size = patch_size
@@ -36,11 +34,27 @@ class SemisupervisedDataset(Dataset):
         self.n_classes = n_classes
         self.ratio = ratio
         self.mode = mode
-        self.indices_dict = indices_dict
+        self.indices_dict = indices_dict or {}
         self.radius = radius
         self.seed = 42
         self.rng = random.Random(self.seed)
+        self.samples_per_class: Dict[int, int] = {1: 60}
+        self.default_samples_per_class: int = 30
         self.groups = self._prepare_metadata()
+        self.n_label_per_class = {
+            c: len([g for g in self.groups if g["labels"][0] == c])
+            for c in range(self.n_classes)
+        }
+        self.anchor_indices_by_label = {
+            c: [i for i, g in enumerate(self.groups) if g["labels"][0] == c]
+            for c in range(self.n_classes)
+        }
+
+    def set_mode(self, mode: str):
+        """Switch between supervised and semisupervised modes."""
+        if mode not in ("supervised", "semisupervised"):
+            raise ValueError("stage must be 'supervised' or 'semisupervised'")
+        self.mode = mode
 
     def _is_valid_coord(self, name, z, y, x, H, W):
         valid = (
@@ -49,170 +63,273 @@ class SemisupervisedDataset(Dataset):
         in_cell = self.labels[name][z, y, x] != self.ignore_lbl
         return valid and in_cell
 
-    def _prepare_metadata(self):
+    def __len__(self):
+        return len(self.groups)
 
-        groups = []
+    def __getitem__(self, idx):
+        g = self.groups[idx]
+        name, z = g["name"], int(g["z"])
+        img_vol = self.images[name]
+        lbl_vol = self.labels[name]
+
+        def patch_at(y, x):
+            p = img_vol[
+                z,
+                y - self.half : y + self.half + 2,
+                x - self.half : x + self.half + 2,
+            ]
+            return torch.from_numpy(p).unsqueeze(0)  # [1, H, W]
+
+        def lbl_at(y, x):
+            p = lbl_vol[
+                z,
+                y - self.half : y + self.half + 2,
+                x - self.half : x + self.half + 2,
+            ]
+            return torch.from_numpy(p).unsqueeze(0)
+
+        if self.mode == "supervised":
+            cy, cx = map(int, g["coords"][0])
+            patch = patch_at(cy, cx).unsqueeze(0)  # [1, 1, H, W]  <-- extra dim
+            label = torch.tensor([int(g["labels"][0])], dtype=torch.long)  # [1]
+            segment = lbl_at(cy, cx).unsqueeze(0)  # [1, 1, H, W]
+            return patch, label, segment
+        else:
+            coords = [tuple(map(int, xy)) for xy in g["coords"]]
+            patches = torch.stack([patch_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
+            labels = torch.tensor([g["labels"][0], -1, -1, -1], dtype=torch.long)  # [4]
+            segments = torch.stack([lbl_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
+            return patches, labels, segments
+
+    def _prepare_metadata(self) -> List[dict]:
+        groups: List[dict] = []
 
         for name, z_list in self.indices_dict.items():
             img = self.images[name]
             lbl = self.labels[name]
             _, H, W = img.shape
+
             for z in z_list:
-                stack = lbl[z]
                 used_coords = set()
+                stack = lbl[z]
+
                 for c in range(self.n_classes):
-                    label_coords = np.argwhere(stack == c)
-                    if c == 1:
-                        if len(label_coords) < 60:
-                            continue
-                        sampled_indices = self.rng.sample(range(len(label_coords)), 60)
-                    else:
-                        if len(label_coords) < 30:
-                            continue
-                        sampled_indices = self.rng.sample(range(len(label_coords)), 30)
-                
-                    label_coords = label_coords[sampled_indices]
-                    
-                    for cy, cx in label_coords:  # try to find a labeled center
+                    for cy, cx in self._sample_coords_for_class(stack, c):
                         if not self._is_valid_coord(name, z, cy, cx, H, W):
                             continue
-                        used_coords.add((cy, cx))
-                        # find 3 nearby unlabeled coordinates
-                        neighbors = []
-                        tries = 0
+                        if (cy, cx) in used_coords:
+                            continue
 
-                        while len(neighbors) < 3 and tries < 100:
-                            dy = self.rng.randint(-self.radius, self.radius)
-                            dx = self.rng.randint(-self.radius, self.radius)
-                            if dx**2 + dy**2 > self.radius**2 or (dx == 0 and dy == 0):
-                                tries += 1
-                                continue
-                            nx, ny = cx + dx, cy + dy
-                            coord = (ny, nx)
-                            if coord in used_coords:
-                                tries += 1
-                                continue
-                            if self._is_valid_coord(name, z, ny, nx, H, W):
-                                used_coords.add(coord)
-                                neighbors.append(
-                                    {
-                                        "name": name,
-                                        "z": z,
-                                        "y": ny,
-                                        "x": nx,
-                                        "label": int(lbl[z, ny, nx].item()),
-                                    }
-                                )
-                            tries += 1
+                        used_coords.add((cy, cx))
+                        neighbors = self._sample_neighbors(
+                            name=name,
+                            z=z,
+                            cy=cy,
+                            cx=cx,
+                            H=H,
+                            W=W,
+                            used_coords=used_coords,
+                            lbl=lbl,
+                            k=3,
+                            max_tries=100,
+                        )
 
                         if len(neighbors) == 3:
                             groups.append(
-                                {
-                                    "anchor": {
-                                        "name": name,
-                                        "z": z,
-                                        "y": cy,
-                                        "x": cx,
-                                        "label": c,
-                                    },
-                                    "neighbors": neighbors,
-                                }
+                                self._make_group_record(
+                                    name=name,
+                                    z=z,
+                                    cy=cy,
+                                    cx=cx,
+                                    c=c,
+                                    neighbors=neighbors,
+                                )
                             )
 
-        labels = [g["anchor"]["label"] for g in groups]
-        counts = Counter(labels)
-        for k in sorted(counts):
-            print(f"  Class {k}: {counts[k]} samples")
-
+        self._report_class_counts(groups)
         return groups
 
-    def __len__(self):
-        return len(self.groups)
+    def _sample_coords_for_class(
+        self, stack: np.ndarray, c: int
+    ) -> Iterable[Tuple[int, int]]:
+        """Return up to N (y, x) coordinates for class c from a 2D label stack."""
 
-    def __getitem__(self, index):
-        if isinstance(index, list):
-            samples = [self._get_patch_(i) for i in index]
-
-            # Stack all [4, 1, 64, 64] into one big tensor of shape [4*len(index), 1, 64, 64]
-            all_patches = torch.cat([sample[0] for sample in samples], dim=0)
-
-            return (
-                all_patches,
-                torch.tensor([sample[1] for sample in samples], dtype=torch.long),
-                {
-                    "neighbor_labels": [sample[2]["neighbor_labels"] for sample in samples],
-                    "anchor_meta": [sample[2]["anchor_meta"] for sample in samples],
-                    "neighbor_meta": [sample[2]["neighbor_meta"] for sample in samples],
-                }
-            )
-        else:
-            return self._get_patch_(index)
-
-
-    def _get_patch_(self, idx):
-        group = self.groups[idx]
-        anchor = group["anchor"]
-        neighbors = group["neighbors"]
-
-        name, z, cy, cx = anchor["name"], anchor["z"], anchor["y"], anchor["x"]
-        vol = self.images[name]
-        patches = []
-
-        # Anchor patch (labeled)
-        patch = vol[
-            z, cy - self.half : cy + self.half + 2, cx - self.half : cx + self.half + 2
-        ]
-        patches.append(torch.from_numpy(patch).unsqueeze(0))
-
-        neighbor_labels = []
-        # Unlabeled patches
-        for n in neighbors:
-            px, py = n["x"], n["y"]
-            patch = vol[
-                z,
-                py - self.half : py + self.half + 2,
-                px - self.half : px + self.half + 2,
-            ]
-            patches.append(torch.from_numpy(patch).unsqueeze(0))
-            neighbor_labels.append(n["label"])
-
-        return (
-            torch.stack(patches),  # shape [4, 1, 64, 64]
-            anchor["label"],
-            {
-                "neighbor_labels": torch.tensor(neighbor_labels, dtype=torch.long),
-                "anchor_meta": anchor,
-                "neighbor_meta": neighbors,
-            }
+        n_needed = getattr(self, "samples_per_class", {}).get(
+            c, getattr(self, "default_samples_per_class", 30)
         )
-# (array([0, 1, 2, 3]), array([72447,  68880,  71135,   69387]))
-# (array([0, 1, 2, 3]), array([422891, 184991, 154659,  83006]))
 
-class AnchorOnlyBatchSampler(Sampler):
+        label_coords = np.argwhere(stack == c)
+        if len(label_coords) < n_needed:
+            return []  # not enough to sample
+
+        idx = self.rng.sample(range(len(label_coords)), n_needed)
+        sampled = label_coords[idx]
+        return [(int(y), int(x)) for (y, x) in sampled]
+
+    def _sample_neighbors(
+        self,
+        name: str,
+        z: int,
+        cy: int,
+        cx: int,
+        H: int,
+        W: int,
+        used_coords: set,
+        lbl: np.ndarray,
+        k: int = 3,
+        max_tries: int = 100,
+    ) -> List[Dict[str, int]]:
+        """Randomly sample up to k valid nearby coordinates within a disk (radius=self.radius)."""
+        neighbors: List[Dict[str, int]] = []
+        tries = 0
+
+        while len(neighbors) < k and tries < max_tries:
+            dy = self.rng.randint(-self.radius, self.radius)
+            dx = self.rng.randint(-self.radius, self.radius)
+
+            # reject outside disk or center itself
+            if dx * dx + dy * dy > self.radius * self.radius or (dx == 0 and dy == 0):
+                tries += 1
+                continue
+
+            ny, nx = cy + dy, cx + dx
+            coord = (ny, nx)
+
+            if coord in used_coords:
+                tries += 1
+                continue
+
+            if self._is_valid_coord(name, z, ny, nx, H, W):
+                used_coords.add(coord)
+                neighbors.append(
+                    {
+                        "y": int(ny),
+                        "x": int(nx),
+                        "label": int(lbl[z, ny, nx].item()),
+                    }
+                )
+
+            tries += 1
+
+        return neighbors
+
+    def _make_group_record(
+        self,
+        name: str,
+        z: int,
+        cy: int,
+        cx: int,
+        c: int,
+        neighbors: List[Dict[str, int]],
+    ) -> Dict[str, Any]:
+        """Create the output dict for one (center + neighbors) group."""
+        return {
+            "name": name,
+            "z": int(z),
+            "coords": [(int(cy), int(cx))] + [(n["y"], n["x"]) for n in neighbors],
+            "labels": [int(c)] + [n["label"] for n in neighbors],
+        }
+
+    def _report_class_counts(self, groups: List[dict]) -> None:
+        """Print class counts for centers and neighbors separately."""
+        centers = [g["labels"][0] for g in groups]
+        neighbors = [lab for g in groups for lab in g["labels"][1:]]
+
+        for title, labs in (("anchors", centers), ("neighbors", neighbors)):
+            counts = Counter(labs)
+            for k in sorted(counts):
+                print(f"  Class {k} ({title}): {counts[k]} samples")
+
+
+class ModeAwareBalancedAnchorBatchSampler(Sampler):
     """
-    Sampler that yields batches of anchor indices only.
-    Each anchor will produce 4 patches (1 labeled + 3 unlabeled neighbors).
+    Yields balanced batches of anchor indices.
+    Adapts to dataset.mode at the start of every epoch.
+    - total_patches_per_batch is in *patch units* (e.g., 32).
+    - Supervised: 1 patch per anchor
+    - Semisupervised: 4 patches per anchor
     """
 
-    def __init__(self, anchor_indices, total_batch_size, seed=42, shuffle=True):
-        assert total_batch_size % 4 == 0, "Total batch size must be divisible by 4"
-        self.anchor_batch_size = total_batch_size // 4
-        self.anchor_indices = list(anchor_indices)
+    def __init__(self, dataset, total_patches_per_batch=32, seed=42, shuffle=True):
+        self.dataset = dataset
+        self.total_patches_per_batch = total_patches_per_batch
         self.rng = random.Random(seed)
         self.shuffle = shuffle
 
-    def __iter__(self):
-        indices = self.anchor_indices.copy()
-        if self.shuffle:
-            self.rng.shuffle(indices)
+        # Build per-class pools once (anchors only)
+        self.pools = {
+            c: [i for i, g in enumerate(dataset.groups) if g["labels"][0] == c]
+            for c in range(dataset.n_classes)
+        }
+        self.labels = [c for c, v in self.pools.items() if len(v) > 0]
+        if not self.labels:
+            raise ValueError("No anchors available in any class.")
 
-        for i in range(0, len(indices), self.anchor_batch_size):
-            batch = indices[i : i + self.anchor_batch_size]
-            if len(batch) == self.anchor_batch_size:
-                yield batch
+        # cycling iterators for oversampling
+        self._iters = None
+        self._len_cached = None
+
+    def _reset_iters(self):
+        self._iters = {}
+        for c in self.labels:
+            pool = list(self.pools[c])
+            if self.shuffle:
+                self.rng.shuffle(pool)
+            self._iters[c] = itertools.cycle(pool)
+
+    def _compute_epoch_plan(self):
+        # anchors-per-batch depends on current mode
+        if self.dataset.mode == "semisupervised":
+            assert (
+                self.total_patches_per_batch % 4 == 0
+            ), "total_patches_per_batch must be divisible by 4 in semisupervised mode."
+            anchors_per_batch = self.total_patches_per_batch // 4
+        else:
+            anchors_per_batch = self.total_patches_per_batch
+
+        # split anchors-per-batch across labels (balanced, round-robin remainder)
+        base = anchors_per_batch // len(self.labels)
+        rem = anchors_per_batch % len(self.labels)
+        per_label_counts = {c: base for c in self.labels}
+        for c in self.labels[:rem]:
+            per_label_counts[c] += 1
+
+        # epoch length heuristic: sized to the largest class before a full cycle
+        max_class = max(len(self.pools[c]) for c in self.labels)
+        num_batches = max(1, (max_class * len(self.labels)) // anchors_per_batch)
+
+        return anchors_per_batch, per_label_counts, num_batches
+
+    def __iter__(self):
+        self._reset_iters()
+        anchors_per_batch, per_label_counts, num_batches = self._compute_epoch_plan()
+        self._len_cached = num_batches
+
+        label_order = list(self.labels)
+        if self.shuffle:
+            self.rng.shuffle(label_order)
+
+        for _ in range(num_batches):
+            batch = []
+            for c in label_order:
+                take = per_label_counts[c]
+                batch.extend(next(self._iters[c]) for _ in range(take))
+            if self.shuffle:
+                self.rng.shuffle(batch)
+            yield batch
 
     def __len__(self):
-        return len(self.anchor_indices) // self.anchor_batch_size
+        # compute against current mode so progress bars don't go crazy after mode flip
+        anchors_per_batch, _, num_batches = self._compute_epoch_plan()
+        return num_batches
+
+
+def flex_collate(batch):
+    # batch = list of (patches[M,1,H,W], labels[M], segs[M,1,H,W])
+    patches = torch.cat([b[0] for b in batch], dim=0)   # [sum M, 1, H, W]
+    labels  = torch.cat([b[1] for b in batch], dim=0)   # [sum M]
+    segs    = torch.cat([b[2] for b in batch], dim=0)   # [sum M, 1, H, W]
+    return patches, labels, segs
 class Custom2DDataset(Dataset):
     def __init__(
         self,
@@ -426,12 +543,12 @@ class Custom2DDataset(Dataset):
             z = random.randrange(0, depth)
             patch = img[z, y : y + self.patch_size, x : x + self.patch_size]
             patch_label = lbl[z, y : y + self.patch_size, x : x + self.patch_size]
-            if patch_label[31,31] == self.ignore_lbl:
+            if patch_label[31, 31] == self.ignore_lbl:
                 continue
             center_y = y + self.patch_size // 2 - 1
             center_x = x + self.patch_size // 2 - 1
             if (z, center_y, center_x) in centers:
-                print('Duplicate center found, skipping patch')
+                print("Duplicate center found, skipping patch")
                 continue
             centers.append((z, center_y, center_x))
             patches.append(torch.tensor(patch, dtype=torch.float32).unsqueeze(0))
@@ -1366,6 +1483,7 @@ class DynamicSampler(Sampler):
     def __len__(self):
         return len(self.dataset) // self.batch_size
 
+
 def ordered_collate_fn(batch):
     """
     Batch structure:
@@ -1386,7 +1504,7 @@ def ordered_collate_fn(batch):
     #     "anchor_meta": anchor,
     #     "neighbor_meta": neighbors,
     # }
-            
+
     for sample in batch:
         anchor_patches.append(sample[0])  # shape [1, 64, 64]
         anchor_labels.append(sample[1])
@@ -1398,8 +1516,10 @@ def ordered_collate_fn(batch):
         neighbor_meta.extend(sample["neighbor_meta"])
 
     return {
-        "patches": torch.cat(anchor_patches + neighbor_patches, dim=0),  # [4n, 1, 64, 64]
-        "labels": torch.tensor(anchor_labels, dtype=torch.long),         # [n]
+        "patches": torch.cat(
+            anchor_patches + neighbor_patches, dim=0
+        ),  # [4n, 1, 64, 64]
+        "labels": torch.tensor(anchor_labels, dtype=torch.long),  # [n]
         "neighbor_labels": torch.tensor(neighbor_labels, dtype=torch.long),  # [3n]
         "anchor_meta": anchor_meta,
         "neighbor_meta": neighbor_meta,

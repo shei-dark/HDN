@@ -144,7 +144,7 @@ def _make_optimizer_and_scheduler(model, lr, weight_decay) -> Optimizer:
     """
     optimizer = optim.Adamax(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=10, factor=0.9, min_lr=1e-12, verbose=True
+        optimizer, "min", patience=10, factor=0.9, min_lr=1e-12
     )
     return optimizer, scheduler
 
