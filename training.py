@@ -164,7 +164,7 @@ def train_network(
             )
 
             ################################################################
-            if model.training_mode == "semisupervised":
+            if model.training_mode == "unsupervised":
                 pairs = [
                     (i, j) for i in range(batch_size) for j in range(i + 1, batch_size)
                 ]
@@ -277,8 +277,8 @@ def train_network(
                     # Reset accumulated metrics
                     running_metrics = {key: 0 for key in running_metrics}
 
-        print("saving", model_folder + model_name + "_last_vae_8.net")
-        torch.save(model, model_folder + model_name + "_last_vae_8.net")
+        print("saving", model_folder + model_name + "_last_vae.net")
+        torch.save(model, model_folder + model_name + "_last_vae.net")
 
         ### Validation step
         running_validation_loss = []
@@ -360,10 +360,10 @@ def train_network(
 
         if total_epoch_loss_val.item() < 1e-6 + np.min(loss_val_history):
             patience_ = 0
-            print("saving", model_folder + model_name + "_best_vae_8.net")
-            torch.save(model, model_folder + model_name + "_best_vae_8.net")
+            print("saving", model_folder + model_name + "_best_vae.net")
+            torch.save(model, model_folder + model_name + "_best_vae.net")
             torch.save(
-                model.state_dict(), model_folder + model_name + "_best_weights_8.net"
+                model.state_dict(), model_folder + model_name + "_best_weights.net"
             )
         else:
             patience_ += 1
@@ -393,6 +393,9 @@ def train_network(
         )
 
         print("----------------------------------------", flush=True)
+
+        if patience_ == 10:
+            train_loader.dataset.set_mode('semisupervised')
 
         if patience_ == 100:
             print("Early stopping")

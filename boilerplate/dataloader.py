@@ -97,7 +97,9 @@ class SemisupervisedDataset(Dataset):
         else:
             coords = [tuple(map(int, xy)) for xy in g["coords"]]
             patches = torch.stack([patch_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
-            labels = torch.tensor([g["labels"][0], -1, -1, -1], dtype=torch.long)  # [4]
+            # labels = torch.tensor([g["labels"][0], -1, -1, -1], dtype=torch.long)  # [4]
+            labels = torch.tensor([g["labels"][0], g["labels"][0], g["labels"][0], g["labels"][0]], dtype=torch.long)
+            # labels = torch.tensor(g["labels"], dtype=torch.long)
             segments = torch.stack([lbl_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
             return patches, labels, segments
 

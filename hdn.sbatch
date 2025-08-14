@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/segmentation/06/model_unsupervised/unsupervised_8.log
+#SBATCH --output=/group/jug/Sheida/HVAE/segmentation/06/test.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
@@ -15,4 +15,4 @@
 
 source $HOME/.bashrc
 conda activate epsSeg
-python Training_BetaSeg.py
+python Training_Semisupervised_BetaSeg.py

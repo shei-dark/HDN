@@ -385,8 +385,12 @@ def compute_cl_loss(
     training_mode='supervised',
     prior="normal",
 ):
+    
+    return multiscale_supervised_cl(mus, labels)
+    
     if training_mode == 'supervised':
         labeled_ratio = 1
+        return multiscale_supervised_cl(mus, labels)
     elif training_mode == 'semisupervised':
         labeled_ratio = 0.25
         return compute_semisupervised_cl_loss(mus, labels)
@@ -411,7 +415,13 @@ def compute_cl_loss(
     )
     return contrastive_loss, None
 
-def compute_semisupervised_cl_loss(mus, labels):
+def pct_equal_blocks(x: torch.Tensor) -> float:
+    assert x.numel() % 4 == 0, "Length must be multiple of 4"
+    blocks = x.view(-1, 4)                         # [B/4, 4]
+    row_ok = (blocks == blocks[:, :1]).all(dim=1)  # [B/4] True if all 4 equal
+    return (row_ok.float().mean().item() * 100.0)  # percentage
+
+def compute_semisupervised_cl_loss(mus, coords):
     """
     Computes semisupervised contrastive loss.
     This function computes the contrastive loss based on the latent representation distances
@@ -531,6 +541,29 @@ def get_percentile(pixel_vals, latent_vals, k=4):
 
     return quadrants
 
+def multiscale_supervised_cl(mus, labels, margin=1.0):
+    B = len(mus[0])
+    device = mus[0].device
+    # num_classes = torch.unique(labels).size(0)
+    labels = labels.view(-1)
+    print("unique percentage:", pct_equal_blocks(labels))
+    same = labels.unsqueeze(0).eq(labels.unsqueeze(1))            # [B,B]
+    eye = torch.eye(B, dtype=torch.bool, device=device)
+    pos_mask = same & ~eye                                        # same class, not self
+    neg_mask = ~same 
+    tri = torch.triu(torch.ones(B, B, dtype=torch.bool, device=device), diagonal=1)
+    pos_mask = pos_mask & tri
+    neg_mask = neg_mask & tri
+    
+    descriptors = torch.cat([F.adaptive_avg_pool2d(mus[i], (1,1)).squeeze(-1).squeeze(-1) for i in range(len(mus))], dim=1)
+    descriptors = F.normalize(descriptors, dim=1)
+    dist = torch.cdist(descriptors, descriptors, p=2)
+    dist = torch.clamp(dist, min=0, max=1e6)
+    pos_d = dist[pos_mask]
+    neg_d = dist[neg_mask]
+    pos_loss = (pos_d ** 2).mean() if pos_d.numel() > 0 else dist.new_tensor(0.)
+    neg_loss = (F.relu(margin - neg_d) ** 2).mean() if neg_d.numel() > 0 else dist.new_tensor(0.)
+    return pos_loss + neg_loss, None
 
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
 

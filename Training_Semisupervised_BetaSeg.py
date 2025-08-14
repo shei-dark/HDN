@@ -39,7 +39,7 @@ parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-2)
-parser.add_argument("--gamma", type=float, default=1e-2)
+parser.add_argument("--gamma", type=float, default=1)
 parser.add_argument("--initial_mask_size", type=int, default=1)
 parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
@@ -192,7 +192,7 @@ val_loader = DataLoader(
 img_shape = (64, 64)
 
 if load_checkpoint:
-    model = torch.load(checkpoint)
+    model = torch.load(checkpoint, weights_only=False)
     model.update_mode("semisupervised")
 
 else:
