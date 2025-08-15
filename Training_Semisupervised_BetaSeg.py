@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/24/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/26/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="supervised")
@@ -80,9 +80,9 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 128
+batch_size = 1024
 lr = 3e-5
-max_epochs = 300
+max_epochs = 1000
 num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
 blocks_per_layer = args.blocks_per_layer

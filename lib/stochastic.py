@@ -153,9 +153,9 @@ class StochasticConvBlock(nn.Module):
                 self._update_temperature()
                 y_pred = y.argmax(dim=1)
 
-                js_div = self._compute_js_div(y)
+                # js_div = self._compute_js_div(y)
                 kl = self._compute_kl(q, p_components, label, y_pred)
-                kl = kl + js_div
+                # kl = kl + js_div
                 entropy = self._compute_entropy(y)
                 if label is not None and self.training_mode != 'unsupervised':
                     cross_entropy = self._compute_cross_entropy(qy_logits, label)

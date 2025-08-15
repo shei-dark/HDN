@@ -394,8 +394,19 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        if patience_ == 10:
+        if patience_ == 10 and model.training_mode == "supervised":
+            print("--------------------------------------")
+            print("Switching to semi-supervised mode")
+            print("--------------------------------------")
             train_loader.dataset.set_mode('semisupervised')
+            patience_ = 0
+        
+        if patience_ == 15 and train_loader.dataset.radius < 32:
+                print("--------------------------------------")
+                print(f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}")
+                print("--------------------------------------")
+                train_loader.dataset.radius += 1
+                patience_ = 0
 
         if patience_ == 100:
             print("Early stopping")

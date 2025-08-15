@@ -23,7 +23,7 @@ class SemisupervisedDataset(Dataset):
         ignore_lbl=-1,
         ratio=0.75,
         indices_dict=None,
-        radius=32,
+        radius=5,
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -38,8 +38,8 @@ class SemisupervisedDataset(Dataset):
         self.radius = radius
         self.seed = 42
         self.rng = random.Random(self.seed)
-        self.samples_per_class: Dict[int, int] = {1: 60}
-        self.default_samples_per_class: int = 30
+        self.samples_per_class: Dict[int, int] = {1: 2}
+        self.default_samples_per_class: int = 1
         self.groups = self._prepare_metadata()
         self.n_label_per_class = {
             c: len([g for g in self.groups if g["labels"][0] == c])
@@ -157,7 +157,7 @@ class SemisupervisedDataset(Dataset):
         """Return up to N (y, x) coordinates for class c from a 2D label stack."""
 
         n_needed = getattr(self, "samples_per_class", {}).get(
-            c, getattr(self, "default_samples_per_class", 30)
+            c, getattr(self, "default_samples_per_class", 1)
         )
 
         label_coords = np.argwhere(stack == c)

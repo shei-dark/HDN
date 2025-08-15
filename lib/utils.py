@@ -386,34 +386,37 @@ def compute_cl_loss(
     prior="normal",
 ):
     
-    return multiscale_supervised_cl(mus, labels)
-    
     if training_mode == 'supervised':
-        labeled_ratio = 1
-        return multiscale_supervised_cl(mus, labels)
+        return multiscale_supervised_cl_sup(mus, labels)
     elif training_mode == 'semisupervised':
-        labeled_ratio = 0.25
-        return compute_semisupervised_cl_loss(mus, labels)
-    elif training_mode == 'unsupervised':
-        labeled_ratio = 0
-        return compute_unsupervised_cl_loss(mus, labels)
+        return multiscale_supervised_cl_semi(mus, labels)
+    
+    # if training_mode == 'supervised':
+    #     labeled_ratio = 1
+    #     return multiscale_supervised_cl(mus, labels)
+    # elif training_mode == 'semisupervised':
+    #     labeled_ratio = 0.25
+    #     return compute_semisupervised_cl_loss(mus, labels)
+    # elif training_mode == 'unsupervised':
+    #     labeled_ratio = 0
+    #     return compute_unsupervised_cl_loss(mus, labels)
         
         
-    if prior == "mixture":
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
-            mus, labels, margin=margin, labeled_ratio=labeled_ratio
-        )
-    elif prior == "normal":
-        pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_normal(
-            mus, labels, margin=margin, labeled_ratio=labeled_ratio
-        )
+    # if prior == "mixture":
+    #     pos_pair_loss, neg_pair_loss_terms = pos_neg_loss(
+    #         mus, labels, margin=margin, labeled_ratio=labeled_ratio
+    #     )
+    # elif prior == "normal":
+    #     pos_pair_loss, neg_pair_loss_terms = pos_neg_loss_normal(
+    #         mus, labels, margin=margin, labeled_ratio=labeled_ratio
+    #     )
 
-    neg_thetas = get_thetas(neg_pair_loss_terms)
-    weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)
-    contrastive_loss = (
-        lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
-    )
-    return contrastive_loss, None
+    # neg_thetas = get_thetas(neg_pair_loss_terms)
+    # weighted_neg = compute_weighted_neg(neg_pair_loss_terms, neg_thetas)
+    # contrastive_loss = (
+    #     lambda_contrastive * pos_pair_loss + (1 - lambda_contrastive) * weighted_neg
+    # )
+    # return contrastive_loss, None
 
 def pct_equal_blocks(x: torch.Tensor) -> float:
     assert x.numel() % 4 == 0, "Length must be multiple of 4"
@@ -421,28 +424,6 @@ def pct_equal_blocks(x: torch.Tensor) -> float:
     row_ok = (blocks == blocks[:, :1]).all(dim=1)  # [B/4] True if all 4 equal
     return (row_ok.float().mean().item() * 100.0)  # percentage
 
-def compute_semisupervised_cl_loss(mus, coords):
-    """
-    Computes semisupervised contrastive loss.
-    This function computes the contrastive loss based on the latent representation distances
-    and the distance of the patches in pixel space.
-    It uses the coordinates of the patches to calculate the distances in pixel space.
-    Rank and extract specific patch pairs:
-    16 closest in both (pixel + latent) → positive
-    16 farthest in both (pixel + latent) → negative
-    16 close in pixel but far in latent → negative
-    16 far in pixel but close in latent → positive
-
-    Args:
-        mus (list): List of latent representations.
-        labels (torch.Tensor): Labels of the patches.
-        margin (float): Margin for negative pairs.
-        labeled_ratio (float): Ratio of labeled data.
-        prior (str): Type of prior distribution ('normal' or 'mixture').
-    """
-    B = mus[0].size(0)
-    
-    return
 
 def compute_unsupervised_cl_loss(mus, coords):
     """
@@ -541,12 +522,12 @@ def get_percentile(pixel_vals, latent_vals, k=4):
 
     return quadrants
 
-def multiscale_supervised_cl(mus, labels, margin=1.0):
+def multiscale_supervised_cl_sup(mus, labels, margin=1.0):
     B = len(mus[0])
     device = mus[0].device
     # num_classes = torch.unique(labels).size(0)
     labels = labels.view(-1)
-    print("unique percentage:", pct_equal_blocks(labels))
+    # print("unique percentage:", pct_equal_blocks(labels))
     same = labels.unsqueeze(0).eq(labels.unsqueeze(1))            # [B,B]
     eye = torch.eye(B, dtype=torch.bool, device=device)
     pos_mask = same & ~eye                                        # same class, not self
@@ -563,6 +544,62 @@ def multiscale_supervised_cl(mus, labels, margin=1.0):
     neg_d = dist[neg_mask]
     pos_loss = (pos_d ** 2).mean() if pos_d.numel() > 0 else dist.new_tensor(0.)
     neg_loss = (F.relu(margin - neg_d) ** 2).mean() if neg_d.numel() > 0 else dist.new_tensor(0.)
+    return pos_loss + neg_loss, None
+
+def multiscale_supervised_cl_semi(
+    mus,
+    labels,
+    margin=1.0,
+):
+    """
+    Contrastive (Siamese hinge) with masks that ignore noisy positives *and* negatives.
+    Batch layout: groups of 4, anchor at i%4==0 and neighbors at i+1..i+3.
+    labels: [B], anchor labels are gold; neighbors inherit anchor label but may be noisy.
+    """
+    B = mus[0].size(0)
+    device = mus[0].device
+    idx = torch.arange(B, device=device)
+    
+    is_anchor  = (idx % 4 == 0)                 # [B]
+    group_id   = idx // 4                       # [B]
+    same_label = labels[:, None].eq(labels[None, :])     # [B,B]
+    same_group = group_id[:, None].eq(group_id[None, :]) # [B,B]
+    eye        = torch.eye(B, dtype=torch.bool, device=device)
+
+    # helpers
+    both_anchors   = (is_anchor[:, None]  &  is_anchor[None, :])     # both anchors
+    one_anchor     = is_anchor[:, None] ^  is_anchor[None, :]        # exactly one is anchor
+    neither_anchor = (~is_anchor[:, None] & ~is_anchor[None, :])  # neither is anchor
+
+    # strong positives
+    pos_mask = (both_anchors & same_label) | (one_anchor & same_group)
+
+    # strong negatives
+    neg_mask = both_anchors & ~same_label
+    
+    # weak positives and negatives
+    weak_pos_mask = one_anchor & ~same_group & same_label
+    weak_neg_mask = one_anchor & ~same_group & ~same_label
+    
+    # weakest positives and negatives
+    weakest_pos_mask = neither_anchor & ~same_group & same_label
+    weakest_neg_mask = neither_anchor & ~same_group & ~same_label
+    
+    pos_mask = pos_mask | weak_pos_mask | weakest_pos_mask
+    neg_mask = neg_mask | weak_neg_mask | weakest_neg_mask
+    
+    # --- descriptors (pooled + L2-normalized) ---
+    z = torch.cat([F.adaptive_avg_pool2d(x, (1,1)).flatten(1) for x in mus], dim=1)
+    z = F.normalize(z, dim=1)
+    dist = torch.cdist(z, z, p=2).clamp_min_(0)
+
+    # ===== compute loss =====
+    tri = torch.triu(torch.ones(B, B, dtype=torch.bool, device=device), diagonal=1)
+    pos_d = dist[pos_mask & tri & ~eye]
+    neg_d = dist[neg_mask & tri & ~eye]
+
+    pos_loss = (pos_d ** 2).mean() if pos_d.numel() else dist.new_tensor(0.)
+    neg_loss = (F.relu(margin - neg_d) ** 2).mean() if neg_d.numel() else dist.new_tensor(0.)
     return pos_loss + neg_loss, None
 
 def pos_neg_loss(mus, labels, margin=50.0, labeled_ratio=1):
