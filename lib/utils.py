@@ -582,11 +582,11 @@ def multiscale_supervised_cl_semi(
     weak_neg_mask = one_anchor & ~same_group & ~same_label
     
     # weakest positives and negatives
-    weakest_pos_mask = neither_anchor & ~same_group & same_label
-    weakest_neg_mask = neither_anchor & ~same_group & ~same_label
+    # weakest_pos_mask = neither_anchor & ~same_group & same_label
+    # weakest_neg_mask = neither_anchor & ~same_group & ~same_label
     
-    pos_mask = pos_mask | weak_pos_mask | weakest_pos_mask
-    neg_mask = neg_mask | weak_neg_mask | weakest_neg_mask
+    pos_mask = pos_mask | weak_pos_mask #| weakest_pos_mask
+    neg_mask = neg_mask | weak_neg_mask #| weakest_neg_mask
     
     # --- descriptors (pooled + L2-normalized) ---
     z = torch.cat([F.adaptive_avg_pool2d(x, (1,1)).flatten(1) for x in mus], dim=1)
