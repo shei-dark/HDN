@@ -86,6 +86,7 @@ class StochasticConvBlock(nn.Module):
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
     def update_mode(self, mode):
+            print(f"Updating StochasticConvBlock mode from {self.training_mode} to {mode}")
             self.training_mode = mode
 
     def forward(self, label, p_params, q_params):

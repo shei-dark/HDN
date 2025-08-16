@@ -55,6 +55,11 @@ class SemisupervisedDataset(Dataset):
         if mode not in ("supervised", "semisupervised"):
             raise ValueError("stage must be 'supervised' or 'semisupervised'")
         self.mode = mode
+        
+    def increase_radius(self):
+        """Increase the radius for neighbor sampling."""
+        self.radius += 1
+        self.groups = self._modify_metadata()
 
     def _is_valid_coord(self, name, z, y, x, H, W):
         valid = (
@@ -150,6 +155,49 @@ class SemisupervisedDataset(Dataset):
 
         self._report_class_counts(groups)
         return groups
+
+    def _modify_metadata(self) -> List[dict]:
+        """Recompute metadata after changing radius."""
+
+        for g in self.groups:
+            name, z = g["name"], int(g["z"])
+            img = self.images[name]
+            lbl = self.labels[name]
+            _, H, W = img.shape
+
+            used_coords = set()
+            cy, cx = g["coords"][0]
+
+            used_coords.add((cy, cx))
+            neighbors = self._sample_neighbors(
+                name=name,
+                z=z,
+                cy=cy,
+                cx=cx,
+                H=H,
+                W=W,
+                used_coords=used_coords,
+                lbl=lbl,
+                k=3,
+                max_tries=100,
+            )
+
+            if len(neighbors) == 3:
+                
+                modified_group = self._make_group_record(
+                    name=name,
+                    z=z,
+                    cy=cy,
+                    cx=cx,
+                    c=g["labels"][0],
+                    neighbors=neighbors,
+                )
+                g["coords"] = modified_group["coords"]
+                g["labels"] = modified_group["labels"]
+                
+
+        self._report_class_counts(self.groups)
+        return self.groups
 
     def _sample_coords_for_class(
         self, stack: np.ndarray, c: int

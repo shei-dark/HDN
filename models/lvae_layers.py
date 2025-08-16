@@ -159,6 +159,7 @@ class TopDownLayer(nn.Module):
                 )
 
     def update_mode(self, mode):
+        print(f"Updating TopDownLayer mode from {self.training_mode} to {mode}")
         self.training_mode = mode
         self.stochastic.update_mode(mode)
 

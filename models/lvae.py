@@ -247,6 +247,7 @@ class LadderVAE(nn.Module):
 
     def update_mode(self, mode):
         """Update training mode and propagate to all submodules."""
+        print(f"Updating model mode from {self.training_mode} to {mode}")
         self.training_mode = mode
         for layer in self.top_down_layers:
             layer.update_mode(mode)
@@ -294,9 +295,7 @@ class LadderVAE(nn.Module):
                 training_mode=self.training_mode,
                 prior=self.prior_type,
             )
-            
-
-        output = {
+            output = {
             "ll": ll,
             "z": td_data["z"],
             "mu": td_data["mu"],

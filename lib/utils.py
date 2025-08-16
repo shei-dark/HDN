@@ -578,20 +578,21 @@ def multiscale_supervised_cl_semi(
     neg_mask = both_anchors & ~same_label
     
     # weak positives and negatives
-    # weak_pos_mask = one_anchor & ~same_group & same_label
-    # weak_neg_mask = one_anchor & ~same_group & ~same_label
+    weak_pos_mask = one_anchor & ~same_group & same_label
+    weak_neg_mask = one_anchor & ~same_group & ~same_label
     
     # weakest positives and negatives
-    # weakest_pos_mask = neither_anchor & ~same_group & same_label
-    # weakest_neg_mask = neither_anchor & ~same_group & ~same_label
+    weakest_pos_mask = neither_anchor & ~same_group & same_label
+    weakest_neg_mask = neither_anchor & ~same_group & ~same_label
     
-    # pos_mask = pos_mask | weak_pos_mask | weakest_pos_mask
-    # neg_mask = neg_mask | weak_neg_mask | weakest_neg_mask
+    pos_mask = pos_mask | weak_pos_mask | weakest_pos_mask
+    neg_mask = neg_mask | weak_neg_mask | weakest_neg_mask
     
     # --- descriptors (pooled + L2-normalized) ---
     z = torch.cat([F.adaptive_avg_pool2d(x, (1,1)).flatten(1) for x in mus], dim=1)
     z = F.normalize(z, dim=1)
-    dist = torch.cdist(z, z, p=2).clamp_min_(0)
+    dist = torch.cdist(z, z, p=2)
+    dist = torch.clamp(dist, min=0, max=1e6)
 
     # ===== compute loss =====
     tri = torch.triu(torch.ones(B, B, dtype=torch.bool, device=device), diagonal=1)
