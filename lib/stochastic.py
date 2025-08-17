@@ -53,11 +53,18 @@ class StochasticConvBlock(nn.Module):
             self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
         elif conditional:
             if condition_type == "mlp":
+                # self.qy_x = nn.Sequential(
+                #     conv_type(c_in, c_vars, kernel, padding=pad),
+                #     nn.ReLU(),
+                #     nn.Flatten(),
+                #     nn.Linear(c_vars * 8 * 8, n_components),
+                # )
                 self.qy_x = nn.Sequential(
-                    conv_type(c_in, c_vars, kernel, padding=pad),
+                    conv_type(c_in, 2 * c_vars, kernel, padding=pad),
                     nn.ReLU(),
-                    nn.Flatten(),
-                    nn.Linear(c_vars * 8 * 8, n_components),
+                    conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
+                    nn.ReLU(),
+                    conv_type(2 * c_vars, n_components, kernel, padding=pad),
                 )
                 self.qz_xy = nn.Sequential(
                     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
@@ -136,6 +143,10 @@ class StochasticConvBlock(nn.Module):
         else:  # Top layer
             if self.conditional:
                 qy_logits = self.qy_x(q_params)
+                # ----
+                qy_logits = qy_logits[:, :, 3, 3]
+                qy_logits = qy_logits.view(self.batch_size, self.n_components)
+                # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
                 beta = self.beta_layer(qy_logits)
