@@ -147,6 +147,20 @@ class StochasticConvBlock(nn.Module):
                 qy_logits = qy_logits[:, :, 3, 3]
                 qy_logits = qy_logits.view(self.batch_size, self.n_components)
                 # ----
+                # dice = 0
+                # dice = dice.to(self.device)
+                targets1h = F.one_hot(label.long(), self.n_components)
+                targets1h = targets1h.to(qy_logits.device)
+                # probs = F.softmax(qy_logits, dim=1)
+                
+                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                self._update_temperature()
+                y_pred = y.argmax(dim=1)
+                
+                inter = torch.sum(y * targets1h, 0)
+                card  = torch.sum(y + targets1h, 0)
+                dice = (2 * inter + 1e-6) / (card + 1e-6)
+                # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
                 beta = self.beta_layer(qy_logits)
@@ -161,16 +175,14 @@ class StochasticConvBlock(nn.Module):
                 q = Normal(q_mu, q_std)
                 z = q.rsample()
 
-                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-                self._update_temperature()
-                y_pred = y.argmax(dim=1)
+                
 
                 # js_div = self._compute_js_div(y)
                 kl = self._compute_kl(q, p_components, label, y_pred)
                 # kl = kl + js_div
                 entropy = self._compute_entropy(y)
                 if label is not None and self.training_mode != 'unsupervised':
-                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label) + 1. - dice.mean()
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)

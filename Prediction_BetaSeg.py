@@ -37,7 +37,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["26"]
+model_versions = ["29"]
 batch_size = 512
 
 
