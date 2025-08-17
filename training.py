@@ -402,13 +402,13 @@ def train_network(
             model.update_mode("semisupervised")
             patience_ = 0
         
-        if patience_ == 15 and train_loader.dataset.radius < 32:
+        if patience_ == 15 and train_loader.dataset.radius < 7:
                 print("--------------------------------------")
                 print(f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}")
                 print("--------------------------------------")
                 train_loader.dataset.increase_radius()
                 patience_ = 0
 
-        if patience_ == 100:
+        if patience_ == 20:
             print("Early stopping")
             break

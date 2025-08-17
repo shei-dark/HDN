@@ -295,21 +295,21 @@ class LadderVAE(nn.Module):
                 training_mode=self.training_mode,
                 prior=self.prior_type,
             )
-            output = {
-            "ll": ll,
-            "z": td_data["z"],
-            "mu": td_data["mu"],
-            "kl": kl,
-            "cl": cl,
-            "logp": td_data["logprob_p"],
-            "out_mean": likelihood_info["mean"],
-            "out_mode": likelihood_info["mode"],
-            "out_sample": likelihood_info["sample"],
-            "likelihood_params": likelihood_info["params"],
-            "ce": td_data["ce"][-1],
-            "entropy": td_data["entropy"][-1],
-            "pi": td_data["pi"][-1] if "pi" in td_data else None,
-            "q": q,
+        output = {
+        "ll": ll,
+        "z": td_data["z"],
+        "mu": td_data["mu"],
+        "kl": kl,
+        "cl": cl,
+        "logp": td_data["logprob_p"],
+        "out_mean": likelihood_info["mean"],
+        "out_mode": likelihood_info["mode"],
+        "out_sample": likelihood_info["sample"],
+        "likelihood_params": likelihood_info["params"],
+        "ce": td_data["ce"][-1],
+        "entropy": td_data["entropy"][-1],
+        "pi": td_data["pi"][-1] if "pi" in td_data else None,
+        "q": q,
         }
         return output
 

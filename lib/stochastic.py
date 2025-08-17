@@ -55,7 +55,7 @@ class StochasticConvBlock(nn.Module):
             if condition_type == "mlp":
                 self.qy_x = nn.Sequential(
                     conv_type(c_in, c_vars, kernel, padding=pad),
-                    # nn.ReLU(),
+                    nn.ReLU(),
                     nn.Flatten(),
                     nn.Linear(c_vars * 8 * 8, n_components),
                 )
