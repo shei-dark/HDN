@@ -53,19 +53,19 @@ class StochasticConvBlock(nn.Module):
             self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
         elif conditional:
             if condition_type == "mlp":
-                # self.qy_x = nn.Sequential(
-                #     conv_type(c_in, c_vars, kernel, padding=pad),
-                #     nn.ReLU(),
-                #     nn.Flatten(),
-                #     nn.Linear(c_vars * 8 * 8, n_components),
-                # )
                 self.qy_x = nn.Sequential(
-                    conv_type(c_in, 2 * c_vars, kernel, padding=pad),
+                    conv_type(c_in, c_vars, kernel, padding=pad),
                     nn.ReLU(),
-                    conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
-                    nn.ReLU(),
-                    conv_type(2 * c_vars, n_components, kernel, padding=pad),
+                    nn.Flatten(),
+                    nn.Linear(c_vars * 8 * 8, n_components),
                 )
+                # self.qy_x = nn.Sequential(
+                #     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
+                #     nn.ReLU(),
+                #     conv_type(2 * c_vars, 2 * c_vars, kernel, padding=pad),
+                #     nn.ReLU(),
+                #     conv_type(2 * c_vars, n_components, kernel, padding=pad),
+                # )
                 self.qz_xy = nn.Sequential(
                     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
                     nn.ReLU(),
@@ -144,22 +144,23 @@ class StochasticConvBlock(nn.Module):
             if self.conditional:
                 qy_logits = self.qy_x(q_params)
                 # ----
-                qy_logits = qy_logits[:, :, 3, 3]
-                qy_logits = qy_logits.view(self.batch_size, self.n_components)
+                # qy_logits = qy_logits[:, :, 3, 3]
+                # qy_logits = qy_logits.view(self.batch_size, self.n_components)
                 # ----
-                # dice = 0
-                # dice = dice.to(self.device)
-                targets1h = F.one_hot(label.long(), self.n_components)
-                targets1h = targets1h.to(qy_logits.device)
-                # probs = F.softmax(qy_logits, dim=1)
+                dice = 0
                 
-                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-                self._update_temperature()
+                y = F.softmax(qy_logits, dim=1)
+                
+                # y = F.gumbel_softmax(qy_logits, tau=1, hard=True)
+                # self._update_temperature()
                 y_pred = y.argmax(dim=1)
-                
-                inter = torch.sum(y * targets1h, 0)
-                card  = torch.sum(y + targets1h, 0)
-                dice = (2 * inter + 1e-6) / (card + 1e-6)
+                # if label is not None:
+                #     targets1h = F.one_hot(label.long(), self.n_components) #TODO
+                #     targets1h = targets1h.to(qy_logits.device)
+                #     inter = torch.sum(y * targets1h, 0)
+                #     card  = torch.sum(y + targets1h, 0)
+                #     dice = (2 * inter + 1e-6) / (card + 1e-6)
+                #     dice = dice.to(self.device)
                 # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
@@ -182,7 +183,7 @@ class StochasticConvBlock(nn.Module):
                 # kl = kl + js_div
                 entropy = self._compute_entropy(y)
                 if label is not None and self.training_mode != 'unsupervised':
-                    cross_entropy = self._compute_cross_entropy(qy_logits, label) + 1. - dice.mean()
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label) #+ (1. - dice.mean())
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)

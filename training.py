@@ -138,7 +138,7 @@ def train_network(
             "recall": 0,
             "f1": 0,
         }
-        for idx, (x, y, z) in tqdm(enumerate(train_loader), desc="Training"):
+        for idx, (x, y, z, _) in tqdm(enumerate(train_loader), desc="Training"):
             if not use_wandb:
                 if idx == 5:
                     break
@@ -296,7 +296,7 @@ def train_network(
         num_val_batches = len(val_loader)
 
         with torch.no_grad():
-            for idx, (x, y, z) in tqdm(enumerate(val_loader), desc="Validation"):
+            for idx, (x, y, z, _) in tqdm(enumerate(val_loader), desc="Validation"):
                 if not use_wandb:
                     if idx == 5:
                         break
@@ -394,20 +394,20 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        if patience_ == 10 and train_loader.dataset.mode == "supervised":
-            print("--------------------------------------")
-            print("Switching to semi-supervised mode")
-            print("--------------------------------------")
-            train_loader.dataset.set_mode('semisupervised')
-            model.update_mode("semisupervised")
-            patience_ = 0
+        # if patience_ == 10 and train_loader.dataset.mode == "supervised":
+        #     print("--------------------------------------")
+        #     print("Switching to semi-supervised mode")
+        #     print("--------------------------------------")
+        #     train_loader.dataset.set_mode('semisupervised')
+        #     model.update_mode("semisupervised")
+        #     patience_ = 0
         
-        if patience_ == 15 and train_loader.dataset.radius < 7:
-                print("--------------------------------------")
-                print(f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}")
-                print("--------------------------------------")
-                train_loader.dataset.increase_radius()
-                patience_ = 0
+        # if patience_ == 15 and train_loader.dataset.radius < 8:
+        #         print("--------------------------------------")
+        #         print(f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}")
+        #         print("--------------------------------------")
+        #         train_loader.dataset.increase_radius()
+        #         patience_ = 0
 
         if patience_ == 20:
             print("Early stopping")

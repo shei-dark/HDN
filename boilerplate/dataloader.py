@@ -23,7 +23,7 @@ class SemisupervisedDataset(Dataset):
         ignore_lbl=-1,
         ratio=0.75,
         indices_dict=None,
-        radius=5,
+        radius=10, #TODO
     ):
         self.patch_size = patch_size
         self.label_size = label_size
@@ -36,6 +36,7 @@ class SemisupervisedDataset(Dataset):
         self.mode = mode
         self.indices_dict = indices_dict or {}
         self.radius = radius
+        self.n_neighbors = 7 #TODO  # Number of neighbors to sample
         self.seed = 42
         self.rng = random.Random(self.seed)
         self.samples_per_class: Dict[int, int] = {1: 2}
@@ -98,15 +99,15 @@ class SemisupervisedDataset(Dataset):
             patch = patch_at(cy, cx).unsqueeze(0)  # [1, 1, H, W]  <-- extra dim
             label = torch.tensor([int(g["labels"][0])], dtype=torch.long)  # [1]
             segment = lbl_at(cy, cx).unsqueeze(0)  # [1, 1, H, W]
-            return patch, label, segment
+            return patch, label, segment, torch.tensor(g["coords"][0])
         else:
-            coords = [tuple(map(int, xy)) for xy in g["coords"]]
+            coords = torch.tensor([tuple(map(int, xy)) for xy in g["coords"]])
             patches = torch.stack([patch_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
             # labels = torch.tensor([g["labels"][0], -1, -1, -1], dtype=torch.long)  # [4]
-            labels = torch.tensor([g["labels"][0], g["labels"][0], g["labels"][0], g["labels"][0]], dtype=torch.long)
-            # labels = torch.tensor(g["labels"], dtype=torch.long)
+            # labels = torch.tensor([g["labels"][0], g["labels"][0], g["labels"][0], g["labels"][0]], dtype=torch.long)
+            labels = torch.tensor(g["labels"], dtype=torch.long)
             segments = torch.stack([lbl_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
-            return patches, labels, segments
+            return patches, labels, segments, coords
 
     def _prepare_metadata(self) -> List[dict]:
         groups: List[dict] = []
@@ -137,11 +138,11 @@ class SemisupervisedDataset(Dataset):
                             W=W,
                             used_coords=used_coords,
                             lbl=lbl,
-                            k=3,
+                            k=self.n_neighbors,  # Number of neighbors to sample
                             max_tries=100,
                         )
 
-                        if len(neighbors) == 3:
+                        if len(neighbors) == self.n_neighbors:
                             groups.append(
                                 self._make_group_record(
                                     name=name,
@@ -178,11 +179,11 @@ class SemisupervisedDataset(Dataset):
                 W=W,
                 used_coords=used_coords,
                 lbl=lbl,
-                k=3,
+                k=self.n_neighbors,
                 max_tries=100,
             )
 
-            if len(neighbors) == 3:
+            if len(neighbors) == self.n_neighbors: 
                 
                 modified_group = self._make_group_record(
                     name=name,
@@ -331,9 +332,9 @@ class ModeAwareBalancedAnchorBatchSampler(Sampler):
         # anchors-per-batch depends on current mode
         if self.dataset.mode == "semisupervised":
             assert (
-                self.total_patches_per_batch % 4 == 0
+                self.total_patches_per_batch % 8 == 0 #TODO
             ), "total_patches_per_batch must be divisible by 4 in semisupervised mode."
-            anchors_per_batch = self.total_patches_per_batch // 4
+            anchors_per_batch = self.total_patches_per_batch // 8 #TODO
         else:
             anchors_per_batch = self.total_patches_per_batch
 
@@ -379,7 +380,9 @@ def flex_collate(batch):
     patches = torch.cat([b[0] for b in batch], dim=0)   # [sum M, 1, H, W]
     labels  = torch.cat([b[1] for b in batch], dim=0)   # [sum M]
     segs    = torch.cat([b[2] for b in batch], dim=0)   # [sum M, 1, H, W]
-    return patches, labels, segs
+    coords = torch.stack([b[3] for b in batch], dim=0) if len(batch[0]) > 3 else None
+
+    return patches, labels, segs, coords
 class Custom2DDataset(Dataset):
     def __init__(
         self,
