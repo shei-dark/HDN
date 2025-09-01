@@ -560,8 +560,8 @@ def multiscale_supervised_cl_semi(
     device = mus[0].device
     idx = torch.arange(B, device=device)
     
-    is_anchor  = (idx % 4 == 0)                 # [B]
-    group_id   = idx // 4                       # [B]
+    is_anchor  = (idx % 8 == 0)                 # [B]
+    group_id   = idx // 8                      # [B]
     same_label = labels[:, None].eq(labels[None, :])     # [B,B]
     same_group = group_id[:, None].eq(group_id[None, :]) # [B,B]
     eye        = torch.eye(B, dtype=torch.bool, device=device)

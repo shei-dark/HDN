@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/test/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/38/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="supervised")
@@ -45,7 +45,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=True)
+parser.add_argument("--load_checkpoint", type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -80,13 +80,13 @@ checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 noiseModel = None
 
 # Training-specific
-batch_size = 256
+batch_size = 1024
 lr = 3e-5
 max_epochs = 1000
 num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
 blocks_per_layer = args.blocks_per_layer
-batchnorm = False
+batchnorm = True
 free_bits = 0.0
 
 alpha = args.alpha  # weight of the inpainting loss
@@ -171,7 +171,6 @@ val_set = SemisupervisedDataset(
     ratio=labeled_ratio,
     indices_dict=val_idx,
 )
-
 
 train_loader = DataLoader(
     train_set,

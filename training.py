@@ -8,8 +8,8 @@ from tqdm import tqdm
 import torch.backends.cudnn as cudnn
 from boilerplate import boilerplate
 import wandb
+import shutil
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
-
 
 
 def train_network(
@@ -116,7 +116,8 @@ def train_network(
         run.config.update(dict(epochs=max_epochs))
         wandb.run.log_code(
             ("/home/sheida.rahnamai/GIT/My_Plugin/epsSeg/"),
-            include_fn=lambda path: path.endswith(".py") or path.endswith(".ipynb" or path.endswith(".sbatch")),
+            include_fn=lambda path: path.endswith(".py")
+            or path.endswith(".ipynb" or path.endswith(".sbatch")),
         )
 
     for epoch in range(max_epochs):
@@ -186,17 +187,17 @@ def train_network(
                         labels.append((li, lj))
 
                     quadrant_pair_labels[quadrant] = labels
-                
+
                 quadrant_expectation = {
-                    'top_left': 0,       # expect dissimilar
-                    'top_right': 0,      # expect dissimilar
-                    'bottom_left': 1,    # expect similar
-                    'bottom_right': 1    # expect similar
+                    "top_left": 0,  # expect dissimilar
+                    "top_right": 0,  # expect dissimilar
+                    "bottom_left": 1,  # expect similar
+                    "bottom_right": 1,  # expect similar
                 }
-                
+
                 y_true = []  # expected similarity: 1 for similar, 0 for dissimilar
                 y_pred = []  # predicted similarity: based on label equality
-                
+
                 for quadrant, pairs in quadrant_pair_labels.items():
                     expected = quadrant_expectation[quadrant]
                     for label_i, label_j in pairs:
@@ -207,7 +208,7 @@ def train_network(
                 precision = precision_score(y_true, y_pred, zero_division=0)
                 recall = recall_score(y_true, y_pred, zero_division=0)
                 f1 = f1_score(y_true, y_pred, zero_division=0)
-                
+
                 running_metrics["tp"] += tp
                 running_metrics["tn"] += tn
                 running_metrics["fp"] += fp
@@ -394,20 +395,27 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        # if patience_ == 10 and train_loader.dataset.mode == "supervised":
-        #     print("--------------------------------------")
-        #     print("Switching to semi-supervised mode")
-        #     print("--------------------------------------")
-        #     train_loader.dataset.set_mode('semisupervised')
-        #     model.update_mode("semisupervised")
-        #     patience_ = 0
-        
-        # if patience_ == 15 and train_loader.dataset.radius < 8:
-        #         print("--------------------------------------")
-        #         print(f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}")
-        #         print("--------------------------------------")
-        #         train_loader.dataset.increase_radius()
-        #         patience_ = 0
+        if patience_ == 10 and train_loader.dataset.mode == "supervised":
+            print("--------------------------------------")
+            print("Switching to semi-supervised mode")
+            print("--------------------------------------")
+            train_loader.dataset.set_mode('semisupervised')
+            model.update_mode("semisupervised")
+            patience_ = 0
+            shutil.copy(
+                model_folder + model_name + "_best_vae.net",
+                model_folder + model_name + "_best_supervised_vae.net",
+            )
+            
+
+        if patience_ == 15 and train_loader.dataset.radius < 10:
+            print("--------------------------------------")
+            print(
+                f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}"
+            )
+            print("--------------------------------------")
+            train_loader.dataset.increase_radius()
+            patience_ = 0
 
         if patience_ == 20:
             print("Early stopping")

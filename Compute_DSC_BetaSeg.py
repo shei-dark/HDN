@@ -63,7 +63,7 @@ def compute_dice_score(pred_stack, gt_stack, num_classes):
     return dice_scores
 
 # Path to files (Modify accordingly)
-prediction_dir = "/group/jug/Sheida/HVAE/segmentation/30/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
+prediction_dir = "/group/jug/Sheida/HVAE/segmentation/38/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
 # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/output/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
 # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/small_unet/inference/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
 gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"   # Path to the ground truth stack
@@ -76,7 +76,7 @@ gt_stack = gt_stack[626]  # Adjust range if necessary
 # Get list of prediction files
 # pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('.')[0]))
 # pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
-pred_files = os.path.join(prediction_dir, "seg/626_sup.tif")
+pred_files = os.path.join(prediction_dir, "seg/626_semisup.tif")
 # Ensure we have the right number of images
 # assert len(pred_files) == gt_stack.shape[0], "Mismatch in number of prediction and ground truth images!"
 

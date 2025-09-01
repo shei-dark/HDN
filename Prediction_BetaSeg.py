@@ -37,7 +37,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["30"]
+model_versions = ["38"]
 batch_size = 512
 
 
@@ -75,5 +75,5 @@ for test_index in tqdm(img_idx):
             test_dataset.num_patches_y, test_dataset.num_patches_x
         )
         os.makedirs(f"{model_dir}{model_v}/seg/", exist_ok=True)
-        tiff.imwrite(f"{model_dir}{model_v}/seg/{test_index}_sup.tif", clusters.astype(np.uint8))
+        tiff.imwrite(f"{model_dir}{model_v}/seg/{test_index}_semisup.tif", clusters.astype(np.uint8))
         print(f"Segmentation for image slice {test_index} saved")
