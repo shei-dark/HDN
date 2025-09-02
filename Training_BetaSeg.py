@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
+    "--directory_path", type=str, default="/group/jug/Sheida/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="unsupervised")

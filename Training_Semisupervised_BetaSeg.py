@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/38/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/39/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="supervised")
@@ -139,6 +139,7 @@ for key in keys:
 
 # compute mean and std of the data
 all_elements = np.concatenate([imgs[key][train_idx[key]].flatten() for key in keys])
+print(np.unique(np.concatenate([lbls[key][train_idx[key]].flatten() for key in keys]), return_counts=True))
 data_mean = np.mean(all_elements)
 data_std = np.std(all_elements.astype(np.float32))
 
