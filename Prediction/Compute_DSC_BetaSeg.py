@@ -1,6 +1,10 @@
+import os, sys
+HERE = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, '..'))  # parent of myscript/
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 import numpy as np
 import tifffile as tiff
-import os
 from glob import glob
 from skimage.morphology import binary_dilation, binary_erosion, remove_small_objects, disk
 from scipy.ndimage import median_filter
@@ -63,7 +67,7 @@ def compute_dice_score(pred_stack, gt_stack, num_classes):
     return dice_scores
 
 # Path to files (Modify accordingly)
-prediction_dir = "/group/jug/Sheida/HVAE/segmentation/38/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
+prediction_dir = "/group/jug/Sheida/HVAE/segmentation/40/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
 # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/output/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
 # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/small_unet/inference/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
 gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"   # Path to the ground truth stack

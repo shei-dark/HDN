@@ -303,35 +303,58 @@ class BCSSDataset(Dataset):
         patch_size=64,
         label_size=1,
         mode="semisupervised",
-        n_classes=4,
-        ignore_lbl=-1,
         ratio=0.75,
-        indices=None,
         radius=5,  # TODO
+        validation=False,
     ):
         self.patch_size = patch_size
         self.label_size = label_size
         self.half = patch_size // 2 - self.label_size
         self.images = images
         self.labels = labels
-        self.ignore_lbl = ignore_lbl
-        self.n_classes = n_classes
+        self.unique_vals = set()
+        for arr in self.labels:
+            self.unique_vals.update(arr.ravel())   # flatten & add to set
+
+        # Convert back to sorted numpy array if needed
+        self.unique_vals = np.array(sorted(self.unique_vals))
+        print(self.unique_vals)
+        self.n_classes = len(self.unique_vals)
         self.ratio = ratio
         self.mode = mode
-        self.indices = indices or []
         self.radius = radius
         self.n_neighbors = 7  # TODO  # Number of neighbors to sample
         self.seed = 42
         self.rng = random.Random(self.seed)
-        self.default_samples_per_class: int = 1 
+        self.samples_per_class: Dict[int, int] = {
+            0: 4,
+            3: 2,
+            4: 2,
+            5: 9,
+            6: 3,
+            7: 2,
+            9: 4,
+            10: 6,
+            11: 10,
+            12: 100,
+            13: 5,
+            14: 52,
+            15: 10,
+            17: 105,
+            18: 2,
+            19: 105,
+            20: 105
+        }
+        self.validation = validation
+        self.default_samples_per_class: int = 1
         self.groups = self._prepare_metadata()
         self.n_label_per_class = {
             c: len([g for g in self.groups if g["labels"][0] == c])
-            for c in range(self.n_classes)
+            for c in self.unique_vals
         }
         self.anchor_indices_by_label = {
             c: [i for i, g in enumerate(self.groups) if g["labels"][0] == c]
-            for c in range(self.n_classes)
+            for c in self.unique_vals
         }
 
     def set_mode(self, mode: str):
@@ -345,33 +368,30 @@ class BCSSDataset(Dataset):
         self.radius += 1
         self.groups = self._modify_metadata()
 
-    def _is_valid_coord(self, z, y, x, H, W):
+    def _is_valid_coord(self, y, x, H, W):
         valid = (
             self.half <= y < H - self.half - 1 and self.half <= x < W - self.half - 1
         )
-        in_cell = self.labels[z][y, x] != self.ignore_lbl
-        return valid and in_cell
+        return valid
 
     def __len__(self):
         return len(self.groups)
 
     def __getitem__(self, idx):
         g = self.groups[idx]
-        name, z = g["name"], int(g["z"])
-        img_vol = self.images[name]
-        lbl_vol = self.labels[name]
+        z = int(g["z"])
+        img = self.images[z]
+        lbl = self.labels[z]
 
         def patch_at(y, x):
-            p = img_vol[
-                z,
+            p = img[
                 y - self.half : y + self.half + 2,
                 x - self.half : x + self.half + 2,
             ]
-            return torch.from_numpy(p).unsqueeze(0)  # [1, H, W]
-
+            p = np.transpose(p, (2, 0, 1))
+            return torch.from_numpy(p)
         def lbl_at(y, x):
-            p = lbl_vol[
-                z,
+            p = lbl[
                 y - self.half : y + self.half + 2,
                 x - self.half : x + self.half + 2,
             ]
@@ -395,16 +415,16 @@ class BCSSDataset(Dataset):
     def _prepare_metadata(self) -> List[dict]:
         groups: List[dict] = []
 
-        for z in self.indices:
+        for z in range(len(self.images)):
             img = self.images[z]
             lbl = self.labels[z]
             H, W, _ = img.shape
 
             used_coords = set()
 
-            for c in range(self.n_classes):
+            for c in self.unique_vals:
                 for cy, cx in self._sample_coords_for_class(lbl, c):
-                    if not self._is_valid_coord(z, cy, cx, H, W):
+                    if not self._is_valid_coord(cy, cx, H, W):
                         continue
                     if (cy, cx) in used_coords:
                         continue
@@ -477,8 +497,14 @@ class BCSSDataset(Dataset):
     ) -> Iterable[Tuple[int, int]]:
         """Return up to N (y, x) coordinates for class c from a 2D label stack."""
 
-        n_needed = self.default_samples_per_class
-
+        n_needed = 10*getattr(self, "samples_per_class", {}).get(
+            c,
+            getattr(
+                self,
+                "default_samples_per_class",
+            ),  # TODO
+        )
+        
         label_coords = np.argwhere(stack == c)
         if len(label_coords) < n_needed:
             return []  # not enough to sample
@@ -518,7 +544,7 @@ class BCSSDataset(Dataset):
                 tries += 1
                 continue
 
-            if self._is_valid_coord(z, ny, nx, H, W):
+            if self._is_valid_coord(ny, nx, H, W):
                 used_coords.add(coord)
                 neighbors.append(
                     {

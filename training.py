@@ -400,6 +400,9 @@ def train_network(
             print("Switching to semi-supervised mode")
             print("--------------------------------------")
             train_loader.dataset.set_mode('semisupervised')
+            checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
+            model.load_state_dict(checkpoint.state_dict())
+            
             model.update_mode("semisupervised")
             patience_ = 0
             shutil.copy(
@@ -408,7 +411,7 @@ def train_network(
             )
             
 
-        if patience_ == 15 and train_loader.dataset.radius < 10:
+        if patience_ == 15 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
             print("--------------------------------------")
             print(
                 f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}"
@@ -417,6 +420,6 @@ def train_network(
             train_loader.dataset.increase_radius()
             patience_ = 0
 
-        if patience_ == 20:
+        if patience_ == 20 and train_loader.dataset.mode == "semisupervised":
             print("Early stopping")
             break
