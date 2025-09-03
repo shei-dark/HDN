@@ -304,7 +304,7 @@ class BCSSDataset(Dataset):
         label_size=1,
         mode="semisupervised",
         ratio=0.75,
-        radius=5,  # TODO
+        radius=10,  # TODO
         validation=False,
     ):
         self.patch_size = patch_size
