@@ -304,6 +304,7 @@ class BCSSDataset(Dataset):
         label_size=1,
         mode="semisupervised",
         ratio=0.75,
+        ignore_lbl=0,
         radius=10,  # TODO
         validation=False,
     ):
@@ -312,12 +313,15 @@ class BCSSDataset(Dataset):
         self.half = patch_size // 2 - self.label_size
         self.images = images
         self.labels = labels
+        self.ignore_lbl=ignore_lbl
         self.unique_vals = set()
         for arr in self.labels:
             self.unique_vals.update(arr.ravel())   # flatten & add to set
 
         # Convert back to sorted numpy array if needed
         self.unique_vals = np.array(sorted(self.unique_vals))
+        if self.ignore_lbl in self.unique_vals:
+            self.unique_vals = self.unique_vals[self.unique_vals != self.ignore_lbl]
         print(self.unique_vals)
         self.n_classes = len(self.unique_vals)
         self.ratio = ratio
@@ -327,7 +331,6 @@ class BCSSDataset(Dataset):
         self.seed = 42
         self.rng = random.Random(self.seed)
         self.samples_per_class: Dict[int, int] = {
-            0: 4,
             3: 2,
             4: 2,
             5: 9,
@@ -368,11 +371,12 @@ class BCSSDataset(Dataset):
         self.radius += 1
         self.groups = self._modify_metadata()
 
-    def _is_valid_coord(self, y, x, H, W):
+    def _is_valid_coord(self, z, y, x, H, W):
         valid = (
             self.half <= y < H - self.half - 1 and self.half <= x < W - self.half - 1
         )
-        return valid
+        in_cell = self.labels[z][y, x] != self.ignore_lbl
+        return valid and in_cell
 
     def __len__(self):
         return len(self.groups)
@@ -424,7 +428,7 @@ class BCSSDataset(Dataset):
 
             for c in self.unique_vals:
                 for cy, cx in self._sample_coords_for_class(lbl, c):
-                    if not self._is_valid_coord(cy, cx, H, W):
+                    if not self._is_valid_coord(z, cy, cx, H, W):
                         continue
                     if (cy, cx) in used_coords:
                         continue
@@ -544,7 +548,7 @@ class BCSSDataset(Dataset):
                 tries += 1
                 continue
 
-            if self._is_valid_coord(ny, nx, H, W):
+            if self._is_valid_coord(z, ny, nx, H, W):
                 used_coords.add(coord)
                 neighbors.append(
                     {
@@ -602,7 +606,7 @@ class ModeAwareBalancedAnchorBatchSampler(Sampler):
         # Build per-class pools once (anchors only)
         self.pools = {
             c: [i for i, g in enumerate(dataset.groups) if g["labels"][0] == c]
-            for c in range(dataset.n_classes)
+            for c in dataset.unique_vals
         }
         self.labels = [c for c, v in self.pools.items() if len(v) > 0]
         if not self.labels:
