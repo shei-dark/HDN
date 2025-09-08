@@ -48,6 +48,7 @@ class StochasticConvBlock(nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.prior_probs = torch.ones(n_components, device=self.device) / n_components
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
+        self.bias = torch.zeros(self.n_components, device=self.device, requires_grad=True)
 
         if not top_layer or (block_type == "normal" and not conditional):
             self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
@@ -69,12 +70,12 @@ class StochasticConvBlock(nn.Module):
                     c_in=c_in,
                     embed_dim=128,
                     n_components=n_components,
-                    num_heads=4,
+                    num_heads=4, #TODO
                     num_layers=3,
                     mode="mlp",
                 )
                 self.qz_xy = TransformerQ(
-                    c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv"
+                    c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv" #TODO
                 )
             self.gamma_layer = nn.Linear(n_components, c_in)
             self.beta_layer = nn.Linear(n_components, c_in)
@@ -94,12 +95,6 @@ class StochasticConvBlock(nn.Module):
     def forward(self, label, p_params, q_params):
 
         self.batch_size = q_params.shape[0]
-        if self.training_mode == "supervised":
-            self.small_batch_size = self.batch_size
-        elif self.training_mode == "semisupervised":
-            self.small_batch_size = int(self.batch_size * self.labeled_ratio)
-        elif self.training_mode == "unsupervised":
-            self.small_batch_size = self.batch_size
 
         p_mu, p_lv = torch.chunk(p_params, 2, dim=1)
         p_mu = torch.clamp(p_mu, min=-10.0, max=10.0)  # Clamp p_mu
@@ -137,14 +132,14 @@ class StochasticConvBlock(nn.Module):
         else:  # Top layer
             if self.conditional:
                 qy_logits = self.qy_x(q_params)
-
+                dice = 0
                 if label is not None:
                     y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
                     self._update_temperature()
                 else:
                     y = F.softmax(qy_logits, dim=1)
                 
-                y_pred = y.argmax(dim=1)
+                y_pred = y.argmax(dim=1)                    
 
                 # ----
                 # FiLM layer
@@ -152,8 +147,8 @@ class StochasticConvBlock(nn.Module):
                 beta = self.beta_layer(qy_logits)
                 gamma = gamma.unsqueeze(-1).unsqueeze(-1)
                 beta = beta.unsqueeze(-1).unsqueeze(-1)
-                x_modulated = gamma * q_params + beta
-                qz_params = self.qz_xy(x_modulated)
+                q_modulated = gamma * q_params + beta
+                qz_params = self.qz_xy(q_modulated)
                 q_mu, q_lv = torch.chunk(qz_params, 2, dim=1)
                 q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
                 q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
@@ -165,49 +160,91 @@ class StochasticConvBlock(nn.Module):
 
                     B = label.shape[0] if label is not None else self.batch_size
                     assert B == self.batch_size
-                    device = label.device if label is not None else qy_logits.device
                     group = 8
                     num_groups = B // group
                     anchors = torch.arange(
-                        0, num_groups * group, group, device=qy_logits.device
+                        0, num_groups * group, group, device=self.device
                     )
-                    is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
-                    tp_anchors = anchors[is_tp]
-                    tp_anchor_labels = label[tp_anchors]
-                    neigh_offsets = torch.arange(1, 8, device=device)
-                    neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
-                    neigh_idx_flat = neigh_idx.reshape(-1)
-                    valid_mask = neigh_idx_flat < B
-                    neigh_idx_flat = neigh_idx_flat[valid_mask]
-                    anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
-                    anchor_label_for_neigh = anchor_label_for_neigh[valid_mask]
-                    z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
-                    z_all = F.normalize(z_all, dim=1)
-                    Z_anchors = z_all[tp_anchors]
-                    Z_neigh = z_all[neigh_idx_flat]
-                    dist = torch.cdist(Z_neigh, Z_anchors, p=2)
-                    k = num_groups // (2 * self.n_components)
-                    k = max(1, min(k, dist.size(-1)))
-                    knn_idx = dist.topk(int(k / 2), largest=False, dim=-1).indices
-                    knn_labels = tp_anchor_labels[knn_idx]
-                    all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
-                    matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
-                    consistent = all_same & matches_anchor
+                    # is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
+                    # tp_anchors = anchors[is_tp]
+                    # tp_anchor_labels = label[tp_anchors]
+                    # neigh_offsets = torch.arange(1, 8, device=self.device)
+                    # neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
+                    # neigh_idx_flat = neigh_idx.reshape(-1)
+                    # anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
+                    # z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
+                    # z_all = F.normalize(z_all, dim=1)
+                    # Z_anchors = z_all[tp_anchors]
+                    # Z_neigh = z_all[neigh_idx_flat]
+                    # dist = torch.cdist(Z_neigh, Z_anchors, p=2)
+                    # k = num_groups // (2 * self.n_components)
+                    # k = max(1, min(k, dist.size(-1)))
+                    # knn_idx = dist.topk(k, largest=False, dim=-1).indices
+                    # knn_labels = tp_anchor_labels[knn_idx]
+                    # all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
+                    # matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
+                    # consistent = all_same & matches_anchor
 
-                    # Build pseudo labels
-                    pseudo_labels = torch.full_like(label, -1)
-                    pseudo_labels[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
-                        consistent
-                    ]
-                    label = torch.where(
-                        label.long() >= 0, label.long(), pseudo_labels.long()
-                    )
+                    # # Build pseudo labels
+                    # pseudo_labels = torch.full_like(label, -1)
+                    # pseudo_labels[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
+                    #     consistent
+                    # ]
+                    # pseudo_labels = torch.where(
+                    #     label.long() >= 0, label.long(), pseudo_labels.long()
+                    # )
+                
+                    q_mu_anchors = q_mu[anchors]
+                    labels_anchors = label[anchors]
+                    
+                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
+                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
+
+                    # Accumulate per class
+                    for c in range(self.n_components):
+                        mask = (labels_anchors == c)
+                        if mask.any():
+                            sums[c] = q_mu_anchors[mask].sum(dim=0)
+                            counts[c] = mask.sum()
+
+                    means = sums / counts.clamp(min=1)
+                    all_idx = torch.arange(B, device=self.device)
+                    mask = torch.ones(B, dtype=torch.bool, device=self.device)
+                    mask[anchors] = False
+                    non_anchors = all_idx[mask]             # (N,)
+                    q_mu_n = q_mu[non_anchors] 
+                    
+                    diff = q_mu_n.unsqueeze(1) - means.unsqueeze(0)
+                    dists = (diff * diff).sum(dim=(2, 3, 4))
+                    logits = -dists/200 #+ self.bias.view(1, -1)
+                    logits = logits - logits.max(dim=1, keepdim=True).values
+                    probs  = torch.softmax(logits, dim=1)
+                    conf, pseudo = probs.max(dim=1)
+                    # pseudo_labels = torch.full_like(label, -1).long()
+                    # pseudo_labels[anchors] = label[anchors].long()
+                    # pseudo_labels[non_anchors] = pseudo
+                    accept = conf > 0.5
+                    # cross_entropy = 100* F.cross_entropy(logits[accept], pseudo[accept]) + F.cross_entropy(qy_logits[anchors], label[anchors].long())
+                    cross_entropy = 10* self._compute_cross_entropy(logits[accept], pseudo[accept]) + self._compute_cross_entropy(qy_logits[anchors], label[anchors].long())
+
+                
+                # if label is not None:
+                    # valid = (label >= 0)
+                    # y_prob = F.softmax(qy_logits[valid], dim=1)
+                    # targets1h = F.one_hot(label[valid].long(), self.n_components)
+                    # targets1h = targets1h.to(qy_logits.device, dtype=y_prob.dtype)
+                    # inter = (y_prob * targets1h).sum(dim=0)
+                    # card  = (y_prob + targets1h).sum(dim=0)
+                    # dice  = (2 * inter + 1e-6) / (card + 1e-6)
+                    # dice = dice.to(self.device)
+                    
+                    # cross_entropy = 1.0 - dice.mean()
 
                 # js_div = self._compute_js_div(y)
                 kl = self._compute_kl(q, p_components, label, y_pred)
 
-                if label is not None and self.training_mode != "unsupervised":
-                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                # if label is not None and self.training_mode != "unsupervised":
+                #     cross_entropy = self._compute_cross_entropy(qy_logits, label)
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)
@@ -285,23 +322,8 @@ class StochasticConvBlock(nn.Module):
                 ]
                 kl_divergences = torch.stack(kl_divergences, dim=-1)
                 if label is not None and self.training_mode != "unsupervised":
-                    if self.small_batch_size < self.batch_size:
-                        kl = torch.cat(
-                            [
-                                kl_divergences[
-                                    range(self.small_batch_size),
-                                    label[: self.small_batch_size].long(),
-                                ],
-                                kl_divergences[
-                                    range(self.small_batch_size, self.batch_size),
-                                    y_pred[self.small_batch_size :],
-                                ],
-                            ],
-                            dim=0,
-                        )
-                    else:
-                        temp = kl_divergences[range(self.batch_size), label.long()]
-                        kl = temp[label != -1]
+                    temp = kl_divergences[range(self.batch_size), label.long()]
+                    kl = temp[label != -1]
         if kl.any():
             return kl.mean()
         else:

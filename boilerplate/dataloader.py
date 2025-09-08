@@ -32,6 +32,8 @@ class SemisupervisedDataset(Dataset):
         self.labels = labels
         self.ignore_lbl = ignore_lbl
         self.n_classes = n_classes
+        # Convert back to sorted numpy array if needed
+        self.unique_vals = np.array(range(n_classes))
         self.ratio = ratio
         self.mode = mode
         self.indices_dict = indices_dict or {}
@@ -103,9 +105,9 @@ class SemisupervisedDataset(Dataset):
         else:
             coords = torch.tensor([tuple(map(int, xy)) for xy in g["coords"]])
             patches = torch.stack([patch_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
-            # labels = torch.tensor([g["labels"][0]] + [-1]*7, dtype=torch.long)  # [4]
+            labels = torch.tensor([g["labels"][0]] + [-1]*7, dtype=torch.long)  # [4]
             # labels = torch.tensor([g["labels"][i] for i in range(8)], dtype=torch.long)
-            labels = torch.tensor(g["labels"], dtype=torch.long)
+            # labels = torch.tensor(g["labels"], dtype=torch.long)
             segments = torch.stack([lbl_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
             return patches, labels, segments, coords
 
@@ -324,30 +326,36 @@ class BCSSDataset(Dataset):
             self.unique_vals = self.unique_vals[self.unique_vals != self.ignore_lbl]
         print(self.unique_vals)
         self.n_classes = len(self.unique_vals)
+        self.kept_classes = self.unique_vals.astype(np.int64)
+        lut_size = int(self.kept_classes.max()) + 1 if self.kept_classes.size > 0 else 1
+        self.label_to_comp = -np.ones(lut_size, dtype=np.int64)
+        self.label_to_comp[self.kept_classes] = np.arange(self.n_classes, dtype=np.int64)
+        
         self.ratio = ratio
         self.mode = mode
         self.radius = radius
         self.n_neighbors = 7  # TODO  # Number of neighbors to sample
         self.seed = 42
         self.rng = random.Random(self.seed)
-        self.samples_per_class: Dict[int, int] = {
-            3: 2,
-            4: 2,
-            5: 9,
-            6: 3,
-            7: 2,
-            9: 4,
-            10: 6,
-            11: 10,
-            12: 100,
-            13: 5,
-            14: 52,
-            15: 10,
-            17: 105,
-            18: 2,
-            19: 105,
-            20: 105
-        }
+        self.samples_per_class: Dict[int, int] = {}
+        # {
+        #     3: 2,
+        #     4: 2,
+        #     5: 9,
+        #     6: 3,
+        #     7: 2,
+        #     9: 4,
+        #     10: 6,
+        #     11: 10,
+        #     12: 100,
+        #     13: 5,
+        #     14: 52,
+        #     15: 10,
+        #     17: 105,
+        #     18: 2,
+        #     19: 105,
+        #     20: 105
+        # }
         self.validation = validation
         self.default_samples_per_class: int = 1
         self.groups = self._prepare_metadata()
@@ -412,7 +420,13 @@ class BCSSDataset(Dataset):
             patches = torch.stack([patch_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
             # labels = torch.tensor([g["labels"][0]] + [-1]*7, dtype=torch.long)  # [4]
             # labels = torch.tensor([g["labels"][i] for i in range(8)], dtype=torch.long)
-            labels = torch.tensor(g["labels"], dtype=torch.long)
+            # labels = torch.tensor(g["labels"], dtype=torch.long)
+            labels_raw = np.asarray(g["labels"], dtype=np.int64)         # shape [8]
+            mapped = np.full_like(labels_raw, -1)                        # default -1
+            mask = labels_raw >= 0                                       # keep -1s as -1
+            mapped[mask] = self.label_to_comp[labels_raw[mask]]          # LUT apply
+            labels = torch.from_numpy(mapped).long()
+            
             segments = torch.stack([lbl_at(y, x) for (y, x) in coords])  # [4, 1, H, W]
             return patches, labels, segments, coords
 
