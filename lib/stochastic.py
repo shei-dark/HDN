@@ -165,80 +165,82 @@ class StochasticConvBlock(nn.Module):
                     anchors = torch.arange(
                         0, num_groups * group, group, device=self.device
                     )
-                    # is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
-                    # tp_anchors = anchors[is_tp]
-                    # tp_anchor_labels = label[tp_anchors]
-                    # neigh_offsets = torch.arange(1, 8, device=self.device)
-                    # neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
-                    # neigh_idx_flat = neigh_idx.reshape(-1)
-                    # anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
-                    # z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
-                    # z_all = F.normalize(z_all, dim=1)
-                    # Z_anchors = z_all[tp_anchors]
-                    # Z_neigh = z_all[neigh_idx_flat]
-                    # dist = torch.cdist(Z_neigh, Z_anchors, p=2)
+                    is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
+                    tp_anchors = anchors[is_tp]
+                    tp_anchor_labels = label[tp_anchors]
+                    neigh_offsets = torch.arange(1, 8, device=self.device)
+                    neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
+                    neigh_idx_flat = neigh_idx.reshape(-1)
+                    anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
+                    z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
+                    z_all = F.normalize(z_all, dim=1)
+                    Z_anchors = z_all[tp_anchors]
+                    Z_neigh = z_all[neigh_idx_flat]
+                    dist = torch.cdist(Z_neigh, Z_anchors, p=2)
                     # k = num_groups // (2 * self.n_components)
                     # k = max(1, min(k, dist.size(-1)))
-                    # knn_idx = dist.topk(k, largest=False, dim=-1).indices
-                    # knn_labels = tp_anchor_labels[knn_idx]
-                    # all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
-                    # matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
-                    # consistent = all_same & matches_anchor
+                    k = 8
+                    knn_idx = dist.topk(k, largest=False, dim=-1).indices
+                    knn_labels = tp_anchor_labels[knn_idx]
+                    all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
+                    matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
+                    consistent = all_same & matches_anchor
 
-                    # # Build pseudo labels
-                    # pseudo_labels = torch.full_like(label, -1)
-                    # pseudo_labels[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
-                    #     consistent
-                    # ]
-                    # pseudo_labels = torch.where(
-                    #     label.long() >= 0, label.long(), pseudo_labels.long()
-                    # )
+                    # Build pseudo labels
+                    pseudo_labels = torch.full_like(label, -1)
+                    pseudo_labels[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
+                        consistent
+                    ]
+                    pseudo_labels = torch.where(
+                        label.long() >= 0, label.long(), pseudo_labels.long()
+                    )
+                    cross_entropy = self._compute_cross_entropy(qy_logits, pseudo_labels)
                 
-                    q_mu_anchors = q_mu[anchors]
-                    labels_anchors = label[anchors]
+                    # q_mu_anchors = q_mu[anchors]
+                    # labels_anchors = label[anchors]
                     
-                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
-                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
+                    # sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
+                    # counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
 
-                    # Accumulate per class
-                    for c in range(self.n_components):
-                        mask = (labels_anchors == c)
-                        if mask.any():
-                            sums[c] = q_mu_anchors[mask].sum(dim=0)
-                            counts[c] = mask.sum()
+                    # # Accumulate per class
+                    # for c in range(self.n_components):
+                    #     mask = (labels_anchors == c)
+                    #     if mask.any():
+                    #         sums[c] = q_mu_anchors[mask].sum(dim=0)
+                    #         counts[c] = mask.sum()
 
-                    means = sums / counts.clamp(min=1)
-                    all_idx = torch.arange(B, device=self.device)
-                    mask = torch.ones(B, dtype=torch.bool, device=self.device)
-                    mask[anchors] = False
-                    non_anchors = all_idx[mask]             # (N,)
-                    q_mu_n = q_mu[non_anchors] 
+                    # means = sums / counts.clamp(min=1)
+                    # all_idx = torch.arange(B, device=self.device)
+                    # mask = torch.ones(B, dtype=torch.bool, device=self.device)
+                    # mask[anchors] = False
+                    # non_anchors = all_idx[mask]             # (N,)
+                    # q_mu_n = q_mu[non_anchors] 
                     
-                    diff = q_mu_n.unsqueeze(1) - means.unsqueeze(0)
-                    dists = (diff * diff).sum(dim=(2, 3, 4))
-                    logits = -dists/200 #+ self.bias.view(1, -1)
-                    logits = logits - logits.max(dim=1, keepdim=True).values
-                    probs  = torch.softmax(logits, dim=1)
-                    conf, pseudo = probs.max(dim=1)
+                    # diff = q_mu_n.unsqueeze(1) - means.unsqueeze(0)
+                    # dists = (diff * diff).sum(dim=(2, 3, 4))
+                    # logits = -dists/200 #+ self.bias.view(1, -1)
+                    # logits = logits - logits.max(dim=1, keepdim=True).values
+                    # probs  = torch.softmax(logits, dim=1)
+                    # conf, pseudo = probs.max(dim=1)
                     # pseudo_labels = torch.full_like(label, -1).long()
                     # pseudo_labels[anchors] = label[anchors].long()
                     # pseudo_labels[non_anchors] = pseudo
-                    accept = conf > 0.5
+                    # accept = conf > 0.5
                     # cross_entropy = 100* F.cross_entropy(logits[accept], pseudo[accept]) + F.cross_entropy(qy_logits[anchors], label[anchors].long())
-                    cross_entropy = 10* self._compute_cross_entropy(logits[accept], pseudo[accept]) + self._compute_cross_entropy(qy_logits[anchors], label[anchors].long())
+                    # cross_entropy = 10* self._compute_cross_entropy(logits[accept], pseudo[accept]) + self._compute_cross_entropy(qy_logits[anchors], label[anchors].long())
 
                 
                 # if label is not None:
-                    # valid = (label >= 0)
-                    # y_prob = F.softmax(qy_logits[valid], dim=1)
-                    # targets1h = F.one_hot(label[valid].long(), self.n_components)
-                    # targets1h = targets1h.to(qy_logits.device, dtype=y_prob.dtype)
-                    # inter = (y_prob * targets1h).sum(dim=0)
-                    # card  = (y_prob + targets1h).sum(dim=0)
-                    # dice  = (2 * inter + 1e-6) / (card + 1e-6)
-                    # dice = dice.to(self.device)
+                #     valid = (label >= 0)
+                #     y_prob = F.softmax(qy_logits[valid], dim=1)
+                #     targets1h = F.one_hot(label[valid].long(), self.n_components)
+                #     targets1h = targets1h.to(qy_logits.device, dtype=y_prob.dtype)
+                #     inter = (y_prob * targets1h).sum(dim=0)
+                #     card  = (y_prob + targets1h).sum(dim=0)
+                #     dice  = (2 * inter + 1e-6) / (card + 1e-6)
+                #     dice = dice.to(self.device)
                     
-                    # cross_entropy = 1.0 - dice.mean()
+                #     cross_entropy = 1.0 - dice.mean()
 
                 # js_div = self._compute_js_div(y)
                 kl = self._compute_kl(q, p_components, label, y_pred)
