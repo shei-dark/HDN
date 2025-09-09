@@ -282,7 +282,7 @@ def train_network(
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
         print(f"Threshold = {threshold}")
-        threshold -= 0.001
+        threshold -= 0.0001
         threshold = max(0.5, threshold)
         ### Validation step
         running_validation_loss = []
