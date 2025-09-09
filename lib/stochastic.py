@@ -201,6 +201,7 @@ class StochasticConvBlock(nn.Module):
                     self._update_temperature()
                     y_pred = y.argmax(dim=1)
                     kl = self._compute_kl(q, p_components, label)
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
 
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
