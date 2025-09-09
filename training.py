@@ -412,6 +412,10 @@ def train_network(
                 model_folder + model_name + "_best_vae.net",
                 model_folder + model_name + "_best_supervised_vae.net",
             )
+            shutil.copy(
+                model_folder + model_name + "_last_vae.net",
+                model_folder + model_name + "_last_supervised_vae.net",
+            )
             
 
         if patience_ == 20 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
@@ -420,10 +424,15 @@ def train_network(
                 f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}"
             )
             print("--------------------------------------")
+            shutil.copy(
+                model_folder + model_name + "_best_vae.net",
+                model_folder + model_name + f"_best_semisupervised_vae_radius_{train_loader.dataset.radius}.net",
+            )
             train_loader.dataset.increase_radius()
             patience_ = 0
             # checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
             # model.load_state_dict(checkpoint.state_dict())
+            
 
         if patience_ == 50 and train_loader.dataset.mode == "semisupervised":
             print("Early stopping")
