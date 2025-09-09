@@ -258,7 +258,7 @@ class LadderVAE(nn.Module):
         return self._global_step
 
     # TODO: check forward function
-    def forward(self, x, y=None, x_orig=None):
+    def forward(self, x, y=None, x_orig=None, threshold=0.99):
 
         img_size = x.size()[2:]
         # Pad input to make everything easier with conv strides
@@ -266,7 +266,7 @@ class LadderVAE(nn.Module):
         # Bottom-up inference: return list of length n_layers (bottom to top)
         bu_values = self.bottomup_pass(x_pad)
         # Top-down inference/generation
-        out, td_data = self.topdown_pass(y, bu_values)
+        out, td_data = self.topdown_pass(y, bu_values, threshold=threshold)
         # Restore original image size
         out = crop_img_tensor(out, img_size)
         # Log likelihood and other info (per data point)
@@ -334,6 +334,7 @@ class LadderVAE(nn.Module):
         mode_layers=None,
         constant_layers=None,
         forced_latent=None,
+        threshold=0.99
     ):
 
         # Default: no layer is sampled from the distribution's mode
@@ -410,6 +411,7 @@ class LadderVAE(nn.Module):
                 forced_latent=forced_latent[i],
                 mode_pred=self.mode_pred,
                 use_uncond_mode=use_uncond_mode,
+                threshold=threshold
             )
             z[i] = aux["z"]  # sampled variable at this layer (batch, ch, h, w)
             kl[i] = aux["kl"]  # (batch, )

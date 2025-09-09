@@ -572,7 +572,7 @@ def multiscale_supervised_cl_semi(
     neither_anchor = (~is_anchor[:, None] & ~is_anchor[None, :])  # neither is anchor
 
     # strong positives
-    pos_mask = (both_anchors & same_label) | (one_anchor & same_group)
+    pos_mask = (both_anchors & same_label)# | (one_anchor & same_group)
 
     # strong negatives
     neg_mask = both_anchors & ~same_label

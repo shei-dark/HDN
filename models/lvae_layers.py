@@ -220,6 +220,7 @@ class TopDownLayer(nn.Module):
         force_constant_output=False,
         mode_pred=False,
         use_uncond_mode=False,
+        threshold=0.99
     ):
 
         # Check consistency of arguments
@@ -259,6 +260,7 @@ class TopDownLayer(nn.Module):
             label=label,
             p_params=p_params,
             q_params=q_params,
+            threshold=threshold
         )
 
         # Skip connection from previous layer

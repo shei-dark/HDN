@@ -119,7 +119,7 @@ def train_network(
             include_fn=lambda path: path.endswith(".py")
             or path.endswith(".ipynb" or path.endswith(".sbatch")),
         )
-
+    threshold = 0.99
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
@@ -139,6 +139,7 @@ def train_network(
             "recall": 0,
             "f1": 0,
         }
+        
         for idx, (x, y, z, _) in tqdm(enumerate(train_loader), desc="Training"):
             if not use_wandb:
                 if idx == 5:
@@ -161,9 +162,9 @@ def train_network(
                 continue
 
             outputs = boilerplate.forward_pass(
-                x, y, device, model, gaussian_noise_std, amp=amp
+                x, y, device, model, gaussian_noise_std, amp=amp, threshold=threshold
             )
-
+            
             ################################################################
             if model.training_mode == "unsupervised":
                 pairs = [
@@ -280,7 +281,9 @@ def train_network(
 
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
-
+        print(f"Threshold = {threshold}")
+        threshold -= 0.001
+        threshold = max(0.5, threshold)
         ### Validation step
         running_validation_loss = []
 
