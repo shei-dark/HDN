@@ -385,11 +385,11 @@ def compute_cl_loss(
     training_mode='supervised',
     prior="normal",
 ):
-    
-    if training_mode == 'supervised':
-        return multiscale_supervised_cl_sup(mus, labels)
-    elif training_mode == 'semisupervised':
-        return multiscale_supervised_cl_semi(mus, labels)
+    return multiscale_supervised_cl_sup(mus, labels)
+    # if training_mode == 'supervised':
+    #     return multiscale_supervised_cl_sup(mus, labels)
+    # elif training_mode == 'semisupervised':
+    #     return multiscale_supervised_cl_semi(mus, labels)
     
     # if training_mode == 'supervised':
     #     labeled_ratio = 1
@@ -522,11 +522,11 @@ def get_percentile(pixel_vals, latent_vals, k=4):
 
     return quadrants
 
-def multiscale_supervised_cl_sup(mus, labels, margin=1.0):
+def multiscale_supervised_cl_sup(mus, labels, margin=1.5):
     B = len(mus[0])
     device = mus[0].device
     # num_classes = torch.unique(labels).size(0)
-    labels = labels.view(-1)
+    labels = labels[2].view(-1)
     # print("unique percentage:", pct_equal_blocks(labels))
     same = labels.unsqueeze(0).eq(labels.unsqueeze(1))            # [B,B]
     eye = torch.eye(B, dtype=torch.bool, device=device)
@@ -535,6 +535,11 @@ def multiscale_supervised_cl_sup(mus, labels, margin=1.0):
     tri = torch.triu(torch.ones(B, B, dtype=torch.bool, device=device), diagonal=1)
     pos_mask = pos_mask & tri
     neg_mask = neg_mask & tri
+    
+    valid = labels != -1
+    valid_mask = valid.unsqueeze(0) & valid.unsqueeze(1)   # both labels must be valid
+    pos_mask = pos_mask & valid_mask
+    neg_mask = neg_mask & valid_mask
     
     descriptors = torch.cat([F.adaptive_avg_pool2d(mus[i], (1,1)).squeeze(-1).squeeze(-1) for i in range(len(mus))], dim=1)
     descriptors = F.normalize(descriptors, dim=1)

@@ -41,7 +41,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["50"]
+model_versions = ["56"]
 batch_size = 1024
 
 
@@ -55,7 +55,7 @@ for test_index in tqdm(img_idx):
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=1
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model_semisupervised/segmentation_best_vae.net", weights_only=False)
+        model = torch.load(model_dir + model_v + "/model_supervised/segmentation_best_vae.net", weights_only=False)
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True

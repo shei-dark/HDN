@@ -192,7 +192,7 @@ class StochasticConvBlock(nn.Module):
                     pseudo[anchors] = label[anchors].long()
                     accept = conf > threshold
                     pseudo[~accept] = -1
-                    cross_entropy = 10* self._compute_cross_entropy(logits, pseudo)
+                    cross_entropy = 10 * self._compute_cross_entropy(logits, pseudo)
                     kl = self._compute_kl(q, p_components, pseudo)
 
                     
@@ -201,7 +201,7 @@ class StochasticConvBlock(nn.Module):
                     self._update_temperature()
                     y_pred = y.argmax(dim=1)
                     kl = self._compute_kl(q, p_components, label)
-                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                    cross_entropy = 10 *self._compute_cross_entropy(qy_logits, label)
 
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
@@ -269,6 +269,7 @@ class StochasticConvBlock(nn.Module):
             "pi": y,
             "cross_entropy": cross_entropy,
             "entropy": entropy,
+            "pseudo_labels": pseudo if 'pseudo' in locals() else label,
         }
 
         return out, data
@@ -320,8 +321,8 @@ class StochasticConvBlock(nn.Module):
 
     def _compute_cross_entropy(self, qy_logits, label):
         cross_entropy = F.cross_entropy(
-            qy_logits[: self.small_batch_size],
-            label[: self.small_batch_size].long(),
+            qy_logits,
+            label.long(),
             ignore_index=-1,
         )
         return cross_entropy

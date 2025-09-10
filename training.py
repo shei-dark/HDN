@@ -282,8 +282,9 @@ def train_network(
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
         print(f"Threshold = {threshold}")
-        threshold -= 0.0001
-        threshold = max(0.5, threshold)
+        if model.training_mode == "semisupervised" and threshold > 0.5:
+            threshold -= 0.01
+        
         ### Validation step
         running_validation_loss = []
 
@@ -398,7 +399,8 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        if patience_ == 20 and train_loader.dataset.mode == "supervised":
+        if patience_ == 50 and train_loader.dataset.mode == "supervised":
+
             print("--------------------------------------")
             print("Switching to semi-supervised mode")
             print("--------------------------------------")
@@ -418,7 +420,7 @@ def train_network(
             )
             
 
-        if patience_ == 20 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
+        if patience_ == 50 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
             print("--------------------------------------")
             print(
                 f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}"

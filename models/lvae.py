@@ -289,7 +289,7 @@ class LadderVAE(nn.Module):
                 mus=td_data["mu"],
                 logvars=td_data["logvar"],
                 pis=td_data["pi"] if "pi" in td_data else None,
-                labels=y,
+                labels=td_data["pseudo_labels"],
                 margin=self.margin,
                 lambda_contrastive=self.lambda_contrastive,
                 training_mode=self.training_mode,
@@ -373,6 +373,7 @@ class LadderVAE(nn.Module):
         mu = [None] * self.n_layers
         logvar = [None] * self.n_layers
         pi = [None] * self.n_layers
+        pseudo_labels = [None] * self.n_layers
 
         if forced_latent is None:
             forced_latent = [None] * self.n_layers
@@ -419,6 +420,7 @@ class LadderVAE(nn.Module):
             entropy[i] = aux["entropy"]
             mu[i] = aux["mu"]
             pi[i] = aux["pi"] if "pi" in aux else None
+            pseudo_labels[i] = aux["pseudo_labels"] if "pseudo_labels" in aux else None
             if self.mode_pred is False:
                 logprob_p += aux["logprob_p"].mean()  # mean over batch
             else:
@@ -435,6 +437,7 @@ class LadderVAE(nn.Module):
             "pi": pi,
             "ce": ce,
             "entropy": entropy,
+            "pseudo_labels": pseudo_labels,
         }
         return out, data
 
