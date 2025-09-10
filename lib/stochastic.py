@@ -131,8 +131,9 @@ class StochasticConvBlock(nn.Module):
             logprob_q = self._compute_logprob(q, z)
         else:  # Top layer
             if self.conditional:
-                qy_logits = self.qy_x(q_params)               
-                y = F.softmax(qy_logits, dim=1)
+                qy_logits = self.qy_x(q_params)     
+                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                self._update_temperature()          
                 y_pred = y.argmax(dim=1)
                 # ----
                 # FiLM layer
@@ -187,30 +188,7 @@ class StochasticConvBlock(nn.Module):
                         label.long() >= 0, label.long(), pseudo.long()
                     )
                     
-                
-                    q_mu_anchors = q_mu[tp_anchors]
-                    labels_anchors = label[tp_anchors]
-                    
-                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
-                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
-
-                    # Accumulate per class
-                    for c in range(self.n_components):
-                        mask = (labels_anchors == c)
-                        if mask.any():
-                            sums[c] = q_mu_anchors[mask].sum(dim=0)
-                            counts[c] = mask.sum()
-
-                    means = sums / counts.clamp(min=1)      
-                    
-                    diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
-                    dists = (diff * diff).sum(dim=(2, 3, 4))
-                    logits = -dists/200 #+ self.bias.view(1, -1)
-                    logits = logits - logits.max(dim=1, keepdim=True).values
-                    y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
-                    self._update_temperature()
-                    
-                    cross_entropy = 10 * self._compute_cross_entropy(logits, pseudo)
+                    cross_entropy = 10 * self._compute_cross_entropy(qy_logits, pseudo)
                     kl = self._compute_kl(q, p_components, pseudo)
                     
                 elif label is not None and self.training_mode == "supervised":

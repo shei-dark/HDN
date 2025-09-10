@@ -399,7 +399,7 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        if epoch == 1 and train_loader.dataset.mode == "supervised":
+        if patience_ == 50 and train_loader.dataset.mode == "supervised":
 
             print("--------------------------------------")
             print("Switching to semi-supervised mode")
