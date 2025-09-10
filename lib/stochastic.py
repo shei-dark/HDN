@@ -131,16 +131,9 @@ class StochasticConvBlock(nn.Module):
             logprob_q = self._compute_logprob(q, z)
         else:  # Top layer
             if self.conditional:
-                qy_logits = self.qy_x(q_params)
-                # dice = 0
-                # if label is not None:
-                #     y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-                #     self._update_temperature()
-                # else:
-                #     y = F.softmax(qy_logits, dim=1)
-                
-                # y_pred = y.argmax(dim=1)                    
-
+                qy_logits = self.qy_x(q_params)               
+                y = F.softmax(qy_logits, dim=1)
+                y_pred = y.argmax(dim=1)
                 # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
@@ -165,9 +158,38 @@ class StochasticConvBlock(nn.Module):
                     anchors = torch.arange(
                         0, num_groups * group, group, device=self.device
                     )
+                    is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
+                    tp_anchors = anchors[is_tp]
+                    tp_anchor_labels = label[tp_anchors]
+                    neigh_offsets = torch.arange(1, 8, device=self.device)
+                    neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
+                    neigh_idx_flat = neigh_idx.reshape(-1)
+                    anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
+                    z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
+                    z_all = F.normalize(z_all, dim=1)
+                    Z_anchors = z_all[tp_anchors]
+                    Z_neigh = z_all[neigh_idx_flat]
+                    dist = torch.cdist(Z_neigh, Z_anchors, p=2)
+                    k = num_groups // (2 * self.n_components)
+                    k = max(1, min(k, dist.size(-1)))
+                    knn_idx = dist.topk(k, largest=False, dim=-1).indices
+                    knn_labels = tp_anchor_labels[knn_idx]
+                    all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
+                    matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
+                    consistent = all_same & matches_anchor
+
+                    # Build pseudo labels
+                    pseudo= torch.full_like(label, -1)
+                    pseudo[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
+                        consistent
+                    ]
+                    pseudo = torch.where(
+                        label.long() >= 0, label.long(), pseudo.long()
+                    )
                     
-                    q_mu_anchors = q_mu[anchors]
-                    labels_anchors = label[anchors]
+                
+                    q_mu_anchors = q_mu[tp_anchors]
+                    labels_anchors = label[tp_anchors]
                     
                     sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
                     counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
@@ -179,39 +201,29 @@ class StochasticConvBlock(nn.Module):
                             sums[c] = q_mu_anchors[mask].sum(dim=0)
                             counts[c] = mask.sum()
 
-                    means = sums / counts.clamp(min=1)
+                    means = sums / counts.clamp(min=1)      
                     
                     diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
                     dists = (diff * diff).sum(dim=(2, 3, 4))
-                    logits = -dists/200
+                    logits = -dists/200 #+ self.bias.view(1, -1)
                     logits = logits - logits.max(dim=1, keepdim=True).values
                     y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
                     self._update_temperature()
                     
-                    conf, pseudo = y.max(dim=1)
-                    pseudo[anchors] = label[anchors].long()
-                    accept = conf > threshold
-                    pseudo[~accept] = -1
                     cross_entropy = 10 * self._compute_cross_entropy(logits, pseudo)
                     kl = self._compute_kl(q, p_components, pseudo)
-
                     
                 elif label is not None and self.training_mode == "supervised":
                     y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
                     self._update_temperature()
                     y_pred = y.argmax(dim=1)
                     kl = self._compute_kl(q, p_components, label)
-                    cross_entropy = 10 *self._compute_cross_entropy(qy_logits, label)
+                    cross_entropy = 10 * self._compute_cross_entropy(qy_logits, label)
 
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
                     y_pred = y.argmax(dim=1)
-                
-
-                # kl = self._compute_kl(q, p_components, pseudo)
-
-                # if label is not None and self.training_mode != "unsupervised":
-                #     cross_entropy = self._compute_cross_entropy(qy_logits, label)
+                    
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)
