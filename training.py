@@ -119,7 +119,7 @@ def train_network(
             include_fn=lambda path: path.endswith(".py")
             or path.endswith(".ipynb" or path.endswith(".sbatch")),
         )
-    threshold = 0.99
+    threshold = 0.50
     for epoch in range(max_epochs):
 
         print(f"Starting epoch {epoch}")
@@ -282,8 +282,8 @@ def train_network(
         print("saving", model_folder + model_name + "_last_vae.net")
         torch.save(model, model_folder + model_name + "_last_vae.net")
         print(f"Threshold = {threshold}")
-        if model.training_mode == "semisupervised" and threshold > 0.5:
-            threshold -= 0.01
+        if model.training_mode == "semisupervised" and threshold < 0.99:
+            threshold += 0.01
         
         ### Validation step
         running_validation_loss = []
@@ -405,8 +405,8 @@ def train_network(
             print("Switching to semi-supervised mode")
             print("--------------------------------------")
             train_loader.dataset.set_mode('semisupervised')
-            # checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
-            # model.load_state_dict(checkpoint.state_dict())
+            checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
+            model.load_state_dict(checkpoint.state_dict())
             
             model.update_mode("semisupervised")
             patience_ = 0
@@ -432,8 +432,8 @@ def train_network(
             )
             train_loader.dataset.increase_radius()
             patience_ = 0
-            # checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
-            # model.load_state_dict(checkpoint.state_dict())
+            checkpoint = torch.load(model_folder + model_name + "_best_vae.net", weights_only=False)
+            model.load_state_dict(checkpoint.state_dict())
             
 
         if patience_ == 50 and train_loader.dataset.mode == "semisupervised":
