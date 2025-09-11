@@ -1,7 +1,11 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
+<<<<<<< HEAD
 #SBATCH --output=/group/jug/Sheida/HVAE/segmentation/61/train.log
+=======
+#SBATCH --output=/group/jug/Sheida/HVAE/segmentation/62/train.log
+>>>>>>> restore/detached-work
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
