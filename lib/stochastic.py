@@ -132,8 +132,7 @@ class StochasticConvBlock(nn.Module):
         else:  # Top layer
             if self.conditional:
                 qy_logits = self.qy_x(q_params)               
-                y = F.softmax(qy_logits, dim=1)
-                y_pred = y.argmax(dim=1)
+                
                 # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
@@ -214,11 +213,28 @@ class StochasticConvBlock(nn.Module):
                     kl = self._compute_kl(q, p_components, pseudo)
                     
                 elif label is not None and self.training_mode == "supervised":
-                    y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                    
+                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
+                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
+
+                    # Accumulate per class
+                    for c in range(self.n_components):
+                        mask = (label == c)
+                        if mask.any():
+                            sums[c] = q_mu[mask].sum(dim=0)
+                            counts[c] = mask.sum()
+
+                    means = sums / counts.clamp(min=1)      
+                    
+                    diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
+                    dists = (diff * diff).sum(dim=(2, 3, 4))
+                    logits = -dists/200 #+ self.bias.view(1, -1)
+                    logits = logits - logits.max(dim=1, keepdim=True).values
+                    y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
                     self._update_temperature()
-                    y_pred = y.argmax(dim=1)
+                    
                     kl = self._compute_kl(q, p_components, label)
-                    cross_entropy = 10 * self._compute_cross_entropy(qy_logits, label)
+                    cross_entropy = 10 * self._compute_cross_entropy(logits, label)
 
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
@@ -228,46 +244,6 @@ class StochasticConvBlock(nn.Module):
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)
 
-            else:
-                q_params = self.conv_in_q(q_params)
-                y_logits = self.y_logits(q_params)
-                q_mu, q_lv = q_params.chunk(2, dim=1)
-                q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
-                q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
-                q_std = torch.where(q_lv < 0, (q_lv / 2).exp(), 1 + q_lv)
-                q_mu_chunks = q_mu.chunk(self.n_components, dim=1)
-                q_std_chunks = q_std.chunk(self.n_components, dim=1)
-                q_components = []
-                for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
-                    q_components.append(Normal(mu_chunk, std_chunk))
-                if label is not None and self.training_mode != "unsupervised":
-                    z_samples = []
-                    for i, comp in enumerate(q_components):
-                        mask = (
-                            (label == i)
-                            .float()
-                            .view(self.batch_size, *[1] * (q_mu.dim() - 1))
-                        )
-                        mask = mask.to(q_mu.device)
-                        z_samples.append(comp.rsample() * mask)
-                    z = torch.sum(torch.stack(z_samples), dim=0)
-                else:
-                    y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-                    self._update_temperature()
-                    y_pred = y.argmax(dim=1)
-                    for i, comp in enumerate(q_components):
-                        mask = (
-                            (y_pred == i)
-                            .float()
-                            .view(self.batch_size, *[1] * (q_mu.dim() - 1))
-                        )
-                        mask = mask.to(q_mu.device)
-                        z_samples.append(comp.rsample() * mask)
-
-                out = self.conv_out(z)
-                kl = self._compute_kl(q, p_components)
-                logprob_p = self._compute_logprob(p_components, z)
-                logprob_q = self._compute_logprob(q, z)
 
         data = {
             "z": z,
