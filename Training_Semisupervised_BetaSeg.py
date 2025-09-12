@@ -26,14 +26,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-<<<<<<< HEAD
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/61/"
-=======
     "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/62/"
->>>>>>> restore/detached-work
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--mode", type=str, default="semisupervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
@@ -49,7 +45,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--load_checkpoint", type=bool, default=True)
 
 args = parser.parse_args()
 
@@ -79,7 +75,7 @@ directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = directory_path[0:-3] + "segmentation_best_supervised_vae.net"
+checkpoint = directory_path + "model_supervised/segmentation_best_supervised_vae.net"
 
 noiseModel = None
 

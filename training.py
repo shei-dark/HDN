@@ -283,7 +283,7 @@ def train_network(
         torch.save(model, model_folder + model_name + "_last_vae.net")
         print(f"Threshold = {threshold}")
         if model.training_mode == "semisupervised" and threshold < 0.99:
-            threshold += 0.01
+            threshold += 0.005
         
         ### Validation step
         running_validation_loss = []

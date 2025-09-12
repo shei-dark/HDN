@@ -131,15 +131,9 @@ class StochasticConvBlock(nn.Module):
             logprob_q = self._compute_logprob(q, z)
         else:  # Top layer
             if self.conditional:
-<<<<<<< HEAD
                 qy_logits = self.qy_x(q_params)     
-                y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
-                self._update_temperature()          
+                y = F.softmax(qy_logits)
                 y_pred = y.argmax(dim=1)
-=======
-                qy_logits = self.qy_x(q_params)               
-                
->>>>>>> restore/detached-work
                 # ----
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
@@ -197,28 +191,28 @@ class StochasticConvBlock(nn.Module):
                     kl = self._compute_kl(q, p_components, pseudo)
                     
                 elif label is not None and self.training_mode == "supervised":
-                    
-                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
-                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
-
-                    # Accumulate per class
-                    for c in range(self.n_components):
-                        mask = (label == c)
-                        if mask.any():
-                            sums[c] = q_mu[mask].sum(dim=0)
-                            counts[c] = mask.sum()
-
-                    means = sums / counts.clamp(min=1)      
-                    
-                    diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
-                    dists = (diff * diff).sum(dim=(2, 3, 4))
-                    logits = -dists/200 #+ self.bias.view(1, -1)
-                    logits = logits - logits.max(dim=1, keepdim=True).values
-                    y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
-                    self._update_temperature()
-                    
-                    kl = self._compute_kl(q, p_components, label)
-                    cross_entropy = 10 * self._compute_cross_entropy(logits, label)
+                            DIST_SCALE = 200  # extracted magic number as a named constant
+                            sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
+                            counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
+        
+                            # Accumulate per class
+                            for c in range(self.n_components):
+                                mask = (label == c)
+                                if mask.any():
+                                    sums[c] = q_mu[mask].sum(dim=0)
+                                    counts[c] = mask.sum()
+        
+                            means = sums / counts.clamp(min=1)      
+                            
+                            diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
+                            dists = (diff * diff).sum(dim=(2, 3, 4))
+                            logits = -dists / DIST_SCALE + self.bias.view(1, -1)  # included bias term as suggested
+                            logits = logits - logits.max(dim=1, keepdim=True).values
+                            y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
+                            self._update_temperature()
+                            
+                            kl = self._compute_kl(q, p_components, label)
+                            cross_entropy = 10 * self._compute_cross_entropy(logits, label)
 
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
