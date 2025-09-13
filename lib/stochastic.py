@@ -217,6 +217,7 @@ class StochasticConvBlock(nn.Module):
                 if label is None:
                     y = F.softmax(qy_logits, dim=1)
                     y_pred = y.argmax(dim=1)
+                    kl = torch.tensor(0.0, dtype=torch.float32, device=self.device)
                     
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)

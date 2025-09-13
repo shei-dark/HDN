@@ -1346,7 +1346,7 @@ class Custom3DDataset(Dataset):
 
 
 class CustomTestDataset(Dataset):
-    def __init__(self, image, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
+    def __init__(self, image, label, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
         """
         Custom Dataset for extracting 2D/3D patches from test data.
 
@@ -1358,6 +1358,7 @@ class CustomTestDataset(Dataset):
             model (str): "2D" or "3D" mode to control patch dimensionality.
         """
         self.image = image
+        self.label = label
         self.patch_size = patch_size
         self.stride = stride
         self.model = model
@@ -1425,6 +1426,50 @@ class CustomTestDataset(Dataset):
 
         return patch
 
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+
+class NonNeg1CenterPatchDataset(Dataset):
+    """
+    Yields only 64x64 patches whose center (31,31) has label != -1 for a fixed z slice.
+    image: (Z,H,W)  (or (C,H,W) if you adapt for multichannel)
+    label: (Z,H,W)
+    """
+    def __init__(self, image, label, z, patch_size=64):
+        self.image = image
+        self.label = label
+        self.z = int(z)
+        self.ps = int(patch_size)
+        assert self.ps % 2 == 0, "Patch size must be even; center is (ps/2-1, ps/2-1)."
+        self.half = self.ps // 2  # 32 for 64x64 -> center at (31,31)
+
+        H, W = image[self.z].shape
+        assert (H, W) == label[self.z].shape
+
+        # Valid centers: label!= -1 and full patch inside bounds
+        y0, y1 = self.half, H - self.half
+        x0, x1 = self.half, W - self.half
+        mask = (label[self.z] != -1)
+        mask[:y0, :] = False
+        mask[y1:, :] = False
+        mask[:, :x0] = False
+        mask[:, x1:] = False
+
+        ys, xs = np.where(mask)
+        self.centers = np.stack([ys, xs], axis=1).astype(np.int32)
+
+    def __len__(self):
+        return len(self.centers)
+
+    def __getitem__(self, idx):
+        y, x = self.centers[idx]
+        y0, y1 = y - self.half, y + self.half
+        x0, x1 = x - self.half, x + self.half
+        patch = self.image[self.z, y0:y1, x0:x1]              # (64,64)
+        patch = torch.from_numpy(patch).float().unsqueeze(0)  # (1,64,64)
+        center_label = int(self.label[self.z, y, x])
+        return {"patch": patch, "z": self.z, "y": int(y), "x": int(x), "center_label": center_label}
 
 class LabeledPatchDataset(Dataset):
     def __init__(
