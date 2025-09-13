@@ -26,26 +26,26 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/62/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/WACV/HVAE + CE/"
 )
-parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="semisupervised")
+parser.add_argument("--contrastive_learning", type=bool, default=False)
+parser.add_argument("--mode", type=str, default="supervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
-parser.add_argument("--stochastic_block_type", type=str, default="mixture")
+parser.add_argument("--stochastic_block_type", type=str, default="normal")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
 parser.add_argument("--sample_ratio", type=int, default=20)
 parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
-parser.add_argument("--beta", type=float, default=1e-2)
+parser.add_argument("--beta", type=float, default=1e-1)
 parser.add_argument("--gamma", type=float, default=1)
 parser.add_argument("--initial_mask_size", type=int, default=1)
 parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=True)
+parser.add_argument("--load_checkpoint", type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -70,7 +70,7 @@ patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "segmentation"
+model_name = "WACV"
 directory_path = args.directory_path
 
 # Model-specific

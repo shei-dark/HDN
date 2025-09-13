@@ -66,93 +66,98 @@ def compute_dice_score(pred_stack, gt_stack, num_classes):
             
     return dice_scores
 
-# Path to files (Modify accordingly)
-prediction_dir = "/group/jug/Sheida/HVAE/segmentation/62/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
-# prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/output/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
-# prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/small_unet/inference/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
-gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"   # Path to the ground truth stack
-# output_path = f"{prediction_dir[:-19]}processed_predictions_supervised.tif"  # Output file for processed predictions
+for model_name in ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"]:
 
-# Load ground truth stack
-gt_stack = tiff.imread(gt_stack_path).astype(np.int16)  # **Ensure GT is int16**
-gt_stack = gt_stack[626]  # Adjust range if necessary
+    # Path to files (Modify accordingly)
+    # prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/{model_name}/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
+    prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/seg/{model_name}_626_sup.tif"
+    # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/output/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
+    # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/small_unet/inference/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
+    gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"   # Path to the ground truth stack
+    # output_path = f"{prediction_dir[:-19]}processed_predictions_supervised.tif"  # Output file for processed predictions
 
-# Get list of prediction files
-# pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('.')[0]))
-# pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
-pred_files = os.path.join(prediction_dir, "seg/626_semisup.tif")
-# Ensure we have the right number of images
-# assert len(pred_files) == gt_stack.shape[0], "Mismatch in number of prediction and ground truth images!"
+    # Load ground truth stack
+    gt_stack = tiff.imread(gt_stack_path).astype(np.int16)  # **Ensure GT is int16**
+    gt_stack = gt_stack[626]  # Adjust range if necessary
 
-# Get unique classes from GT (including 0, 1, 2, 3 but excluding -1)
-num_classes = int(np.nanmax(gt_stack) + 1)  # Avoid using -1
+    # Get list of prediction files
+    # pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('.')[0]))
+    # pred_files = sorted(glob(os.path.join(prediction_dir, "*.tif")), key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+    pred_files = os.path.join(prediction_dir)
+    # Ensure we have the right number of images
+    # assert len(pred_files) == gt_stack.shape[0], "Mismatch in number of prediction and ground truth images!"
 
-# **Get shape dynamically**
-first_pred = tiff.imread(pred_files).astype(np.int16)  # **Convert to int16**
-pred_height, pred_width = first_pred.shape  # **Dynamically determine correct shape**
+    # Get unique classes from GT (including 0, 1, 2, 3 but excluding -1)
+    num_classes = int(np.nanmax(gt_stack) + 1)  # Avoid using -1
 
-# Initialize stacks with correct shape
-full_pred_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Use int16 for -1
-# full_pred_stack_processed = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)
-full_gt_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Keep -1 values
+    # **Get shape dynamically**
+    first_pred = tiff.imread(pred_files).astype(np.int16)  # **Convert to int16**
+    pred_height, pred_width = first_pred.shape  # **Dynamically determine correct shape**
 
-# for idx, pred_path in enumerate(pred_files):
-    # Load prediction and convert to int16
-    # pred = tiff.imread(pred_path).astype(np.int16)  # **Convert to int16**
-    # pred[pred==3] = 4
-    # pred[pred==2] = 5
-    # pred[pred==4] = 2
-    # pred[pred==5] = 3
-    # Ensure the prediction matches expected shape
-    # if pred.shape != (pred_height, pred_width):
-    #     print(f"Warning: Resizing prediction {idx} from {pred.shape} to {(pred_height, pred_width)}")
-    #     pred = np.resize(pred, (pred_height, pred_width))  # Resize dynamically if needed
+    # Initialize stacks with correct shape
+    full_pred_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Use int16 for -1
+    # full_pred_stack_processed = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)
+    full_gt_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Keep -1 values
 
-    # Extract corresponding GT image
-gt_full = gt_stack#[idx]  # Shape: (1019, 482) from GT stack
+    # for idx, pred_path in enumerate(pred_files):
+        # Load prediction and convert to int16
+        # pred = tiff.imread(pred_path).astype(np.int16)  # **Convert to int16**
+        # pred[pred==3] = 4
+        # pred[pred==2] = 5
+        # pred[pred==4] = 2
+        # pred[pred==5] = 3
+        # Ensure the prediction matches expected shape
+        # if pred.shape != (pred_height, pred_width):
+        #     print(f"Warning: Resizing prediction {idx} from {pred.shape} to {(pred_height, pred_width)}")
+        #     pred = np.resize(pred, (pred_height, pred_width))  # Resize dynamically if needed
 
-    # **Crop GT first, ensuring alignment with prediction**
-start_x = (gt_full.shape[1] - pred_width) // 2  # Center crop
-start_y = (gt_full.shape[0] - pred_height) // 2
-gt_cropped = gt_full[start_y:start_y + pred_height, start_x:start_x + pred_width]
+        # Extract corresponding GT image
+    gt_full = gt_stack#[idx]  # Shape: (1019, 482) from GT stack
 
-    # **Mask `-1` pixels in GT AFTER cropping**
-mask_outside = gt_cropped == -1
+        # **Crop GT first, ensuring alignment with prediction**
+    start_x = (gt_full.shape[1] - pred_width) // 2  # Center crop
+    start_y = (gt_full.shape[0] - pred_height) // 2
+    gt_cropped = gt_full[start_y:start_y + pred_height, start_x:start_x + pred_width]
 
-    # Preprocess prediction with noise removal
-    # pred_processed = preprocess_prediction(pred, noise_threshold=10, dilation_size=1)
+        # **Mask `-1` pixels in GT AFTER cropping**
+    mask_outside = gt_cropped == -1
 
-    # **Now, apply the `-1` mask from GT to Predictions**
-first_pred[mask_outside] = -1
-    # pred_processed[mask_outside] = -1
+        # Preprocess prediction with noise removal
+        # pred_processed = preprocess_prediction(pred, noise_threshold=10, dilation_size=1)
 
-    # Store images in stacks
-# full_pred_stack[idx] = pred  # Raw prediction with `-1`
-    # full_pred_stack_processed[idx] = pred_processed  # Processed prediction with `-1`
-# full_gt_stack[idx] = gt_cropped  # GT matched to prediction
+        # **Now, apply the `-1` mask from GT to Predictions**
+    first_pred[mask_outside] = -1
+        # pred_processed[mask_outside] = -1
 
-# Compute Dice across the entire stack, ignoring -1
-# dice_before = compute_dice_score(full_pred_stack, full_gt_stack, num_classes)
-# dice_after = compute_dice_score(full_pred_stack_processed, full_gt_stack, num_classes)
-dice = compute_dice_score(first_pred, gt_cropped, num_classes)
-# Save processed predictions as a multi-page TIFF file
-# tiff.imwrite(output_path, full_pred_stack_processed, dtype=np.int16)
+        # Store images in stacks
+    # full_pred_stack[idx] = pred  # Raw prediction with `-1`
+        # full_pred_stack_processed[idx] = pred_processed  # Processed prediction with `-1`
+    # full_gt_stack[idx] = gt_cropped  # GT matched to prediction
 
-# Compute mean DSC (excluding NaNs)
-mean_dice_before = np.nanmean(list(dice.values()))
-# mean_dice_after = np.nanmean(list(dice_after.values()))
+    # Compute Dice across the entire stack, ignoring -1
+    # dice_before = compute_dice_score(full_pred_stack, full_gt_stack, num_classes)
+    # dice_after = compute_dice_score(full_pred_stack_processed, full_gt_stack, num_classes)
+    dice = compute_dice_score(first_pred, gt_cropped, num_classes)
+    # Save processed predictions as a multi-page TIFF file
+    # tiff.imwrite(output_path, full_pred_stack_processed, dtype=np.int16)
 
-# Print results
-print("Per-Class Dice Scores (Before Preprocessing):")
-for cls, score in dice.items():
-    if not np.isnan(score):  # Ignore classes that were completely missing
-        print(f"Class {cls}: {score:.4f}")
-print(f"\nMean DSC Before: {mean_dice_before:.4f}")
+    # Compute mean DSC (excluding NaNs)
+    mean_dice_before = np.nanmean(list(dice.values()))
+    # mean_dice_after = np.nanmean(list(dice_after.values()))
 
-# print("\nPer-Class Dice Scores (After Preprocessing):")
-# for cls, score in dice_after.items():
-#     if not np.isnan(score):  # Ignore classes that were completely missing
-#         print(f"Class {cls}: {score:.4f}")
-# print(f"\nMean DSC After: {mean_dice_after:.4f}")
+    # Print results
+    print("Per-Class Dice Scores (Before Preprocessing):")
+    for cls, score in dice.items():
+        if not np.isnan(score):  # Ignore classes that were completely missing
+            print(f"Class {cls}: {score:.4f}")
+    print(f"\nMean DSC Before: {mean_dice_before:.4f}")
 
-# print(f"\nProcessed predictions saved to: {output_path}")
+    # print("\nPer-Class Dice Scores (After Preprocessing):")
+    # for cls, score in dice_after.items():
+    #     if not np.isnan(score):  # Ignore classes that were completely missing
+    #         print(f"Class {cls}: {score:.4f}")
+    # print(f"\nMean DSC After: {mean_dice_after:.4f}")
+
+    # print(f"\nProcessed predictions saved to: {output_path}")
+
+
