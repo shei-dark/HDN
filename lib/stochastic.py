@@ -80,9 +80,9 @@ class StochasticConvBlock(nn.Module):
             self.gamma_layer = nn.Linear(n_components, c_in)
             self.beta_layer = nn.Linear(n_components, c_in)
         else:  # Top layer, mixture, unconditional
-            self.y_logits = TransformerQ(
-                c_in=c_in, embed_dim=128, n_components=n_components, mode="mlp"
-            )
+            # self.y_logits = TransformerQ(
+            #     c_in=c_in, embed_dim=128, n_components=n_components, mode="mlp"
+            # )
             self.conv_in_q = conv_type(
                 c_in, 2 * c_vars * n_components, kernel, padding=pad
             )
@@ -223,7 +223,7 @@ class StochasticConvBlock(nn.Module):
                 out = self.conv_out(z)
             else:
                 q_params = self.conv_in_q(q_params)
-                y_logits = self.y_logits(q_params)
+                # y_logits = self.y_logits(q_params)
                 q_mu, q_lv = q_params.chunk(2, dim=1)
                 q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
                 q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)

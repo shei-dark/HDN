@@ -279,8 +279,8 @@ def train_network(
                     # Reset accumulated metrics
                     running_metrics = {key: 0 for key in running_metrics}
 
-        print("saving", model_folder + "last_vae.net")
-        torch.save(model, model_folder + "last_vae.net")
+        print("saving", model_folder + "last.net")
+        torch.save(model, model_folder + "last.net")
         print(f"Threshold = {threshold}")
         if model.training_mode == "semisupervised" and threshold < 0.99:
             threshold += 0.005
@@ -365,8 +365,8 @@ def train_network(
 
         if total_epoch_loss_val.item() < 1e-6 + np.min(loss_val_history):
             patience_ = 0
-            print("saving", model_folder + "best_vae.net")
-            torch.save(model, model_folder + "best_vae.net")
+            print("saving", model_folder + "best.net")
+            torch.save(model, model_folder + "best.net")
         else:
             patience_ += 1
 

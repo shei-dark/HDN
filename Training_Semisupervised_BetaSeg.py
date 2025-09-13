@@ -26,13 +26,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/WACV/HVAE + CE/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/WACV/HVAE + CL/"
 )
-parser.add_argument("--contrastive_learning", type=bool, default=False)
+parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="supervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="normal")
-parser.add_argument("--conditional", type=bool, default=True)
+parser.add_argument("--conditional", type=bool, default=False)
 parser.add_argument("--condition_type", type=str, default="mlp")
 parser.add_argument("--sample_ratio", type=int, default=20)
 parser.add_argument("--num_latents", type=int, default=3)
