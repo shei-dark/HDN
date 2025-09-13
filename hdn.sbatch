@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output="/group/jug/Sheida/HVAE/WACV/HVAE\ +\ CL\ +\ CE/seg.log"
+#SBATCH --output="/group/jug/Sheida/HVAE/WACV/epsSeg/seg.log"
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1

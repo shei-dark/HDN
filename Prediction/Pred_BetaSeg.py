@@ -6,7 +6,6 @@ if PROJECT_ROOT not in sys.path:
 import time
 import torch
 import numpy as np
-from tqdm import tqdm
 
 # from lib.dataloader import CustomTestDataset
 from boilerplate.dataloader import CustomTestDataset, NonNeg1CenterPatchDataset
@@ -39,10 +38,10 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/WACV/"
 img_idx = range(49,1016)
 # img_idx = [626]
-model_versions = ["HVAE + CL + CE"]
+model_versions = ["epsSeg"]
 batch_size = 1024
 
-for test_index in tqdm(img_idx):
+for test_index in img_idx:
     print("Processing test dataset")
 
     # DATASET that only yields valid centers (label != -1)
@@ -69,7 +68,7 @@ for test_index in tqdm(img_idx):
         pred_slice = np.full((H, W), fill_value=-1, dtype=np.int16)
 
         with torch.no_grad():
-            for batch in tqdm(dataloader):
+            for batch in dataloader:
                 patches = batch["patch"].to(device)               # (B,1,64,64)
                 # normalize (broadcast-safe)
                 patches = (patches - torch.as_tensor(data_mean, device=device)) / torch.as_tensor(data_std, device=device)
