@@ -41,7 +41,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/WACV/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"]
+model_versions = ["epsSeg"]
 batch_size = 1024
 
 
