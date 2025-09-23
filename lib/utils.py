@@ -526,7 +526,8 @@ def multiscale_supervised_cl_sup(mus, labels, margin=1.5):
     B = len(mus[0])
     device = mus[0].device
     # num_classes = torch.unique(labels).size(0)
-    labels = labels[2].view(-1)
+    if labels is not None:
+        labels = labels[2].view(-1)
     # print("unique percentage:", pct_equal_blocks(labels))
     same = labels.unsqueeze(0).eq(labels.unsqueeze(1))            # [B,B]
     eye = torch.eye(B, dtype=torch.bool, device=device)

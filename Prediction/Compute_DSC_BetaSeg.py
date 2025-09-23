@@ -1,13 +1,20 @@
 import os, sys
+
 HERE = os.path.dirname(__file__)
-PROJECT_ROOT = os.path.abspath(os.path.join(HERE, '..'))  # parent of myscript/
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, ".."))  # parent of myscript/
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 import numpy as np
 import tifffile as tiff
 from glob import glob
-from skimage.morphology import binary_dilation, binary_erosion, remove_small_objects, disk
+from skimage.morphology import (
+    binary_dilation,
+    binary_erosion,
+    remove_small_objects,
+    disk,
+)
 from scipy.ndimage import median_filter
+
 
 def preprocess_prediction(pred, noise_threshold=5, dilation_size=1):
     """
@@ -24,7 +31,7 @@ def preprocess_prediction(pred, noise_threshold=5, dilation_size=1):
             continue
 
         # Extract only current class
-        class_mask = (pred == cls)
+        class_mask = pred == cls
 
         # Remove small isolated noise pixels
         class_mask_cleaned = remove_small_objects(class_mask, min_size=noise_threshold)
@@ -42,6 +49,7 @@ def preprocess_prediction(pred, noise_threshold=5, dilation_size=1):
 
     return pred_processed.astype(np.int16)  # Store as int16 to support -1
 
+
 def compute_dice_score(pred_stack, gt_stack, num_classes):
     """Compute overall Dice coefficient per class for the entire stack, ignoring -1 in GT."""
     dice_scores = {}
@@ -49,31 +57,35 @@ def compute_dice_score(pred_stack, gt_stack, num_classes):
     for cls in range(num_classes):  # **Include class 0**
         if cls == -1:  # Skip -1 (outside)
             continue
-        
+
         # Ignore pixels where GT is -1
         valid_mask = gt_stack != -1
 
         pred_bin = (pred_stack == cls) & valid_mask
         gt_bin = (gt_stack == cls) & valid_mask
-        
+
         intersection = np.sum(pred_bin & gt_bin)
         denominator = np.sum(pred_bin) + np.sum(gt_bin)
-        
+
         if denominator == 0:
             dice_scores[cls] = np.nan  # Ignore if class is missing in both pred & GT
         else:
             dice_scores[cls] = (2.0 * intersection) / denominator
-            
+
     return dice_scores
 
-for model_name in ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"]:
 
-    # Path to files (Modify accordingly)
-    # prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/{model_name}/"  # Folder containing 0.tif, 1.tif, ..., 127.tif
-    prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/seg/{model_name}_626_sup.tif"
+for model_name in ["64"]:
+
+    # prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/seg/{model_name}_626_sup.tif"  # Folder containing 0.tif, 1.tif, ..., 127.tif
+    # prediction_dir = f"/group/jug/Sheida/HVAE/segmentation/{model_name}/seg_supervised/626.tif"  # Folder containing 0.tif, 1.tif, ..., 127.tif
+    prediction_dir = (
+        f"/group/jug/Sheida/HVAE/segmentation/{model_name}/seg/626_semisup.tif"
+    )
+    # prediction_dir = f"/group/jug/Sheida/HVAE/WACV/{model_name}/seg/626_sup.tif"
     # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/output/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
     # prediction_dir = "/facility/imganfacusers/Sheida/pancreatic_beta_cells/masked/2D/small_unet/inference/pancreas_unet/results/pancreas_unet_1/per_image_binarized/"
-    gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"   # Path to the ground truth stack
+    gt_stack_path = "/group/jug/Sheida/pancreatic beta cells/download/high_c4/high_c4_gt.tif"  # Path to the ground truth stack
     # output_path = f"{prediction_dir[:-19]}processed_predictions_supervised.tif"  # Output file for processed predictions
 
     # Load ground truth stack
@@ -92,46 +104,55 @@ for model_name in ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "
 
     # **Get shape dynamically**
     first_pred = tiff.imread(pred_files).astype(np.int16)  # **Convert to int16**
-    pred_height, pred_width = first_pred.shape  # **Dynamically determine correct shape**
+    # first_pred = first_pred[31:-32, 31:-32]  # Crop to 420x420
+    pred_height, pred_width = (
+        first_pred.shape
+    )  # **Dynamically determine correct shape**
 
     # Initialize stacks with correct shape
-    full_pred_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Use int16 for -1
+    full_pred_stack = np.zeros(
+        (len(pred_files), pred_height, pred_width), dtype=np.int16
+    )  # Use int16 for -1
     # full_pred_stack_processed = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)
-    full_gt_stack = np.zeros((len(pred_files), pred_height, pred_width), dtype=np.int16)  # Keep -1 values
+    full_gt_stack = np.zeros(
+        (len(pred_files), pred_height, pred_width), dtype=np.int16
+    )  # Keep -1 values
 
     # for idx, pred_path in enumerate(pred_files):
-        # Load prediction and convert to int16
-        # pred = tiff.imread(pred_path).astype(np.int16)  # **Convert to int16**
-        # pred[pred==3] = 4
-        # pred[pred==2] = 5
-        # pred[pred==4] = 2
-        # pred[pred==5] = 3
-        # Ensure the prediction matches expected shape
-        # if pred.shape != (pred_height, pred_width):
-        #     print(f"Warning: Resizing prediction {idx} from {pred.shape} to {(pred_height, pred_width)}")
-        #     pred = np.resize(pred, (pred_height, pred_width))  # Resize dynamically if needed
+    # Load prediction and convert to int16
+    # pred = tiff.imread(pred_path).astype(np.int16)  # **Convert to int16**
+    # pred[pred==3] = 4
+    # pred[pred==2] = 5
+    # pred[pred==4] = 2
+    # pred[pred==5] = 3
+    # Ensure the prediction matches expected shape
+    # if pred.shape != (pred_height, pred_width):
+    #     print(f"Warning: Resizing prediction {idx} from {pred.shape} to {(pred_height, pred_width)}")
+    #     pred = np.resize(pred, (pred_height, pred_width))  # Resize dynamically if needed
 
-        # Extract corresponding GT image
-    gt_full = gt_stack#[idx]  # Shape: (1019, 482) from GT stack
+    # Extract corresponding GT image
+    gt_full = gt_stack  # [idx]  # Shape: (1019, 482) from GT stack
 
-        # **Crop GT first, ensuring alignment with prediction**
+    # **Crop GT first, ensuring alignment with prediction**
     start_x = (gt_full.shape[1] - pred_width) // 2  # Center crop
     start_y = (gt_full.shape[0] - pred_height) // 2
-    gt_cropped = gt_full[start_y:start_y + pred_height, start_x:start_x + pred_width]
+    gt_cropped = gt_full[
+        start_y : start_y + pred_height, start_x : start_x + pred_width
+    ]
 
-        # **Mask `-1` pixels in GT AFTER cropping**
+    # **Mask `-1` pixels in GT AFTER cropping**
     mask_outside = gt_cropped == -1
 
-        # Preprocess prediction with noise removal
-        # pred_processed = preprocess_prediction(pred, noise_threshold=10, dilation_size=1)
+    # Preprocess prediction with noise removal
+    # pred_processed = preprocess_prediction(pred, noise_threshold=10, dilation_size=1)
 
-        # **Now, apply the `-1` mask from GT to Predictions**
+    # **Now, apply the `-1` mask from GT to Predictions**
     first_pred[mask_outside] = -1
-        # pred_processed[mask_outside] = -1
+    # pred_processed[mask_outside] = -1
 
-        # Store images in stacks
+    # Store images in stacks
     # full_pred_stack[idx] = pred  # Raw prediction with `-1`
-        # full_pred_stack_processed[idx] = pred_processed  # Processed prediction with `-1`
+    # full_pred_stack_processed[idx] = pred_processed  # Processed prediction with `-1`
     # full_gt_stack[idx] = gt_cropped  # GT matched to prediction
 
     # Compute Dice across the entire stack, ignoring -1
@@ -159,5 +180,3 @@ for model_name in ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "
     # print(f"\nMean DSC After: {mean_dice_after:.4f}")
 
     # print(f"\nProcessed predictions saved to: {output_path}")
-
-

@@ -38,10 +38,10 @@ print(test_img_path)
 # Load test ground truth images
 test_gt_path = os.path.join(data_dir, One_test_image[0], f"{One_test_image[0]}_gt.tif")
 test_ground_truth_image = tiff.imread(test_gt_path)
-model_dir = "/group/jug/Sheida/HVAE/WACV/"
+model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["epsSeg"]
+model_versions = ["64"]
 batch_size = 1024
 
 
@@ -55,7 +55,7 @@ for test_index in tqdm(img_idx):
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=1
     )
     for model_v in model_versions:
-        model = torch.load(model_dir + model_v + "/model_supervised/best.net", weights_only=False)
+        model = torch.load(model_dir + model_v + "/model_semisupervised/best.net", weights_only=False)
         data_mean = model.data_mean
         data_std = model.data_std
         model.mode_pred = True
@@ -78,6 +78,6 @@ for test_index in tqdm(img_idx):
         clusters = pred_array.reshape(
             test_dataset.num_patches_y, test_dataset.num_patches_x
         )
-        os.makedirs("/group/jug/Sheida/HVAE/segmentation/seg/", exist_ok=True)
-        tiff.imwrite(f"/group/jug/Sheida/HVAE/segmentation/seg/{model_v}_{test_index}_sup.tif", clusters.astype(np.uint8))
+        os.makedirs(f"/group/jug/Sheida/HVAE/segmentation/{model_v}/seg/", exist_ok=True)
+        tiff.imwrite(f"/group/jug/Sheida/HVAE/segmentation/{model_v}/seg/{test_index}_semisup.tif", clusters.astype(np.uint8))
         print(f"Segmentation for image slice {test_index} saved")

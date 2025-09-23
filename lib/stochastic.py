@@ -30,7 +30,7 @@ class StochasticConvBlock(nn.Module):
         labeled_ratio=0.1,
     ):
         super().__init__()
-        self.training_mode = training_mode
+        self.training_mode = training_mode        
         assert kernel % 2 == 1
         pad = kernel // 2
         self.c_in = c_in
@@ -46,9 +46,8 @@ class StochasticConvBlock(nn.Module):
         self.small_batch_size = 0
         self.labeled_ratio = labeled_ratio
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.prior_probs = torch.ones(n_components, device=self.device) / n_components
+        self.prior_probs = (torch.ones(n_components, device=self.device) / n_components)
         conv_type: Type[Union[nn.Conv2d, nn.Conv3d]] = getattr(nn, f"Conv{conv_mult}d")
-        self.bias = torch.zeros(self.n_components, device=self.device, requires_grad=True)
 
         if not top_layer or (block_type == "normal" and not conditional):
             self.conv_in_q = conv_type(c_in, 2 * c_vars, kernel, padding=pad)
@@ -58,7 +57,7 @@ class StochasticConvBlock(nn.Module):
                     conv_type(c_in, c_vars, kernel, padding=pad),
                     nn.ReLU(),
                     nn.Flatten(),
-                    nn.Linear(c_vars * 8 * 8, n_components),
+                    nn.Linear(c_vars * 2 * 2, n_components), #TODO: Fix this hardcoded value
                 )
                 self.qz_xy = nn.Sequential(
                     conv_type(c_in, 2 * c_vars, kernel, padding=pad),
@@ -70,29 +69,27 @@ class StochasticConvBlock(nn.Module):
                     c_in=c_in,
                     embed_dim=128,
                     n_components=n_components,
-                    num_heads=4, #TODO
+                    num_heads=4,
                     num_layers=3,
                     mode="mlp",
                 )
                 self.qz_xy = TransformerQ(
-                    c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv" #TODO
+                    c_in=c_in, embed_dim=128, num_heads=4, num_layers=6, mode="conv"
                 )
             self.gamma_layer = nn.Linear(n_components, c_in)
             self.beta_layer = nn.Linear(n_components, c_in)
         else:  # Top layer, mixture, unconditional
-            # self.y_logits = TransformerQ(
-            #     c_in=c_in, embed_dim=128, n_components=n_components, mode="mlp"
-            # )
+            self.y_logits = TransformerQ(c_in=c_in, embed_dim=128, n_components=n_components, mode="mlp")
             self.conv_in_q = conv_type(
                 c_in, 2 * c_vars * n_components, kernel, padding=pad
             )
         self.conv_out = conv_type(c_vars, c_out, kernel, padding=pad)
 
     def update_mode(self, mode):
-        print(f"Updating StochasticConvBlock mode from {self.training_mode} to {mode}")
-        self.training_mode = mode
+            self.training_mode = mode
 
-    def forward(self, label, p_params, q_params, threshold):
+    def forward(self, label, p_params, q_params, threshold=None):
+        
         kl = 0
         self.batch_size = q_params.shape[0]
 
@@ -111,6 +108,7 @@ class StochasticConvBlock(nn.Module):
         y = None
         cross_entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
         entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+
 
         for mu_chunk, std_chunk in zip(p_mu_chunks, p_std_chunks):
             p_components.append(Normal(mu_chunk, std_chunk))
@@ -131,17 +129,14 @@ class StochasticConvBlock(nn.Module):
             logprob_q = self._compute_logprob(q, z)
         else:  # Top layer
             if self.conditional:
-                qy_logits = self.qy_x(q_params)     
-                y = F.softmax(qy_logits)
-                y_pred = y.argmax(dim=1)
-                # ----
+                qy_logits = self.qy_x(q_params)
                 # FiLM layer
                 gamma = self.gamma_layer(qy_logits)
                 beta = self.beta_layer(qy_logits)
                 gamma = gamma.unsqueeze(-1).unsqueeze(-1)
                 beta = beta.unsqueeze(-1).unsqueeze(-1)
-                q_modulated = gamma * q_params + beta
-                qz_params = self.qz_xy(q_modulated)
+                x_modulated = gamma * q_params + beta
+                qz_params = self.qz_xy(x_modulated)
                 q_mu, q_lv = torch.chunk(qz_params, 2, dim=1)
                 q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
                 q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
@@ -149,8 +144,16 @@ class StochasticConvBlock(nn.Module):
                 q = Normal(q_mu, q_std)
                 z = q.rsample()
 
+                if label is None:
+                    y = F.softmax(qy_logits, dim=1)
+                    y_pred = y.argmax(dim=1)
+                    kl = self._compute_kl(q, p_components, label, y_pred)
+                # else:
+                #     y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                #     self._update_temperature()
+                #     y_pred = y.argmax(dim=1)
+                    
                 if label is not None and self.training_mode == "semisupervised":
-
                     B = label.shape[0] if label is not None else self.batch_size
                     assert B == self.batch_size
                     group = 8
@@ -158,73 +161,57 @@ class StochasticConvBlock(nn.Module):
                     anchors = torch.arange(
                         0, num_groups * group, group, device=self.device
                     )
-                    is_tp = (label[anchors] >= 0) & (y_pred[anchors] == label[anchors])
-                    tp_anchors = anchors[is_tp]
-                    tp_anchor_labels = label[tp_anchors]
-                    neigh_offsets = torch.arange(1, 8, device=self.device)
-                    neigh_idx = tp_anchors[:, None] + neigh_offsets[None, :]
-                    neigh_idx_flat = neigh_idx.reshape(-1)
-                    anchor_label_for_neigh = tp_anchor_labels.repeat_interleave(7)
-                    z_all = F.adaptive_avg_pool2d(q_mu, (1, 1)).flatten(1)
-                    z_all = F.normalize(z_all, dim=1)
-                    Z_anchors = z_all[tp_anchors]
-                    Z_neigh = z_all[neigh_idx_flat]
-                    dist = torch.cdist(Z_neigh, Z_anchors, p=2)
-                    k = num_groups // (2 * self.n_components)
-                    k = max(1, min(k, dist.size(-1)))
-                    knn_idx = dist.topk(k, largest=False, dim=-1).indices
-                    knn_labels = tp_anchor_labels[knn_idx]
-                    all_same = (knn_labels == knn_labels[:, :1]).all(dim=1)
-                    matches_anchor = knn_labels[:, 0] == anchor_label_for_neigh
-                    consistent = all_same & matches_anchor
-
-                    # Build pseudo labels
-                    pseudo= torch.full_like(label, -1)
-                    pseudo[neigh_idx_flat[consistent]] = anchor_label_for_neigh[
-                        consistent
-                    ]
-                    pseudo = torch.where(
-                        label.long() >= 0, label.long(), pseudo.long()
-                    )
                     
-                    cross_entropy = 10 * self._compute_cross_entropy(qy_logits, pseudo)
+                    q_mu_anchors = q_mu[anchors]
+                    labels_anchors = label[anchors]
+                    
+                    sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
+                    counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
+
+                    # Accumulate per class
+                    for c in range(self.n_components):
+                        mask = (labels_anchors == c)
+                        if mask.any():
+                            sums[c] = q_mu_anchors[mask].sum(dim=0)
+                            counts[c] = mask.sum()
+
+                    means = sums / counts.clamp(min=1)
+                    
+                    diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
+                    dists = (diff * diff).sum(dim=(2, 3, 4))
+                    logits = -dists/200
+                    logits = logits - logits.max(dim=1, keepdim=True).values
+                    y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
+                    self._update_temperature()
+                    
+                    conf, pseudo = y.max(dim=1)
+                    pseudo[anchors] = label[anchors].long()
+                    accept = conf > threshold
+                    pseudo[~accept] = -1
+                    cross_entropy = self._compute_cross_entropy(logits, pseudo)
                     kl = self._compute_kl(q, p_components, pseudo)
+
                     
                 elif label is not None and self.training_mode == "supervised":
-                            DIST_SCALE = 200  # extracted magic number as a named constant
-                            sums = torch.zeros(self.n_components, q_mu.size(1), q_mu.size(2), q_mu.size(3), device=self.device)
-                            counts = torch.zeros(self.n_components, 1, 1, 1, device=self.device)
-        
-                            # Accumulate per class
-                            for c in range(self.n_components):
-                                mask = (label == c)
-                                if mask.any():
-                                    sums[c] = q_mu[mask].sum(dim=0)
-                                    counts[c] = mask.sum()
-        
-                            means = sums / counts.clamp(min=1)      
-                            
-                            diff = q_mu.unsqueeze(1) - means.unsqueeze(0)
-                            dists = (diff * diff).sum(dim=(2, 3, 4))
-                            logits = -dists / DIST_SCALE + self.bias.view(1, -1)  # included bias term as suggested
-                            logits = logits - logits.max(dim=1, keepdim=True).values
-                            y = F.gumbel_softmax(logits, tau=self.temperature, hard=False)
-                            self._update_temperature()
-                            
-                            kl = self._compute_kl(q, p_components, label)
-                            cross_entropy = self._compute_cross_entropy(logits, label)
-
-                if label is None:
-                    y = F.softmax(qy_logits, dim=1)
+                    y = F.gumbel_softmax(qy_logits, tau=self.temperature, hard=False)
+                    self._update_temperature()
                     y_pred = y.argmax(dim=1)
-                    kl = torch.tensor(0.0, dtype=torch.float32, device=self.device)
-                    
+                    kl = self._compute_kl(q, p_components, label)
+                    cross_entropy = self._compute_cross_entropy(qy_logits, label)
+
+                js_div = self._compute_js_div(y)
+                
+                kl = kl + js_div
+                entropy = self._compute_entropy(y)
+                # if label is not None:
+                #     cross_entropy = self._compute_cross_entropy(qy_logits, label)
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
                 out = self.conv_out(z)
+            
             else:
                 q_params = self.conv_in_q(q_params)
-                # y_logits = self.y_logits(q_params)
+                y_logits = self.y_logits(q_params)
                 q_mu, q_lv = q_params.chunk(2, dim=1)
                 q_mu = torch.clamp(q_mu, min=-10.0, max=10.0)
                 q_lv = torch.clamp(q_lv, min=-10.0, max=10.0)
@@ -234,14 +221,10 @@ class StochasticConvBlock(nn.Module):
                 q_components = []
                 for mu_chunk, std_chunk in zip(q_mu_chunks, q_std_chunks):
                     q_components.append(Normal(mu_chunk, std_chunk))
-                if label is not None and self.training_mode != "unsupervised":
+                if label is not None:
                     z_samples = []
                     for i, comp in enumerate(q_components):
-                        mask = (
-                            (label == i)
-                            .float()
-                            .view(self.batch_size, *[1] * (q_mu.dim() - 1))
-                        )
+                        mask = (label == i).float().view(self.batch_size, *[1] * (q_mu.dim() - 1))
                         mask = mask.to(q_mu.device)
                         z_samples.append(comp.rsample() * mask)
                     z = torch.sum(torch.stack(z_samples), dim=0)
@@ -250,19 +233,14 @@ class StochasticConvBlock(nn.Module):
                     self._update_temperature()
                     y_pred = y.argmax(dim=1)
                     for i, comp in enumerate(q_components):
-                        mask = (
-                            (y_pred == i)
-                            .float()
-                            .view(self.batch_size, *[1] * (q_mu.dim() - 1))
-                        )
+                        mask = (y_pred == i).float().view(self.batch_size, *[1] * (q_mu.dim() - 1))
                         mask = mask.to(q_mu.device)
                         z_samples.append(comp.rsample() * mask)
-
+                    
                 out = self.conv_out(z)
                 kl = self._compute_kl(q, p_components)
                 logprob_p = self._compute_logprob(p_components, z)
                 logprob_q = self._compute_logprob(q, z)
-
 
         data = {
             "z": z,
@@ -282,7 +260,7 @@ class StochasticConvBlock(nn.Module):
         return out, data
 
     def _update_temperature(self):
-        self.temperature = max(0.1, self.temperature * 0.999)
+        self.temperature = max(0.5, self.temperature * 0.999)
 
     def _compute_kl(self, q, p, label=None, y_pred=None):
         kl = torch.tensor([])
@@ -296,9 +274,20 @@ class StochasticConvBlock(nn.Module):
                     kl_divergence(q, p_i).mean(dim=(1, 2, 3)) for p_i in p
                 ]
                 kl_divergences = torch.stack(kl_divergences, dim=-1)
-                if label is not None and self.training_mode != "unsupervised":
-                    temp = kl_divergences[range(self.batch_size), label.long()]
-                    kl = temp[label != -1]
+                if label is not None:
+                    if self.small_batch_size < self.batch_size:
+                        kl = torch.cat(
+                            [
+                                kl_divergences[range(self.small_batch_size), label[:self.small_batch_size].long()],
+                                kl_divergences[
+                                    range(self.small_batch_size, self.batch_size),
+                                    y_pred[self.small_batch_size :],
+                                ],
+                            ],
+                            dim=0,
+                        )
+                    else:
+                        kl = kl_divergences[range(self.batch_size), label.long()]
         if kl.any():
             return kl.mean()
         else:
@@ -317,15 +306,14 @@ class StochasticConvBlock(nn.Module):
         if self.small_batch_size < self.batch_size:
             entropy = -torch.mean(
                 torch.sum(
-                    y[self.small_batch_size :]
-                    * torch.log(y[self.small_batch_size :] + 1e-10),
+                    y[self.small_batch_size:] * torch.log(y[self.small_batch_size:] + 1e-10),
                     dim=-1,
                 )
             )
         else:
             entropy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
         return entropy
-
+    
     def _compute_cross_entropy(self, qy_logits, label):
         cross_entropy = F.cross_entropy(
             qy_logits,
@@ -333,15 +321,14 @@ class StochasticConvBlock(nn.Module):
             ignore_index=-1,
         )
         return cross_entropy
-
+    
     def _compute_logprob(self, p, z):
         if isinstance(p, Normal):
             logprob = p.log_prob(z)
         else:
             logprob = torch.stack([p_i.log_prob(z) for p_i in p], dim=-1)
         return logprob
-
-
+    
 class TransformerQ(nn.Module):
     def __init__(
         self, c_in, embed_dim, n_components=1, num_heads=4, num_layers=2, mode="mlp"

@@ -41,8 +41,8 @@ class SemisupervisedDataset(Dataset):
         self.n_neighbors = 7  # TODO  # Number of neighbors to sample
         self.seed = 42
         self.rng = random.Random(self.seed)
-        self.samples_per_class: Dict[int, int] = {1: 2}
-        self.default_samples_per_class: int = 1  # TODO
+        self.samples_per_class: Dict[int, int] = {1: 20}
+        self.default_samples_per_class: int = 10  # TODO
         self.groups = self._prepare_metadata()
         self.n_label_per_class = {
             c: len([g for g in self.groups if g["labels"][0] == c])
@@ -1346,7 +1346,7 @@ class Custom3DDataset(Dataset):
 
 
 class CustomTestDataset(Dataset):
-    def __init__(self, image, label, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
+    def __init__(self, image, patch_size=(64, 64, 64), index=1, stride=1, model="3D"):
         """
         Custom Dataset for extracting 2D/3D patches from test data.
 
@@ -1358,7 +1358,6 @@ class CustomTestDataset(Dataset):
             model (str): "2D" or "3D" mode to control patch dimensionality.
         """
         self.image = image
-        self.label = label
         self.patch_size = patch_size
         self.stride = stride
         self.model = model

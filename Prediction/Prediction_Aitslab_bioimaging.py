@@ -1,3 +1,8 @@
+import os, sys
+HERE = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, '..'))  # parent of myscript/
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -7,7 +12,7 @@ from torch.utils.data import DataLoader
 import time
 import datetime
 from torch.amp import autocast
-import os
+
 
 
 use_cuda = torch.cuda.is_available()
@@ -77,9 +82,9 @@ for k in key:
     clusters = pred_array.reshape(
         test_dataset.num_patches_y, test_dataset.num_patches_x
     )
-    seg_dir = f"{model_dir}{model_v}/seg_supervised/" #TODO
+    seg_dir = f"{model_dir}/seg/" #TODO
     os.makedirs(seg_dir, exist_ok=True)
-    tiff.imwrite(f"{seg_dir}{k}.tif", clusters.astype(np.uint8))
+    tiff.imwrite(f"{model_v}{seg_dir}{k}.tif", clusters.astype(np.uint8))
     print(
         f"Segmentation for image slice {k} with model {model_v} is saved"
     )

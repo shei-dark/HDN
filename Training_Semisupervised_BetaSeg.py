@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/WACV/epsSeg_1/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/65/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default="supervised")
@@ -35,10 +35,10 @@ parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
 parser.add_argument("--sample_ratio", type=int, default=20)
-parser.add_argument("--num_latents", type=int, default=3)
+parser.add_argument("--num_latents", type=int, default=5)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
-parser.add_argument("--beta", type=float, default=5e-1)
+parser.add_argument("--beta", type=float, default=1e-1)
 parser.add_argument("--gamma", type=float, default=1)
 parser.add_argument("--initial_mask_size", type=int, default=1)
 parser.add_argument("--final_mask_size", type=int, default=1)
@@ -70,12 +70,12 @@ patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "WACV"
+model_name = "segmentation"
 directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = directory_path + "model_supervised/segmentation_best_supervised_vae.net"
+checkpoint = directory_path + "model_supervised/best.net"
 
 noiseModel = None
 
@@ -204,6 +204,7 @@ else:
         conv_mult=2,
         device=device,
         batchnorm=batchnorm,
+        stochastic_skip=True,
         free_bits=free_bits,
         img_shape=img_shape,
         grad_checkpoint=True,

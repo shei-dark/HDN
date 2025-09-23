@@ -290,6 +290,7 @@ class LadderVAE(nn.Module):
                 logvars=td_data["logvar"],
                 pis=td_data["pi"] if "pi" in td_data else None,
                 labels=td_data["pseudo_labels"],
+                # labels=y,
                 margin=self.margin,
                 lambda_contrastive=self.lambda_contrastive,
                 training_mode=self.training_mode,
