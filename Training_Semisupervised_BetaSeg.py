@@ -26,16 +26,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="Path to input image")
 parser.add_argument("--labels", type=str, help="Path to input label")
 parser.add_argument(
-    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/65/"
+    "--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/06/"
 )
 parser.add_argument("--contrastive_learning", type=bool, default=True)
-parser.add_argument("--mode", type=str, default="supervised")
+parser.add_argument("--mode", type=str, default="semisupervised")
 parser.add_argument("--labeled_ratio", type=float, default=1)
 parser.add_argument("--stochastic_block_type", type=str, default="mixture")
 parser.add_argument("--conditional", type=bool, default=True)
 parser.add_argument("--condition_type", type=str, default="mlp")
 parser.add_argument("--sample_ratio", type=int, default=20)
-parser.add_argument("--num_latents", type=int, default=5)
+parser.add_argument("--num_latents", type=int, default=3)
 parser.add_argument("--blocks_per_layer", type=int, default=5)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-1)
@@ -45,7 +45,7 @@ parser.add_argument("--final_mask_size", type=int, default=1)
 parser.add_argument("--initial_label_size", type=int, default=1)
 parser.add_argument("--final_label_size", type=int, default=1)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--load_checkpoint", type=bool, default=True)
 
 args = parser.parse_args()
 
@@ -70,19 +70,19 @@ patch_size = 64
 
 gaussian_noise_std = None
 
-model_name = "segmentation"
+model_name = "plus"
 directory_path = args.directory_path
 
 # Model-specific
 load_checkpoint = args.load_checkpoint
-checkpoint = directory_path + "model_supervised/best.net"
+checkpoint = directory_path + "model_supervised/segmentation_best_vae.net"
 
 noiseModel = None
 
 # Training-specific
 batch_size = 1024
 lr = 3e-5
-max_epochs = 1000
+max_epochs = 500
 num_latents = args.num_latents
 z_dims = [32] * int(num_latents)
 blocks_per_layer = args.blocks_per_layer
@@ -160,6 +160,8 @@ train_set = SemisupervisedDataset(
     indices_dict=train_idx,
 )
 
+seg_head_dim = 2**(np.log2(patch_size) - num_latents)
+
 val_set = SemisupervisedDataset(
     images=imgs,
     labels=lbls,
@@ -187,6 +189,12 @@ val_loader = DataLoader(
     collate_fn=flex_collate,
 )
 
+print("CUDA available:", torch.cuda.is_available())
+print("Device count:", torch.cuda.device_count())
+print("Visible devices (env):", os.environ.get("CUDA_VISIBLE_DEVICES"))
+if torch.cuda.is_available():
+    print("Current device:", torch.cuda.current_device())
+    print("Device name:", torch.cuda.get_device_name(0))
 
 img_shape = (64, 64)
 

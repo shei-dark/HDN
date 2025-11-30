@@ -19,7 +19,7 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/test/")
+parser.add_argument("--directory_path", type=str, default="/group/jug/Sheida/HVAE/segmentation/19/")
 parser.add_argument("--contrastive_learning", type=bool, default=True)
 parser.add_argument("--mode", type=str, default='semisupervised')
 parser.add_argument("--labeled_ratio", type=float, default=0.75)
@@ -31,13 +31,13 @@ parser.add_argument("--num_latents", type=int, default=2)
 parser.add_argument("--blocks_per_layer", type=int, default=3)
 parser.add_argument("--alpha", type=float, default=1)
 parser.add_argument("--beta", type=float, default=1e-2)
-parser.add_argument("--gamma", type=float, default=1e-2)
+parser.add_argument("--gamma", type=float, default=1)
 parser.add_argument("--initial_mask_size", type=int, default=3)
 parser.add_argument("--final_mask_size", type=int, default=3)
 parser.add_argument("--initial_label_size", type=int, default=3)
 parser.add_argument("--final_label_size", type=int, default=3)
 parser.add_argument("--step_interval", type=int, default=10)
-parser.add_argument("--load_checkpoint", type=bool, default=False)
+parser.add_argument("--load_checkpoint", type=bool, default=True)
 parser.add_argument("--checkpoint", type=str, default="")
 
 args = parser.parse_args()
@@ -86,15 +86,15 @@ labeled_ratio = args.labeled_ratio  # ratio of labeled data in semisupervised mo
 stochastic_block_type = args.stochastic_block_type  # 'normal' or 'mixture'
 conditional = args.conditional  # True for conditional LVAE (conditioned on gt label)
 condition_type = args.condition_type  # 'mlp' or 'transformer'
-assert (conditional == True and condition_type != None) or conditional == False
+assert (conditional and condition_type is not None) or not conditional
 n_components = 7  # number of components for prior
 n_classes = 7  # number of classes in the dataset
 # train data
 data_dir = "/facility/imganfacusers/Sheida/combined_single_label/"
 keys = ["crop_00", "crop_01", "crop_02", "crop_03", "crop_04", "crop_05", "crop_06", "crop_07", "crop_08", "crop_09", "crop_10"]
 
-img_paths = [os.path.join(data_dir + key + f"/image.tif") for key in keys]
-lbl_paths = [os.path.join(data_dir + key + f"/labs.tif") for key in keys]
+img_paths = [os.path.join(data_dir + key + "/image.tif") for key in keys]
+lbl_paths = [os.path.join(data_dir + key + "/labs.tif") for key in keys]
 imgs = {key: tiff.imread(path) for key, path in zip(keys, img_paths)}
 lbls = {key: tiff.imread(path) for key, path in zip(keys, lbl_paths)}
 train_images, val_images, train_labels, val_labels = {}, {}, {}, {}

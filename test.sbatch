@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sheida.rahnamai@fht.org
-#SBATCH --output=/group/jug/Sheida/HVAE/segmentation/33/pred_semi.log
+#SBATCH --output=/group/jug/Sheida/HVAE/plus/pred_02_semisup.log
 #SBATCH --partition=gpuq
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
@@ -15,4 +15,4 @@
 
 source $HOME/.bashrc
 conda activate epsSeg
-python Prediction_BetaSeg.py
+python Prediction/Pred_BetaSeg.py

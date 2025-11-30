@@ -63,7 +63,7 @@ def train_network(
     cudnn.fastest = True
     change_mask_size = False
     change_label_size = False
-    model_folder = directory_path + "model_" + model.training_mode + "/"
+    model_folder = directory_path + "epsSeg++/"
     device = model.device
     optimizer, scheduler = boilerplate._make_optimizer_and_scheduler(model, lr, 0.0)
     if initial_mask_size != final_mask_size:
@@ -396,7 +396,7 @@ def train_network(
 
         print("----------------------------------------", flush=True)
 
-        if patience_ == 50 and train_loader.dataset.mode == "supervised":
+        if patience_ == 20 and train_loader.dataset.mode == "supervised":
 
             print("--------------------------------------")
             print("Switching to semi-supervised mode")
@@ -413,7 +413,7 @@ def train_network(
             )
             
 
-        if patience_ == 50 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
+        if patience_ == 20 and train_loader.dataset.radius < 10 and train_loader.dataset.mode == "semisupervised":
             print("--------------------------------------")
             print(
                 f"increasing radius from {train_loader.dataset.radius} to {train_loader.dataset.radius + 1}"
@@ -426,6 +426,6 @@ def train_network(
             model.load_state_dict(checkpoint.state_dict())
             
 
-        if patience_ == 51:
+        if patience_ == 21:
             print("Early stopping")
             break

@@ -38,7 +38,7 @@ test_ground_truth_image = tiff.imread(test_gt_path)
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 # img_idx = range(49,1016)
 img_idx = [626]
-model_versions = ["03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"]
+model_versions = ["09", "08", "05", "06", "07"]
 batch_size = 1024
 
 for test_index in img_idx:
@@ -53,7 +53,7 @@ for test_index in img_idx:
     dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=1)
 
     for model_v in model_versions:
-        model_path = os.path.join(model_dir, model_v, "model_supervised", "segmentation_best_vae.net")
+        model_path = os.path.join(model_dir, model_v, "epsSeg++", "best.net")
         model = torch.load(model_path, weights_only=False)
         model.eval()
 
@@ -82,8 +82,8 @@ for test_index in img_idx:
                 pred_slice[ys, xs] = y_pred                       # scatter center predictions
 
         # Save per-slice prediction; ignored pixels remain -1
-        out_dir = f"/group/jug/Sheida/HVAE/WACV/seg/"
+        out_dir = f"/group/jug/Sheida/HVAE/plus/seg/{model_v}/semisup/"
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{model_v}_{test_index}_sup.tif")
+        out_path = os.path.join(out_dir, f"{test_index}.tif")
         tiff.imwrite(out_path, pred_slice.astype(np.int8))
         print(f"Segmentation for image slice {test_index} saved to {out_path}")

@@ -1,8 +1,14 @@
+import os, sys
+
+HERE = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, ".."))  # parent of myscript/
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+    
 import torch
 import numpy as np
 from boilerplate.dataloader import CustomTestDataset
 import tifffile as tiff
-import os
 from torch.utils.data import DataLoader
 import time
 import datetime
@@ -23,15 +29,15 @@ with autocast(device_type=device):  # Ensure 'cuda' or 'cpu'
         print("Test image loaded from path:")
         print(data_dir + k + "/image.tif")
         model_dir = "/group/jug/Sheida/HVAE/segmentation/"
-        img_idx = range(128)
-        model_v = "05"
-        batch_size = 2048
+        img_idx = [26]#range(128)
+        model_v = "19"
+        batch_size = 1024
 
         max_step = len(img_idx)
         step = 0
         seconds_last = time.time()
         model = torch.load(
-            model_dir + model_v + "/model_supervised/segmentation_best_vae.net",
+            model_dir + model_v + "/model_supervised/experiments_best_vae.net",
             weights_only=False,
         )
         data_mean = model.data_mean

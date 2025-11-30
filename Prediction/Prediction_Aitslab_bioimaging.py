@@ -29,16 +29,17 @@ channel_stds = torch.tensor([cell_std, nuclei_std]).to(device=device)     # Shap
 
 data_dir = "/group/jug/Sheida/Aitslab_bioimaging/img/test/"
 key = [
-    "cell_2_nuclei_0.tif",
-    "cell_3_nuclei_1.tif",
+    # "cell_2_nuclei_0.tif",
+    # "cell_3_nuclei_1.tif",
     "cell_4_nuclei_2.tif",
-    "cell_5_nuclei_3.tif",
-    "cell_6_nuclei_4.tif",
-    "cell_7_nuclei_5.tif",
-    "cell_8_nuclei_6.tif",
-    "cell_9_nuclei_7.tif",
-    "cell_10_nuclei_8.tif",
-    "cell_11_nuclei_9.tif",]
+    # "cell_5_nuclei_3.tif",
+    # "cell_6_nuclei_4.tif",
+    # "cell_7_nuclei_5.tif",
+    # "cell_8_nuclei_6.tif",
+    # "cell_9_nuclei_7.tif",
+    # "cell_10_nuclei_8.tif",
+    # "cell_11_nuclei_9.tif",
+    ]
 
 model_dir = "/group/jug/Sheida/HVAE/segmentation/"
 model_v = "21"
@@ -82,9 +83,9 @@ for k in key:
     clusters = pred_array.reshape(
         test_dataset.num_patches_y, test_dataset.num_patches_x
     )
-    seg_dir = f"{model_dir}/seg/" #TODO
+    seg_dir = f"{model_dir}/{model_v}/seg_softmax/" #TODO
     os.makedirs(seg_dir, exist_ok=True)
-    tiff.imwrite(f"{model_v}{seg_dir}{k}.tif", clusters.astype(np.uint8))
+    tiff.imwrite(f"{seg_dir}{k}.tif", clusters.astype(np.uint8))
     print(
         f"Segmentation for image slice {k} with model {model_v} is saved"
     )

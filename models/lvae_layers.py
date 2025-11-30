@@ -248,8 +248,8 @@ class TopDownLayer(nn.Module):
                 if use_uncond_mode:
                     q_params = p_params
                 else:
-                    # q_params = self.merge(bu_value, p_params)
-                    q_params = p_params
+                    q_params = self.merge(bu_value, p_params)
+                    # q_params = p_params
 
         # In generative mode, q is not used
         else:
